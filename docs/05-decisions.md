@@ -514,3 +514,62 @@ instant, and must not burn battery while no one is typing.
     changes, but `vocabSize` is also hashed and the digest now matches what the runtime can
     actually recompute — the property that matters.
 
+## ADR-012 — Decoder latency: per-branch work and beam tuning (M5)
+
+- Date: 2026-05-30
+- Status: accepted
+- Context: The first end-to-end timing of the M5 decoder against the real model
+  (Qwen3.5-2B-Base Q4_K_M, fully Metal-offloaded on an M5 Max) measured **~12.3 s per
+  4-token completion** — unusable for keystroke-latency autocomplete. A phase breakdown
+  (`QualitativeDemoTests.testPhaseBreakdown`) attributed essentially all of it to per-branch
+  work repeated across the ~`1 + 3·branchWidth` branch expansions of a depth-4 beam:
+  `TokenSampler.rank` **485 ms**, `logitsForNextToken` 19 ms, and the engine's separate
+  argmax `.max(by:)` pass — each a full sweep of the 151,936-token vocabulary — plus a ~16 ms
+  `llama_decode`. The model itself was not the bottleneck (GPU offload confirmed via
+  `load_tensors: ... assigned to device MTL0`).
+- Decision (algorithmic, behaviour-preserving):
+  - **Pre-select before ranking.** `TokenSampler.rank` no longer runs softmax + a full
+    150k-element sort + 150k `log()` over the whole vocabulary. It first takes the top
+    `max(topK·4, 256)` tokens by raw logit via a bounded min-heap (O(n log k), no profile
+    lookups), then applies exclusion / admissibility / bias / softmax / top-k / top-p only to
+    that pool. For the small vocabularies in the deterministic unit tests the pool is the
+    whole vocab, so behaviour there is unchanged. Pre-selection ignores per-token static bias
+    (small, relative to the logit spread on the real profile), which cannot realistically lift
+    a token from outside the top few hundred into the top-k. Result: **485 ms → ~16 ms**.
+  - **Fold the hard-stop argmax into the sampler.** `rank` now returns a `SamplerResult`
+    carrying the global argmax (tracked in its single candidate scan, before exclusion), so
+    the engine no longer does its own `logits.max(by:)` full-vocab pass to detect "the model
+    wants to stop here."
+  - **Build the logits vector in one pass** (`Array(unsafeUninitializedCapacity:)`) instead
+    of element-wise `append`.
+  - These three are pure wins (no quality change) and took the warm mean from **~12.3 s to
+    ~1.0 s**.
+- Decision (tuning, latency/quality trade-off):
+  - **`branchWidth` 8 → 4, `relativeCutoff` 8 → 6** as `DecodingConfiguration` defaults. The
+    remaining cost is dominated by a roughly fixed per-expansion overhead (~16 ms `llama_decode`
+    + ~16 ms logits readback + ~16 ms rank), so wall-clock scales nearly linearly with the
+    number of branch expansions. A `branchWidth` sweep (`testBranchWidthSweep`) showed warm
+    means of 955/639/423/288/168 ms at width 8/5/3/2/1, with the **top-ranked candidate
+    identical at every width** — the extra beams only contributed lower-ranked alternates.
+    Width 4 keeps a genuine multi-candidate ranked set while landing at **~554 ms warm mean**
+    (~22× faster than the original). The tighter cutoff prunes weak branches in confident
+    cases without affecting the dominant continuation.
+- Consequences:
+  - Warm per-completion latency is now ~0.5 s and one-time model+profile load is ~0.5 s.
+    Usable for pause-triggered, cancellable autocomplete, though not yet "instant."
+  - The `[TokenLogit]` shape of `LocalModelRuntime.logitsForNextToken()` is kept: the test
+    stubs return *sparse* token lists (explicit ids, not dense vocab-indexed buffers), so the
+    sampler cannot assume `tokenID == bufferIndex`. A raw-buffer accessor that would merge the
+    logits readback and the rank scan into a single pass was therefore deferred.
+  - **Remaining bottleneck / next step.** Each branch independently re-`prepare`s
+    `basePrompt + branchTokens` (clear + full re-decode, forced by the recurrent-safe rule in
+    ADR-011) and pays the fixed `llama_decode` + vocab-readback overhead. The path to
+    sub-200 ms / approaching the model's standalone decode throughput is the deferred KV-fork:
+    keep `basePrompt` resident once and decode all sibling branches of a depth as a single
+    multi-sequence `llama_decode` batch (one fixed-overhead call per depth instead of per
+    branch). This must be validated against the Gated Delta Net / SSM layers (`seq_cp` of
+    recurrent state) before adoption — see ADR-010/011.
+  - Benchmarks live as skip-gated tests in `QualitativeDemoTests`
+    (`testPhaseBreakdown`, `testCompletionLatency`, `testBranchWidthSweep`) so the numbers are
+    reproducible and regressions are visible whenever the model + profile are provisioned.
+

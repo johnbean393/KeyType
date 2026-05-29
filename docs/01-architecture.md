@@ -91,9 +91,13 @@ admissibility from the profile (`tokenAllowed(_:afterRequiredPrefix:)`, advanced
 incremental UTF-8-validated detokenization (`GenerationBranch` + `UTF8Scanner`); and stop on
 EOS/EOT, `.stopAndSuppress`, sentence-end (`.stopAndDisplay`), display-width limit,
 `maxCompletionTokens`, or an inadmissible transition. It drives the linear `LocalModelRuntime`
-protocol by re-`prepare`-ing `basePrompt + branchTokens` (KV prefix-reuse keeps it cheap; KV-fork
-is a future optimization) and honours cooperative `Task` cancellation so a newer keystroke aborts
-in-flight work.
+protocol by re-`prepare`-ing `basePrompt + branchTokens` and honours cooperative `Task`
+cancellation so a newer keystroke aborts in-flight work. `TokenSampler` pre-selects the top
+candidates by raw logit before ranking so per-step work is bounded instead of vocabulary-wide,
+and the per-completion cost scales with the number of branch expansions, so `branchWidth`
+defaults to 4 (ADR-012, ~0.5 s warm per 4-token completion on the reference model). Because each
+divergent branch re-decodes the shared prefix (recurrent-safe, ADR-011), batching sibling
+branches into one multi-sequence decode (KV-fork) is the next latency optimization.
 
 ### `TokenProfiles` — vocabulary intelligence ✅(in-memory) / 🟡(on-disk)
 `AutocompleteProfile` protocol + `InMemoryAutocompleteProfile` + `TokenProfileFlags` +

@@ -13,6 +13,16 @@ struct RankedToken: Equatable {
     var logProbability: Float
 }
 
+/// The outcome of ranking one position: the admissible candidate pool plus the model's single
+/// most-likely next token over the *whole* (pre-exclusion) distribution. The engine uses the
+/// argmax to decide whether the model "wants" to stop here (EOS/EOT/stop as the top choice).
+struct SamplerResult: Equatable {
+    var tokens: [RankedToken]
+    var argmaxTokenID: TokenID?
+
+    static let empty = SamplerResult(tokens: [], argmaxTokenID: nil)
+}
+
 /// Pure transformation from raw next-token logits to a ranked, admissible candidate pool.
 ///
 /// Order of operations: drop excluded + inadmissible tokens, add the profile's static/mode
@@ -25,24 +35,46 @@ enum TokenSampler {
         profile: AutocompleteProfile,
         configuration: DecodingConfiguration,
         isAdmissible: (TokenID) -> Bool
-    ) -> [RankedToken] {
-        guard !logits.isEmpty else { return [] }
+    ) -> SamplerResult {
+        guard !logits.isEmpty else { return .empty }
         let temperature = max(configuration.temperature, 1e-3)
 
-        // 1. Mask + bias + temperature-scale the admissible tokens.
+        // 0. Pre-select the highest raw-logit tokens. Running the profile lookups + softmax over
+        //    the full vocabulary (150k+ tokens) per branch is the dominant cost; the surviving
+        //    candidate pool only ever needs `topK` entries, so restrict the expensive work to a
+        //    generous multiple of that. For small vocabularies (unit tests) this keeps every
+        //    token, leaving behaviour identical. Pre-selection ignores per-token bias, which for
+        //    the real profile is static and small relative to the logit spread — a token far down
+        //    the raw-logit ranking cannot realistically be biased into the top-k.
+        let preselectCount = min(logits.count, max(configuration.topK * 4, 256))
+        let candidates = preselectCount < logits.count
+            ? topByLogit(logits, count: preselectCount)
+            : logits
+
+        // 1. Mask + bias + temperature-scale the admissible tokens. The global argmax (over the
+        //    pre-exclusion candidates, which include EOS/EOT/stop) is tracked here so the engine
+        //    doesn't need a second full pass over the logits to detect a "stop here" signal.
+        //    Because `candidates` are the highest-logit tokens, their max is the true global max.
         var scaled: [(tokenID: TokenID, value: Float)] = []
-        scaled.reserveCapacity(min(logits.count, configuration.topK * 4))
-        for logit in logits {
+        scaled.reserveCapacity(candidates.count)
+        var maxValue = -Float.greatestFiniteMagnitude
+        var argmaxTokenID: TokenID?
+        var argmaxLogit = -Float.greatestFiniteMagnitude
+        for logit in candidates {
             let id = logit.tokenID
+            if logit.logit > argmaxLogit {
+                argmaxLogit = logit.logit
+                argmaxTokenID = id
+            }
             if profile.isExcluded(id, mode: mode) { continue }
             if !isAdmissible(id) { continue }
-            let biased = logit.logit + profile.bias(for: id, mode: mode)
-            scaled.append((id, biased / temperature))
+            let value = (logit.logit + profile.bias(for: id, mode: mode)) / temperature
+            scaled.append((id, value))
+            if value > maxValue { maxValue = value }
         }
-        guard !scaled.isEmpty else { return [] }
+        guard !scaled.isEmpty else { return SamplerResult(tokens: [], argmaxTokenID: argmaxTokenID) }
 
         // 2. Softmax over the admissible set (max-shift for numerical stability).
-        let maxValue = scaled.reduce(scaled[0].value) { Swift.max($0, $1.value) }
         var expSum: Float = 0
         var exps = [Float](repeating: 0, count: scaled.count)
         for i in scaled.indices {
@@ -50,7 +82,7 @@ enum TokenSampler {
             exps[i] = e
             expSum += e
         }
-        guard expSum > 0 else { return [] }
+        guard expSum > 0 else { return SamplerResult(tokens: [], argmaxTokenID: argmaxTokenID) }
 
         var ranked: [RankedToken] = scaled.indices.map { i in
             let p = exps[i] / expSum
@@ -92,6 +124,52 @@ enum TokenSampler {
             ranked = kept.isEmpty ? Array(ranked.prefix(1)) : Array(kept)
         }
 
-        return ranked
+        return SamplerResult(tokens: ranked, argmaxTokenID: argmaxTokenID)
+    }
+
+    /// Returns the `count` highest-`logit` entries (in arbitrary order) using a bounded
+    /// min-heap, so the full vocabulary is scanned once in O(n log count) without sorting it.
+    private static func topByLogit(_ logits: [TokenLogit], count: Int) -> [TokenLogit] {
+        var heap = [TokenLogit]()
+        heap.reserveCapacity(count)
+
+        func siftUp(_ start: Int) {
+            var child = start
+            while child > 0 {
+                let parent = (child - 1) / 2
+                if heap[child].logit < heap[parent].logit {
+                    heap.swapAt(child, parent)
+                    child = parent
+                } else {
+                    break
+                }
+            }
+        }
+
+        func siftDown(_ start: Int) {
+            var parent = start
+            let n = heap.count
+            while true {
+                let left = 2 * parent + 1
+                let right = 2 * parent + 2
+                var smallest = parent
+                if left < n && heap[left].logit < heap[smallest].logit { smallest = left }
+                if right < n && heap[right].logit < heap[smallest].logit { smallest = right }
+                if smallest == parent { break }
+                heap.swapAt(parent, smallest)
+                parent = smallest
+            }
+        }
+
+        for logit in logits {
+            if heap.count < count {
+                heap.append(logit)
+                siftUp(heap.count - 1)
+            } else if logit.logit > heap[0].logit {
+                heap[0] = logit
+                siftDown(0)
+            }
+        }
+        return heap
     }
 }

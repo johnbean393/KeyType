@@ -57,26 +57,26 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
                     continue
                 }
 
-                // The model's single most likely continuation being a terminator is the
-                // signal to stop this branch and keep what we have so far.
-                if let top = logits.max(by: { $0.logit < $1.logit })?.tokenID, isHardStop(top) {
-                    finalizeIfValid(branch, into: &finalized)
-                    continue
-                }
-
-                let ranked = TokenSampler.rank(
+                let result = TokenSampler.rank(
                     logits: logits,
                     mode: request.mode,
                     profile: profile,
                     configuration: configuration,
                     isAdmissible: { profile.tokenAllowed($0, afterRequiredPrefix: branch.remainingPrefix) }
                 )
-                if ranked.isEmpty {
+
+                // The model's single most likely continuation being a terminator is the
+                // signal to stop this branch and keep what we have so far.
+                if let top = result.argmaxTokenID, isHardStop(top) {
+                    finalizeIfValid(branch, into: &finalized)
+                    continue
+                }
+                if result.tokens.isEmpty {
                     finalizeIfValid(branch, into: &finalized)
                     continue
                 }
 
-                for token in ranked {
+                for token in result.tokens {
                     let id = token.tokenID
                     if isHardStop(id) { continue } // never displayed; argmax handles "stop here"
 

@@ -168,12 +168,14 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         }
         let vocabSize = metadata.vocabularySize
         let buffer = UnsafeBufferPointer(start: raw, count: vocabSize)
-        var result = [TokenLogit]()
-        result.reserveCapacity(vocabSize)
-        for i in 0..<vocabSize {
-            result.append(TokenLogit(tokenID: TokenID(i), logit: buffer[i]))
+        // Fill the destination storage in one pass without per-element `append` bookkeeping —
+        // this vector is vocabulary-wide (150k+) and is rebuilt for every branch expansion.
+        return [TokenLogit](unsafeUninitializedCapacity: vocabSize) { dst, initializedCount in
+            for i in 0..<vocabSize {
+                dst[i] = TokenLogit(tokenID: TokenID(i), logit: buffer[i])
+            }
+            initializedCount = vocabSize
         }
-        return result
     }
 
     public func decodeNext(tokenID: TokenID) async throws {
