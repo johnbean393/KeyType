@@ -141,3 +141,48 @@ instant, and must not burn battery while no one is typing.
     parameter values in either Swift 5 (SPM packages) or the Xcode app's Swift 6-mode strict
     isolation defaults; their methods stay `@MainActor`.
 
+## ADR-007 — llama.cpp integration via prebuilt xcframework `binaryTarget`
+
+- Date: 2026-05-29
+- Status: accepted (amended 2026-05-29 to use a local-path binding)
+- Context: M2 needs a real `LocalModelRuntime` backed by llama.cpp. Three integration paths were
+  considered: (A) a third-party SwiftPM wrapper (`mattt/llama.swift`, `StanfordBDHG/llama.cpp`)
+  that re-exports the full C++ API and forces `.interoperabilityMode(.Cxx)` to propagate through
+  every consumer of `ModelRuntime`; (B) the official llama.cpp prebuilt **xcframework** consumed
+  directly as a SwiftPM `binaryTarget`, using only the C API; (C) building llama.cpp from source
+  inside this repo (vendors a large ggml/Metal tree, slow + fragile, high maintenance).
+- Decision: Take option **B**. Use the official llama.cpp xcframework (current target build
+  `b9402`, produced by `build-xcframework.sh`) and wrap only the C surface (`llama.h`) in a new
+  isolated target `LlamaModelRuntime` inside the `ModelRuntime` package. The pre-existing
+  `ModelRuntime` library target (with the `LocalModelRuntime` / `ModelTokenizing` protocols,
+  `StubModelRuntime`, `UTF8FallbackTokenizer`) stays dependency-free and untouched so
+  `ConstrainedGeneration`, `Prompting`, and existing tests keep compiling and running with the
+  stub. The Xcode app and other packages depend on the protocol target; only the eventual
+  concrete wiring point links the llama target.
+- Binding form (amended): the binary is consumed as `binaryTarget(path:)` pointing at a vendored
+  copy under `Packages/ModelRuntime/Vendor/llama.xcframework`. The Vendor directory is
+  gitignored, so the binary is never committed. The original plan was `binaryTarget(url:checksum:)`
+  against `https://github.com/ggml-org/llama.cpp/releases/download/b9402/llama-b9402-xcframework.zip`,
+  but the GitHub release CDN was practically unusable for our network during M2 implementation;
+  we switched to a locally-supplied build of the same `b9402` tag. The url+checksum form remains
+  the preferred shape once we have a reliable mirror — only the `Package.swift` line changes;
+  the wrapping target stays identical. The vendored framework's macOS slice is
+  `macos-arm64_x86_64/llama.framework` (~9.6 MB binary, universal arm64+x86_64) with Metal
+  acceleration on Apple Silicon and a module map that exposes `import llama` directly.
+- Consequences:
+  - The binary is never committed (gitignored under `Packages/ModelRuntime/Vendor/`). A
+    fresh clone must drop a matching `llama.xcframework` into that directory before
+    `swift build` for the `LlamaModelRuntime` target will succeed — `ModelRuntime` (protocols
+    + stub) and every other package keep building without the framework present.
+  - The `LocalModelRuntime` protocol surface is unchanged — KV prefix reuse is an internal detail
+    of `LlamaModelRuntime.prepare(promptTokens:)`. No consumer changes.
+  - Because the framework is dynamic, when the **app target** eventually links it (out of scope
+    for M2, which is package-test acceptance only), the hardened runtime will need
+    `com.apple.security.cs.disable-library-validation`. ADR-005 already flagged this as a
+    follow-up; document it here as the trigger.
+  - Pin updates are explicit: bumping the build tag means replacing the vendored framework
+    (or, once we move to url+checksum, recomputing the checksum) — reproducible and auditable.
+  - If a future upstream change forces C++ interop at the Swift import boundary, the wrap is
+    already isolated to one target — we can interpose a thin C-only shim target without touching
+    `AutocompleteCore` / `ConstrainedGeneration`.
+

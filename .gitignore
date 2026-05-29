@@ -31,3 +31,10 @@ Package.resolved
 *.xcconfig.local
 .env
 secrets.json
+
+# Vendored binary frameworks (llama.cpp xcframework lives outside git, see ADR-007)
+Packages/ModelRuntime/Vendor/
+
+# Model weights (stay in ~/Library/Application Support/KeyType/Models, never in the repo)
+*.gguf
+Models/

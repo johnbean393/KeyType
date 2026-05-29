@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		20DD9A7F2FC95AB900BE1F8C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */; };
+		20DD9A822FC95AB900BE1F8C /* KeyTypeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A7D2FC95AB900BE1F8C /* KeyTypeApp.swift */; };
+		20DD9A852FC95ABB00BE1F8C /* KeyTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A832FC95ABB00BE1F8C /* KeyTypeTests.swift */; };
+		20DD9A892FC95ABD00BE1F8C /* KeyTypeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A862FC95ABD00BE1F8C /* KeyTypeUITests.swift */; };
+		20DD9A8A2FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A872FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift */; };
 		4B5450012FC9600000000001 /* AutocompleteCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000011 /* AutocompleteCore */; };
 		4B5450012FC9600000000002 /* MacContextCapture in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000012 /* MacContextCapture */; };
 		4B5450012FC9600000000003 /* Prompting in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000013 /* Prompting */; };
@@ -17,16 +22,11 @@
 		4B5450012FC9600000000008 /* TextInsertion in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000018 /* TextInsertion */; };
 		4B5450012FC9600000000009 /* AppCompatibility in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000019 /* AppCompatibility */; };
 		4B5450012FC960000000000A /* KeyTypeModuleGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */; };
-		20DD9A7F2FC95AB900BE1F8C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */; };
-		20DD9A822FC95AB900BE1F8C /* KeyTypeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A7D2FC95AB900BE1F8C /* KeyTypeApp.swift */; };
 		4B5450012FC9600000000030 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000031 /* AppDelegate.swift */; };
 		4B5450012FC9600000000032 /* PermissionsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000033 /* PermissionsManager.swift */; };
 		4B5450012FC9600000000034 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000035 /* OnboardingView.swift */; };
 		4B5450012FC9600000000036 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000037 /* MenuBarView.swift */; };
 		4B5450012FC9600000000038 /* ContextCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000039 /* ContextCaptureController.swift */; };
-		20DD9A852FC95ABB00BE1F8C /* KeyTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A832FC95ABB00BE1F8C /* KeyTypeTests.swift */; };
-		20DD9A892FC95ABD00BE1F8C /* KeyTypeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A862FC95ABD00BE1F8C /* KeyTypeUITests.swift */; };
-		20DD9A8A2FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A872FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,17 +50,17 @@
 		20DD9A4E2FC95AA900BE1F8C /* KeyType.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeyType.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		20DD9A5D2FC95AA900BE1F8C /* KeyTypeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyTypeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		20DD9A672FC95AA900BE1F8C /* KeyTypeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyTypeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeModuleGraph.swift; sourceTree = "<group>"; };
 		20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		20DD9A7D2FC95AB900BE1F8C /* KeyTypeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeApp.swift; sourceTree = "<group>"; };
+		20DD9A832FC95ABB00BE1F8C /* KeyTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeTests.swift; sourceTree = "<group>"; };
+		20DD9A862FC95ABD00BE1F8C /* KeyTypeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeUITests.swift; sourceTree = "<group>"; };
+		20DD9A872FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeModuleGraph.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000031 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000033 /* PermissionsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsManager.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000035 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000037 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000039 /* ContextCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCaptureController.swift; sourceTree = "<group>"; };
-		20DD9A832FC95ABB00BE1F8C /* KeyTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeTests.swift; sourceTree = "<group>"; };
-		20DD9A862FC95ABD00BE1F8C /* KeyTypeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeUITests.swift; sourceTree = "<group>"; };
-		20DD9A872FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeUITestsLaunchTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -252,8 +252,6 @@
 			);
 			mainGroup = 20DD9A452FC95AA900BE1F8C;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = 20DD9A4F2FC95AA900BE1F8C /* Products */;
 			packageReferences = (
 				4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */,
 				4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */,
@@ -265,6 +263,8 @@
 				4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */,
 				4B5450012FC9600000000023 /* XCLocalSwiftPackageReference "Packages/TokenProfiles" */,
 			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 20DD9A4F2FC95AA900BE1F8C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -346,93 +346,6 @@
 			targetProxy = 20DD9A682FC95AA900BE1F8C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
-
-/* Begin XCLocalSwiftPackageReference section */
-		4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/AutocompleteCore;
-		};
-		4B5450012FC9600000000020 /* XCLocalSwiftPackageReference "Packages/MacContextCapture" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/MacContextCapture;
-		};
-		4B5450012FC9600000000021 /* XCLocalSwiftPackageReference "Packages/Prompting" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/Prompting;
-		};
-		4B5450012FC9600000000022 /* XCLocalSwiftPackageReference "Packages/ModelRuntime" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/ModelRuntime;
-		};
-		4B5450012FC9600000000023 /* XCLocalSwiftPackageReference "Packages/TokenProfiles" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/TokenProfiles;
-		};
-		4B5450012FC9600000000024 /* XCLocalSwiftPackageReference "Packages/ConstrainedGeneration" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/ConstrainedGeneration;
-		};
-		4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/CompletionUI;
-		};
-		4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/TextInsertion;
-		};
-		4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/AppCompatibility;
-		};
-/* End XCLocalSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		4B5450012FC9600000000011 /* AutocompleteCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */;
-			productName = AutocompleteCore;
-		};
-		4B5450012FC9600000000012 /* MacContextCapture */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000020 /* XCLocalSwiftPackageReference "Packages/MacContextCapture" */;
-			productName = MacContextCapture;
-		};
-		4B5450012FC9600000000013 /* Prompting */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000021 /* XCLocalSwiftPackageReference "Packages/Prompting" */;
-			productName = Prompting;
-		};
-		4B5450012FC9600000000014 /* ModelRuntime */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000022 /* XCLocalSwiftPackageReference "Packages/ModelRuntime" */;
-			productName = ModelRuntime;
-		};
-		4B5450012FC9600000000015 /* TokenProfiles */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000023 /* XCLocalSwiftPackageReference "Packages/TokenProfiles" */;
-			productName = TokenProfiles;
-		};
-		4B5450012FC9600000000016 /* ConstrainedGeneration */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000024 /* XCLocalSwiftPackageReference "Packages/ConstrainedGeneration" */;
-			productName = ConstrainedGeneration;
-		};
-		4B5450012FC9600000000017 /* CompletionUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */;
-			productName = CompletionUI;
-		};
-		4B5450012FC9600000000018 /* TextInsertion */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */;
-			productName = TextInsertion;
-		};
-		4B5450012FC9600000000019 /* AppCompatibility */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */;
-			productName = AppCompatibility;
-		};
-/* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
 		20DD9A6F2FC95AA900BE1F8C /* Debug */ = {
@@ -576,6 +489,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -610,6 +524,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -743,6 +658,93 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AutocompleteCore;
+		};
+		4B5450012FC9600000000020 /* XCLocalSwiftPackageReference "Packages/MacContextCapture" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/MacContextCapture;
+		};
+		4B5450012FC9600000000021 /* XCLocalSwiftPackageReference "Packages/Prompting" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/Prompting;
+		};
+		4B5450012FC9600000000022 /* XCLocalSwiftPackageReference "Packages/ModelRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ModelRuntime;
+		};
+		4B5450012FC9600000000023 /* XCLocalSwiftPackageReference "Packages/TokenProfiles" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TokenProfiles;
+		};
+		4B5450012FC9600000000024 /* XCLocalSwiftPackageReference "Packages/ConstrainedGeneration" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ConstrainedGeneration;
+		};
+		4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CompletionUI;
+		};
+		4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/TextInsertion;
+		};
+		4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/AppCompatibility;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4B5450012FC9600000000011 /* AutocompleteCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */;
+			productName = AutocompleteCore;
+		};
+		4B5450012FC9600000000012 /* MacContextCapture */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000020 /* XCLocalSwiftPackageReference "Packages/MacContextCapture" */;
+			productName = MacContextCapture;
+		};
+		4B5450012FC9600000000013 /* Prompting */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000021 /* XCLocalSwiftPackageReference "Packages/Prompting" */;
+			productName = Prompting;
+		};
+		4B5450012FC9600000000014 /* ModelRuntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000022 /* XCLocalSwiftPackageReference "Packages/ModelRuntime" */;
+			productName = ModelRuntime;
+		};
+		4B5450012FC9600000000015 /* TokenProfiles */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000023 /* XCLocalSwiftPackageReference "Packages/TokenProfiles" */;
+			productName = TokenProfiles;
+		};
+		4B5450012FC9600000000016 /* ConstrainedGeneration */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000024 /* XCLocalSwiftPackageReference "Packages/ConstrainedGeneration" */;
+			productName = ConstrainedGeneration;
+		};
+		4B5450012FC9600000000017 /* CompletionUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */;
+			productName = CompletionUI;
+		};
+		4B5450012FC9600000000018 /* TextInsertion */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */;
+			productName = TextInsertion;
+		};
+		4B5450012FC9600000000019 /* AppCompatibility */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */;
+			productName = AppCompatibility;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 20DD9A462FC95AA900BE1F8C /* Project object */;
 }

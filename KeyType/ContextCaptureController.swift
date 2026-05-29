@@ -18,6 +18,7 @@ import os
 @MainActor
 @Observable
 final class ContextCaptureController {
+    
     private let tracker: AccessibilityContextTracker
     private let overlay: CaretDebugOverlayWindow
     private let log = Logger(subsystem: "com.pattonium.KeyType", category: "context-capture")
@@ -121,4 +122,5 @@ final class ContextCaptureController {
     private static func truncate(_ s: String, to max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max)) + "…"
     }
+    
 }
