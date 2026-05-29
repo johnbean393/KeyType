@@ -5,28 +5,29 @@
 //  Created by John Bean on 5/29/26.
 //
 
+import AppKit
 import SwiftUI
-import SwiftData
 
 @main
 struct KeyTypeApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra {
+            MenuBarView()
+                .environment(appDelegate.permissions)
+                .environment(appDelegate.contextCapture)
+        } label: {
+            Image(systemName: "text.cursor")
         }
-        .modelContainer(sharedModelContainer)
+        .menuBarExtraStyle(.menu)
+
+        Window("KeyType", id: AppDelegate.onboardingWindowID) {
+            OnboardingView()
+                .environment(appDelegate.permissions)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+        .commandsRemoved()
     }
 }

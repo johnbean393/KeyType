@@ -18,9 +18,12 @@
 		4B5450012FC9600000000009 /* AppCompatibility in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000019 /* AppCompatibility */; };
 		4B5450012FC960000000000A /* KeyTypeModuleGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */; };
 		20DD9A7F2FC95AB900BE1F8C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */; };
-		20DD9A802FC95AB900BE1F8C /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A7B2FC95AB900BE1F8C /* ContentView.swift */; };
-		20DD9A812FC95AB900BE1F8C /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A7C2FC95AB900BE1F8C /* Item.swift */; };
 		20DD9A822FC95AB900BE1F8C /* KeyTypeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A7D2FC95AB900BE1F8C /* KeyTypeApp.swift */; };
+		4B5450012FC9600000000030 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000031 /* AppDelegate.swift */; };
+		4B5450012FC9600000000032 /* PermissionsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000033 /* PermissionsManager.swift */; };
+		4B5450012FC9600000000034 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000035 /* OnboardingView.swift */; };
+		4B5450012FC9600000000036 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000037 /* MenuBarView.swift */; };
+		4B5450012FC9600000000038 /* ContextCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000039 /* ContextCaptureController.swift */; };
 		20DD9A852FC95ABB00BE1F8C /* KeyTypeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A832FC95ABB00BE1F8C /* KeyTypeTests.swift */; };
 		20DD9A892FC95ABD00BE1F8C /* KeyTypeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A862FC95ABD00BE1F8C /* KeyTypeUITests.swift */; };
 		20DD9A8A2FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DD9A872FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift */; };
@@ -49,9 +52,12 @@
 		20DD9A672FC95AA900BE1F8C /* KeyTypeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeyTypeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeModuleGraph.swift; sourceTree = "<group>"; };
 		20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		20DD9A7B2FC95AB900BE1F8C /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		20DD9A7C2FC95AB900BE1F8C /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
 		20DD9A7D2FC95AB900BE1F8C /* KeyTypeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeApp.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000031 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000033 /* PermissionsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionsManager.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000035 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000037 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000039 /* ContextCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCaptureController.swift; sourceTree = "<group>"; };
 		20DD9A832FC95ABB00BE1F8C /* KeyTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeTests.swift; sourceTree = "<group>"; };
 		20DD9A862FC95ABD00BE1F8C /* KeyTypeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeUITests.swift; sourceTree = "<group>"; };
 		20DD9A872FC95ABD00BE1F8C /* KeyTypeUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyTypeUITestsLaunchTests.swift; sourceTree = "<group>"; };
@@ -114,9 +120,12 @@
 		20DD9A7E2FC95AB900BE1F8C /* KeyType */ = {
 			isa = PBXGroup;
 			children = (
-				20DD9A7B2FC95AB900BE1F8C /* ContentView.swift */,
-				20DD9A7C2FC95AB900BE1F8C /* Item.swift */,
 				20DD9A7D2FC95AB900BE1F8C /* KeyTypeApp.swift */,
+				4B5450012FC9600000000031 /* AppDelegate.swift */,
+				4B5450012FC9600000000037 /* MenuBarView.swift */,
+				4B5450012FC9600000000035 /* OnboardingView.swift */,
+				4B5450012FC9600000000033 /* PermissionsManager.swift */,
+				4B5450012FC9600000000039 /* ContextCaptureController.swift */,
 				4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */,
 				20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */,
 			);
@@ -296,8 +305,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				20DD9A802FC95AB900BE1F8C /* ContentView.swift in Sources */,
-				20DD9A812FC95AB900BE1F8C /* Item.swift in Sources */,
+				4B5450012FC9600000000030 /* AppDelegate.swift in Sources */,
+				4B5450012FC9600000000036 /* MenuBarView.swift in Sources */,
+				4B5450012FC9600000000034 /* OnboardingView.swift in Sources */,
+				4B5450012FC9600000000032 /* PermissionsManager.swift in Sources */,
+				4B5450012FC9600000000038 /* ContextCaptureController.swift in Sources */,
 				4B5450012FC960000000000A /* KeyTypeModuleGraph.swift in Sources */,
 				20DD9A822FC95AB900BE1F8C /* KeyTypeApp.swift in Sources */,
 			);
@@ -552,12 +564,13 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -585,12 +598,13 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
