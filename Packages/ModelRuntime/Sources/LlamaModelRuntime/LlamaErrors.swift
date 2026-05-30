@@ -12,6 +12,7 @@ public enum LlamaRuntimeError: Error, CustomStringConvertible, Equatable {
     case decodeFailed(Int32)
     case promptTooLong(promptTokens: Int, contextLength: Int)
     case logitsUnavailable
+    case sequenceStateSnapshotFailed
 
     public var description: String {
         switch self {
@@ -37,6 +38,8 @@ public enum LlamaRuntimeError: Error, CustomStringConvertible, Equatable {
             return "Prompt of \(p) tokens exceeds context length \(c)"
         case .logitsUnavailable:
             return "llama_get_logits_ith returned NULL"
+        case .sequenceStateSnapshotFailed:
+            return "llama_state_seq_get_data/set_data returned 0 (sequence state copy failed)"
         }
     }
 }

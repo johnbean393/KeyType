@@ -62,4 +62,31 @@ final class StubModelRuntimeTests: XCTestCase {
         let unknown = try await runtime.logitsForNextToken()
         XCTAssertEqual(unknown, [])
     }
+
+    /// The default `anchoredLogits` extension (used by every stub runtime) must be exactly
+    /// `prepare(anchor + suffix)` + `logitsForNextToken()` — that's what keeps the deterministic
+    /// engine/FIM tests behaving identically after the engine switched to the anchored API.
+    func testAnchoredLogitsDefaultEqualsPreparePlusLogits() async throws {
+        let anchor: [TokenID] = [10, 11]
+        let rootLogits = [TokenLogit(tokenID: 65, logit: 1.0)]
+        let childLogits = [TokenLogit(tokenID: 66, logit: 2.0)]
+        let runtime = TreeScriptedModelRuntime(logitsByPath: [
+            anchor: rootLogits,
+            anchor + [65]: childLogits
+        ])
+
+        // Empty suffix == logits right after the anchor.
+        let viaAnchoredRoot = try await runtime.anchoredLogits(anchor: anchor, suffix: [])
+        try await runtime.prepare(promptTokens: anchor)
+        let viaPrepareRoot = try await runtime.logitsForNextToken()
+        XCTAssertEqual(viaAnchoredRoot, viaPrepareRoot)
+        XCTAssertEqual(viaAnchoredRoot, rootLogits)
+
+        // Non-empty suffix == logits after anchor + suffix.
+        let viaAnchoredChild = try await runtime.anchoredLogits(anchor: anchor, suffix: [65])
+        try await runtime.prepare(promptTokens: anchor + [65])
+        let viaPrepareChild = try await runtime.logitsForNextToken()
+        XCTAssertEqual(viaAnchoredChild, viaPrepareChild)
+        XCTAssertEqual(viaAnchoredChild, childLogits)
+    }
 }

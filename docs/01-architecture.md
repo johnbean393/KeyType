@@ -77,10 +77,13 @@ real tokenizer-backed counter (via `ModelRuntime`) and personalization wiring.
 ### `ModelRuntime` — local LLM 🟡
 Defines `LocalModelRuntime`, `ModelTokenizing`, `ModelMetadata`, `TokenLogit`. Only a
 `StubModelRuntime` + `UTF8FallbackTokenizer` exist today. Target: wrap **llama.cpp** to load a
-GGUF, tokenize/detokenize, decode batches, read next-token logits, expose EOS/EOT, and support
-**KV-cache sequence ops** (`llama_memory_seq_cp/keep/rm`, `clear`) for prefix reuse across
-keystrokes (research §8). Keep the `LocalModelRuntime` protocol stable so the stub stays usable
-for tests.
+GGUF, tokenize/detokenize, decode batches, read next-token logits, and expose EOS/EOT. `prepare`
+reuses the KV cache only on a **pure append** (clear + full re-decode otherwise — partial `seq_rm`
+rollback is unsafe on this model's hybrid recurrent memory). Branch scoring uses
+`anchoredLogits(anchor:suffix:)`, which decodes the anchor once and reuses it via `llama_state_seq`
+snapshot/restore (cross-sequence `llama_memory_seq_cp` **aborts** on the hybrid recurrent memory, so
+it is not used; see ADR-018). Keep the `LocalModelRuntime` protocol stable so the stub stays usable
+for tests (the `anchoredLogits` default extension keeps stubs unchanged).
 
 ### `ConstrainedGeneration` — the decoding loop ✅(multi-branch)
 `ConstrainedGenerationEngine: CompletionGenerating` performs real constrained decoding (M5,
@@ -95,15 +98,16 @@ EOS/EOT, `.stopAndSuppress`, sentence-end (`.stopAndDisplay`, disambiguated agai
 instant the user's current word *closes* into a misspelling (via the injected `WordRecognizing` /
 `NSSpellChecker`), inside the beam so the correctly-spelled branch isn't pruned and its
 continuation is the one that survives — conservative enough to avoid false positives
-(closed-word-only, lowercase letters-only, prose mode, context-term exempt; ADR-015). It drives the linear `LocalModelRuntime`
-protocol by re-`prepare`-ing `basePrompt + branchTokens` and honours cooperative `Task`
-cancellation so a newer keystroke aborts in-flight work. `TokenSampler` pre-selects the top
-candidates by raw logit before ranking so per-step work is bounded instead of vocabulary-wide,
-and the per-completion cost scales with the number of branch expansions (each ~one
-`llama_decode`), so `branchWidth` defaults to 4 (ADR-012). **Measure in a release build**:
-debug inflates per-token Swift work by 1–2 orders of magnitude. In release the reference model
-runs ~213 tok/s and a 4-token completion is **~162 ms warm**. The multi-sequence KV-fork was
-investigated and rejected (already fast enough in release; see ADR-012).
+(closed-word-only, lowercase letters-only, prose mode, context-term exempt; ADR-015). It scores
+each branch via `LocalModelRuntime.anchoredLogits(anchor: basePrompt, suffix: branchTokens)` and
+honours cooperative `Task` cancellation so a newer keystroke aborts in-flight work. `TokenSampler`
+pre-selects the top candidates by raw logit before ranking so per-step work is bounded instead of
+vocabulary-wide, and the per-completion cost scales with the number of branch expansions, so
+`branchWidth` defaults to 4 (ADR-012). **Measure in a release build**: debug inflates per-token
+Swift work by 1–2 orders of magnitude. **KV branch reuse (ADR-018)** decodes the base prompt once
+per completion and snapshot/restores it per branch (and appends only the typed delta across
+keystrokes), cutting the medium-append case from ~1140 decoded tokens / ~246 ms to ~115 tokens /
+~87 ms (full prefills 12 → 1).
 
 ### `TokenProfiles` — vocabulary intelligence ✅(in-memory) / 🟡(on-disk)
 `AutocompleteProfile` protocol + `InMemoryAutocompleteProfile` + `TokenProfileFlags` +

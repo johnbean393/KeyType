@@ -22,8 +22,10 @@ public enum CaretBoundary {
         }
 
         // If the caret already sits after whitespace, the model's separator space would double it.
+        // Strip every kind of leading whitespace (regular space, tab, non-breaking space, …) so an
+        // unusual separator can't slip through and double up.
         if let last = beforeCursor.last, last.isWhitespace {
-            while let first = result.first, first == " " || first == "\t" {
+            while let first = result.first, first.isWhitespace {
                 result = result.dropFirst()
             }
         }

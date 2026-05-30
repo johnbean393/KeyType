@@ -58,6 +58,12 @@ final class CompletionController {
     /// acceptance controller). Nil when nothing is displayed.
     private(set) var visibleCandidate: CompletionCandidate?
     private var visibleContext: TextFieldContext?
+    /// The *raw* model completion (before caret-boundary reconciliation), kept so insertion can
+    /// re-reconcile against the live prefix — the leading separator decision must be made against
+    /// the text as it is when the user accepts, not as it was when the suggestion was generated.
+    private var visibleRawText: String?
+    /// The most recent focused-field context seen, used as the live prefix at acceptance time.
+    private var latestContext: TextFieldContext?
 
     var completionsEnabled = true {
         didSet {
@@ -127,6 +133,7 @@ final class CompletionController {
         guard let snapshot, let caretRect = snapshot.caretRect, !caretRect.isEmpty else { reset(); return }
 
         let context = snapshot.context
+        latestContext = context
         let policy = compatibilityStore.policy(for: context.target)
         guard policy.isCompletionEnabled,
               policy.allowsMidLineCompletion || context.afterCursor.isEmpty
@@ -145,8 +152,16 @@ final class CompletionController {
 
         guard let placement = placementResolver.placement(for: context) else { reset(); return }
 
-        // Resolve the field font now, on the main actor, before suspending into generation.
-        let font = FieldFontResolver.currentFont()
+        // Resolve the field font and foreground color now, on the main actor, before suspending
+        // into generation, so the ghost text matches the field's typeface and color.
+        let style = FieldFontResolver.currentStyle()
+        predictionLog.append(String(
+            format: "STYLE font=%@ size=%.1f color=%@ caretH=%.1f",
+            style.font?.fontName ?? "nil",
+            style.font?.pointSize ?? -1,
+            style.color.flatMap { $0.usingColorSpace(.sRGB) }.map { String(format: "%.2f,%.2f,%.2f", $0.redComponent, $0.greenComponent, $0.blueComponent) } ?? "nil",
+            placement.cursorRect.height
+        ))
         let promptResult = KeyTypeModuleGraph.makePrompt(for: context, compatibilityStore: compatibilityStore)
         let request = CompletionRequest(
             context: context,
@@ -169,7 +184,7 @@ final class CompletionController {
                 do {
                     let candidates = try await engine.completions(for: request)
                     try Task.checkCancellation()
-                    self.present(candidates, request: request, placement: placement, font: font)
+                    self.present(candidates, request: request, placement: placement, style: style)
                 } catch is CancellationError {
                     // Superseded by a newer keystroke — leave the current ghost as-is.
                 } catch {
@@ -183,7 +198,7 @@ final class CompletionController {
         _ candidates: [CompletionCandidate],
         request: CompletionRequest,
         placement: OverlayPlacement,
-        font: NSFont?
+        style: ResolvedFieldStyle
     ) {
         let ctx = PredictionLog.contextTail(request.context.beforeCursor)
         let ranked = candidates.prefix(5)
@@ -221,13 +236,15 @@ final class CompletionController {
 
         predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SHOWN \"\(PredictionLog.escape(candidate.text))\"")
         visibleCandidate = candidate
+        visibleRawText = best.text
         visibleContext = request.context
-        presenter.show(candidate: candidate, placement: placement, font: font)
+        presenter.show(candidate: candidate, placement: placement, font: style.font, textColor: style.color)
     }
 
     private func clearCompletion() {
         presenter.hide()
         visibleCandidate = nil
+        visibleRawText = nil
         visibleContext = nil
     }
 
@@ -250,19 +267,32 @@ final class CompletionController {
     /// Tab: insert the next word of the suggestion. The induced text change regenerates a fresh
     /// completion from the new cursor position.
     func acceptNextWord() {
-        guard canAcceptCompletion, let candidate = visibleCandidate, let context = visibleContext else { return }
-        let (head, _) = NextWordSplitter.split(candidate.text)
+        guard canAcceptCompletion, let (text, context) = insertionText() else { return }
+        let (head, _) = NextWordSplitter.split(text)
         predictionLog.append(
-            "ACCEPT(word) \"\(PredictionLog.escape(head))\" of \"\(PredictionLog.escape(candidate.text))\""
+            "ACCEPT(word) \"\(PredictionLog.escape(head))\" of \"\(PredictionLog.escape(text))\""
         )
         insert(text: head, context: context)
     }
 
     /// Shift+Tab: insert the whole suggestion.
     func acceptFullCompletion() {
-        guard canAcceptCompletion, let candidate = visibleCandidate, let context = visibleContext else { return }
-        predictionLog.append("ACCEPT(full) \"\(PredictionLog.escape(candidate.text))\"")
-        insert(text: candidate.text, context: context)
+        guard canAcceptCompletion, let (text, context) = insertionText() else { return }
+        predictionLog.append("ACCEPT(full) \"\(PredictionLog.escape(text))\"")
+        insert(text: text, context: context)
+    }
+
+    /// Reconciles the raw model completion against the **live** prefix (the most recent context, not
+    /// the one the suggestion was generated from) so the leading separator is correct for the field
+    /// as it is at the moment of acceptance — fixing doubled and missing spaces when the trailing
+    /// whitespace changed during the generation/debounce window. Returns the text to insert and the
+    /// context to insert it into, or nil if nothing remains after reconciliation.
+    private func insertionText() -> (text: String, context: TextFieldContext)? {
+        guard let raw = visibleRawText, let shown = visibleContext else { return nil }
+        let live = latestContext ?? shown
+        let reconciled = CaretBoundary.reconcile(raw, beforeCursor: live.beforeCursor)
+        guard !reconciled.isEmpty else { return nil }
+        return (reconciled, live)
     }
 
     private func insert(text: String, context: TextFieldContext) {

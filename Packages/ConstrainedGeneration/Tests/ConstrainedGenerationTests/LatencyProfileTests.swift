@@ -42,14 +42,32 @@ final class LatencyProfileTests: XCTestCase {
             prepareCalls += 1
             let decoded = await wrapped.lastPrepareDecodedCount
             tokensDecoded += decoded
+            classifyAnchorDecode(decoded, anchorCount: promptTokens.count)
+            lastPromptCount = promptTokens.count
+        }
+
+        /// The engine drives this (ADR-018). `lastPrepareDecodedCount` reflects only the *anchor*
+        /// component (0 when reused), so the branch's own suffix decode is added on top.
+        func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit] {
+            let start = DispatchTime.now()
+            let result = try await wrapped.anchoredLogits(anchor: anchor, suffix: suffix)
+            prepareSeconds += seconds(since: start)
+            prepareCalls += 1
+            let anchorDecoded = await wrapped.lastPrepareDecodedCount
+            tokensDecoded += anchorDecoded + suffix.count
+            classifyAnchorDecode(anchorDecoded, anchorCount: anchor.count)
+            lastPromptCount = anchor.count
+            return result
+        }
+
+        private func classifyAnchorDecode(_ decoded: Int, anchorCount: Int) {
             if decoded == 0 {
                 reuseHits += 1
-            } else if decoded >= max(1, promptTokens.count - 1) {
+            } else if decoded >= max(1, anchorCount - 1) {
                 fullPrefillCalls += 1
             } else {
                 appendCalls += 1
             }
-            lastPromptCount = promptTokens.count
         }
 
         func logitsForNextToken() async throws -> [TokenLogit] {
@@ -68,11 +86,11 @@ final class LatencyProfileTests: XCTestCase {
         }
     }
 
-    private func load() throws -> (LlamaModelRuntime, MmapAutocompleteProfile) {
+    private func load(enableKVFork: Bool = true) throws -> (LlamaModelRuntime, MmapAutocompleteProfile) {
         try XCTSkipUnless(ModelContainer.defaultModelExists(), "GGUF missing; skipping profile")
         let profileURL = try ModelContainer.profileURL(family: Self.family)
         try XCTSkipUnless(FileManager.default.fileExists(atPath: profileURL.path), "profile missing")
-        let runtime = try LlamaModelRuntime(modelURL: try ModelContainer.modelURL(), contextLength: 2048)
+        let runtime = try LlamaModelRuntime(modelURL: try ModelContainer.modelURL(), contextLength: 2048, enableKVFork: enableKVFork)
         let profile = try MmapAutocompleteProfile.open(
             at: profileURL,
             tokenizerVocabSize: runtime.metadata.vocabularySize,
@@ -160,10 +178,56 @@ final class LatencyProfileTests: XCTestCase {
         print("====================================================================\n")
     }
 
-    /// Confirms the dominant lever: full prefills (and thus latency) scale with branch width, since
-    /// every divergent branch forces a KV clear + full re-decode.
+    /// Asserts the ADR-018 win: with KV fork on, the base prompt is prefilled exactly **once** per
+    /// completion (the rest of the branches reuse the resident anchor), collapsing total decoded
+    /// tokens and wall-clock latency versus the legacy decode-the-whole-prompt-per-branch path.
+    func testAnchoredReuseReducesPrefillsAndLatency() async throws {
+        let target = AppTarget(bundleIdentifier: "com.apple.TextEdit", appName: "TextEdit", windowTitle: "Untitled")
+        let before = "I am writing to let you know that the meeting scheduled for tomorrow "
+        let context = TextFieldContext(beforeCursor: before, afterCursor: "", target: target, detectedLanguage: "en")
+        let promptText = PromptBuilder().buildPrompt(context: context).prompt
+        let request = CompletionRequest(
+            context: context, prompt: promptText, mode: .prose, maxCompletionTokens: 4, maxDisplayWidth: 60
+        )
+        let config = DecodingConfiguration(maxCandidates: 5, enableFillInMiddle: true)
+
+        func measure(enableKVFork: Bool) async throws -> (prefills: Int, tokens: Int, seconds: Double) {
+            let (raw, profile) = try load(enableKVFork: enableKVFork)
+            // Warm (hot kernels), then time on a fresh profiling wrapper.
+            let warm = ProfilingRuntime(raw); await warm.resetKVCache()
+            _ = try await ConstrainedGenerationEngine(runtime: warm, profile: profile, configuration: config).completions(for: request)
+
+            let timed = ProfilingRuntime(raw); await timed.resetKVCache()
+            let engine = ConstrainedGenerationEngine(runtime: timed, profile: profile, configuration: config)
+            let start = DispatchTime.now()
+            _ = try await engine.completions(for: request)
+            let secs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000_000
+            return (timed.fullPrefillCalls, timed.tokensDecoded, secs)
+        }
+
+        let off = try await measure(enableKVFork: false)
+        let on = try await measure(enableKVFork: true)
+
+        print("\n================ ADR-018 reuse vs baseline ================")
+        print(String(format: "  baseline (fork off): fullPrefills=%2d  tokensDecoded=%4d  %6.1f ms", off.prefills, off.tokens, off.seconds * 1000))
+        print(String(format: "  anchored (fork on) : fullPrefills=%2d  tokensDecoded=%4d  %6.1f ms", on.prefills, on.tokens, on.seconds * 1000))
+        print(String(format: "  tokensDecoded reduction: %.1fx   latency reduction: %.1fx", Double(off.tokens) / Double(max(1, on.tokens)), off.seconds / max(0.0001, on.seconds)))
+        print("===========================================================\n")
+
+        // The anchor is decoded exactly once; every other branch reuses it.
+        XCTAssertEqual(on.prefills, 1, "fork should prefill the base prompt exactly once per completion")
+        XCTAssertGreaterThan(off.prefills, 1, "baseline should re-prefill per divergent branch")
+        // Deterministic work proxy: decoded tokens collapse well past 2x.
+        XCTAssertGreaterThan(Double(off.tokens) / Double(max(1, on.tokens)), 2.0, "decoded tokens should drop >2x")
+        // Wall-clock: expected ~6-10x; assert a guarded >1.5x to tolerate timing noise.
+        XCTAssertGreaterThan(off.seconds / max(0.0001, on.seconds), 1.5, "anchored latency should be well under baseline")
+    }
+
+    /// Confirms the dominant lever on the *baseline* path: full prefills (and thus latency) scale
+    /// with branch width, since every divergent branch forces a KV clear + full re-decode. Run with
+    /// fork off so the legacy scaling is visible (with fork on, prefills stay at 1 regardless).
     func testBranchWidthSweep() async throws {
-        let (raw, profile) = try load()
+        let (raw, profile) = try load(enableKVFork: false)
         let target = AppTarget(bundleIdentifier: "com.apple.TextEdit", appName: "TextEdit", windowTitle: "Untitled")
         let before = "I am writing to let you know that the meeting scheduled for tomorrow "
         let promptText = PromptBuilder().buildPrompt(

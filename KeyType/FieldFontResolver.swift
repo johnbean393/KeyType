@@ -10,6 +10,13 @@
 import AppKit
 import ApplicationServices
 
+/// The font and foreground color read from the focused field, so the ghost-text overlay can match
+/// it. Either value may be `nil` when the app doesn't surface it through AX.
+struct ResolvedFieldStyle {
+    var font: NSFont?
+    var color: NSColor?
+}
+
 @MainActor
 enum FieldFontResolver {
     // AX attributed strings describe their font with these keys (HIServices `AXConstants`), not the
@@ -17,10 +24,24 @@ enum FieldFontResolver {
     private static let axFontAttribute = NSAttributedString.Key("AXFont")
     private static let axFontNameKey = "AXFontName" // PostScript name, usable by NSFont(name:size:)
     private static let axFontSizeKey = "AXFontSize"
+    // AX foreground color: the attribute value is a `CGColor` (CFType), not an `NSColor`.
+    private static let axForegroundColorAttribute = NSAttributedString.Key("AXForegroundColor")
 
-    /// The font around the insertion point of the system-wide focused element, or nil if it can't
-    /// be determined. Reads `AXAttributedStringForRange` over a 1-character probe at the caret.
+    /// The font and foreground color around the insertion point of the system-wide focused element.
+    /// Reads `AXAttributedStringForRange` over a 1-character probe at the caret once, then extracts
+    /// both attributes. Missing attributes come back `nil`.
+    static func currentStyle() -> ResolvedFieldStyle {
+        guard let string = attributedProbe() else { return ResolvedFieldStyle() }
+        return ResolvedFieldStyle(font: font(from: string), color: color(from: string))
+    }
+
+    /// Back-compat convenience for callers that only need the font.
     static func currentFont() -> NSFont? {
+        currentStyle().font
+    }
+
+    /// The attributed string for a 1-character range at the caret of the focused element, or nil.
+    private static func attributedProbe() -> NSAttributedString? {
         let systemWide = AXUIElementCreateSystemWide()
 
         var focused: AnyObject?
@@ -42,13 +63,32 @@ enum FieldFontResolver {
             let string = attributed as? NSAttributedString,
             string.length > 0
         else { return nil }
+        return string
+    }
 
-        // Some apps expose a real NSFont; most expose the AX font dictionary.
+    /// Font from a probed AX attributed string. Some apps expose a real `NSFont`; most expose the AX
+    /// font dictionary.
+    private static func font(from string: NSAttributedString) -> NSFont? {
         if let nsFont = string.attribute(.font, at: 0, effectiveRange: nil) as? NSFont {
             return nsFont
         }
         if let info = string.attribute(axFontAttribute, at: 0, effectiveRange: nil) as? [String: Any] {
             return font(fromAXFontInfo: info)
+        }
+        return nil
+    }
+
+    /// Foreground color from a probed AX attributed string. AX provides a `CGColor`; AppKit-backed
+    /// strings may provide an `NSColor`.
+    private static func color(from string: NSAttributedString) -> NSColor? {
+        if let nsColor = string.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor {
+            return nsColor
+        }
+        if let raw = string.attribute(axForegroundColorAttribute, at: 0, effectiveRange: nil) {
+            let cf = raw as CFTypeRef
+            if CFGetTypeID(cf) == CGColor.typeID {
+                return NSColor(cgColor: cf as! CGColor)
+            }
         }
         return nil
     }

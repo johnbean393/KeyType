@@ -873,3 +873,43 @@ text. Both are now closed:
     the trailing-whitespace trim is intentionally aggressive (drops trailing newlines too) — revisit
     if a target needs newline-preserving continuations.
 
+## ADR-018: KV branch reuse — prefill once, snapshot/restore per branch + across keystrokes
+
+- Status: accepted
+- Context: Profiling (`LatencyProfileTests`) showed ~95% of completion latency is model forward
+  passes, and **12 of 13 passes per completion re-decoded the entire prompt**: the multi-branch
+  decoder (ADR-010) scores each beam branch by `prepare(basePrompt + branchTokens)`, and
+  `LlamaModelRuntime.prepare` only reuses the KV cache on a *pure append* (any divergent branch did
+  `llama_memory_clear` + full re-decode, because partial rollback via `seq_rm` is unsafe on this
+  model's hybrid memory). For a medium prompt that was ~1140 decoded tokens and ~246 ms per
+  completion; latency scaled linearly with branch width.
+- Decision: decode the base prompt **once** per completion, then cheaply derive each branch from it.
+  - New stateless API on `LocalModelRuntime`: `anchoredLogits(anchor:suffix:)` returns the
+    next-token logits for `anchor + suffix`. A default protocol extension implements it as
+    `prepare(anchor + suffix) + logitsForNextToken()`, so every stub runtime — and thus all
+    deterministic engine/FIM tests — is byte-for-byte unchanged. The engine passes the base prompt
+    as `anchor` and `branch.tokenIDs` as `suffix`.
+  - `LlamaModelRuntime` keeps the `anchor` resident in seq 0, captures its post-decode sequence
+    state once (`llama_state_seq_get_data`) plus the anchor-end logits, then for each branch
+    **restores** that snapshot (`llama_state_seq_set_data`) and decodes only the branch's suffix.
+    The empty-suffix root returns the cached anchor-end logits (no decode). Across keystrokes the
+    next base prompt is the prior anchor plus the typed tokens — a pure append — so `ensureAnchor`
+    restores the prior snapshot and decodes only the typed delta (the cross-keystroke win).
+  - **Mechanism chosen by an on-device gate, not assumption.** The plan's first choice was a
+    near-free metadata fork (`llama_memory_seq_cp` into a scratch sequence). The gating probe
+    (`AnchoredLogitsCorrectnessTests`) found that `seq_cp` **aborts** on Qwen3.5's hybrid recurrent
+    memory (`llama_memory_recurrent`), so the mechanism was switched to `state_seq` snapshot/restore
+    within a single sequence, which the same probe validates produces logits **identical** (top-5)
+    to a from-scratch `anchor + suffix` decode. An `enableKVFork` init flag (default on) falls back
+    to the full-decode path if ever needed.
+- Consequences:
+  - Measured on the medium-append case: full prefills **12 → 1**, decoded tokens **1140 → 115
+    (9.9×)**, latency **246 ms → 87 ms (2.8×)** — past the halving goal. `branchWidth` remains an
+    independent lever (the sweep test now pins fork off to show the legacy scaling).
+  - Snapshot/restore copies the per-sequence state (attention KV up to the anchor + recurrent
+    state) once per anchor and restores it per branch; this memcpy is far cheaper than the forward
+    passes it replaces, but grows with anchor length — the context-length guard still applies.
+  - The runtime now has two reuse paths: `prepare` (pure-append-or-clear, used by greedy/profiling
+    callers) and `anchoredLogits` (snapshot/restore, used by the beam). They share seq 0 but
+    `anchoredLogits` always restores from its own snapshot, so interleaving is self-correcting.
+

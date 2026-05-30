@@ -61,6 +61,21 @@ public protocol LocalModelRuntime {
     func logitsForNextToken() async throws -> [TokenLogit]
     func decodeNext(tokenID: TokenID) async throws
     func resetKVCache() async
+
+    /// Next-token logits for `anchor + suffix`, where `anchor` is a prefix shared across many calls
+    /// (the base prompt the multi-branch decoder forks from). Implementations may keep `anchor`
+    /// resident and decode only `suffix` (cheap KV fork). Semantically identical to
+    /// `prepare(anchor + suffix)` followed by `logitsForNextToken()`.
+    func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit]
+}
+
+public extension LocalModelRuntime {
+    /// Default: no reuse — decode the full `anchor + suffix` every call. Concrete runtimes backed by
+    /// a real KV cache override this to fork from a resident `anchor`.
+    func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit] {
+        try await prepare(promptTokens: anchor + suffix)
+        return try await logitsForNextToken()
+    }
 }
 
 public struct UTF8FallbackTokenizer: ModelTokenizing {

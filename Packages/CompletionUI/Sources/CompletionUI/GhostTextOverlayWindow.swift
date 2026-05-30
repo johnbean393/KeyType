@@ -26,10 +26,10 @@ public final class GhostTextOverlayWindow {
     /// right edge and extends rightward; RTL text ends at the caret's left edge and extends
     /// leftward. The vertical extent matches the caret rect (so the text sits on the same line),
     /// shifted by `placement.verticalOffset`.
-    public func show(text: String, font: NSFont, placement: OverlayPlacement) {
+    public func show(text: String, font: NSFont, placement: OverlayPlacement, textColor: NSColor? = nil) {
         guard !text.isEmpty else { hide(); return }
 
-        hosting.rootView = GhostTextView(text: text, font: font, isRightToLeft: placement.isRightToLeft)
+        hosting.rootView = GhostTextView(text: text, font: font, isRightToLeft: placement.isRightToLeft, textColor: textColor)
 
         let caret = placement.cursorRect
         let measuredWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 2
@@ -91,9 +91,9 @@ public final class InlineGhostTextPresenter: CompletionOverlayPresenting {
         self.window = window
     }
 
-    public func show(candidate: CompletionCandidate, placement: OverlayPlacement, font: NSFont?) {
+    public func show(candidate: CompletionCandidate, placement: OverlayPlacement, font: NSFont?, textColor: NSColor?) {
         let resolved = Self.resolveFont(font, placement: placement)
-        window.show(text: candidate.text, font: resolved, placement: placement)
+        window.show(text: candidate.text, font: resolved, placement: placement, textColor: textColor)
         visibleCandidate = candidate
     }
 
@@ -104,17 +104,28 @@ public final class InlineGhostTextPresenter: CompletionOverlayPresenting {
 
     public var isVisible: Bool { window.isVisible }
 
-    /// Use the field's font when known (scaled by the per-app adjustment factor); otherwise fall
-    /// back to a system font sized from the caret height — a decent proxy for the line's font size.
+    /// Resolve the ghost-text font. We keep the field's **typeface** (family) from AX, but size it
+    /// from the **caret height** rather than AX's reported point size: several apps report the
+    /// correct family but a default/stale size, which made the ghost text too small. The caret rect
+    /// height ≈ the glyph box (ascent+descent) at the rendered size, so we scale the typeface by the
+    /// font's own metric ratio — when AX's size is already correct this reproduces it, and when it's
+    /// wrong the caret height corrects it. Falls back to a system font when no field font is known.
     static func resolveFont(_ font: NSFont?, placement: OverlayPlacement) -> NSFont {
         let factor = CGFloat(placement.fontSizeAdjustmentFactor)
+        let caretHeight = placement.cursorRect.height
+
         if let font {
-            let size = max(1, font.pointSize * factor)
+            let metricsHeight = font.ascender - font.descender // ascent+descent at font.pointSize
+            let derived = (caretHeight > 0 && metricsHeight > 0)
+                ? caretHeight * font.pointSize / metricsHeight
+                : font.pointSize
+            let size = max(1, derived * factor)
             return NSFont(descriptor: font.fontDescriptor, size: size) ?? font
         }
-        let estimated = placement.cursorRect.height > 0
-            ? placement.cursorRect.height * 0.72
-            : NSFont.systemFontSize
-        return .systemFont(ofSize: max(8, min(48, estimated * factor)))
+
+        // No field font: estimate the point size from the caret height (≈1.2× the point size for
+        // typical UI fonts), since we have no metrics to scale by.
+        let estimated = caretHeight > 0 ? caretHeight * 0.83 : NSFont.systemFontSize
+        return .systemFont(ofSize: max(8, min(96, estimated * factor)))
     }
 }

@@ -6,9 +6,9 @@ import TokenProfiles
 
 /// Real constrained, multi-branch decoder (M5, see ADR-010).
 ///
-/// The engine drives the **existing** linear `LocalModelRuntime` protocol — to score a branch
-/// it re-`prepare`s `basePrompt + branchTokens` and reads the next-token logits, relying on KV
-/// prefix reuse to keep that cheap. Search is a deterministic best-first beam ordered by
+/// The engine drives the `LocalModelRuntime` protocol — to score a branch it asks for
+/// `anchoredLogits(anchor: basePrompt, suffix: branchTokens)`, which keeps `basePrompt` resident
+/// and decodes only the branch's divergent suffix (ADR-018). Search is a deterministic best-first beam ordered by
 /// cumulative log-probability; `temperature` / `topK` / `topP` shape the per-step candidate
 /// pool (no RNG). Admissibility (required prefix + byte/trie constraints) and token policy
 /// (exclusions, bias, stop behaviour, display width) come from the `AutocompleteProfile`, so the
@@ -57,8 +57,10 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
             for branch in live {
                 try Task.checkCancellation()
 
-                try await runtime.prepare(promptTokens: basePrompt + branch.tokenIDs)
-                let logits = try await runtime.logitsForNextToken()
+                // Anchored reuse (ADR-018): the base prompt is decoded once and kept resident; each
+                // branch only decodes its own divergent suffix. Across keystrokes the anchor grows
+                // by the typed tokens, so steady-state typing decodes only the typed delta.
+                let logits = try await runtime.anchoredLogits(anchor: basePrompt, suffix: branch.tokenIDs)
                 guard !logits.isEmpty else {
                     finalizeIfValid(branch, into: &finalized)
                     continue

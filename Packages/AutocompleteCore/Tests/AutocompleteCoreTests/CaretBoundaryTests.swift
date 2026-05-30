@@ -60,4 +60,17 @@ final class CaretBoundaryTests: XCTestCase {
         XCTAssertEqual(CaretBoundary.reconcile("\n", beforeCursor: "hello"), "")
         XCTAssertEqual(CaretBoundary.reconcile("  ", beforeCursor: "hello "), "")
     }
+
+    func testStripsNonBreakingAndMultipleSpacesAfterWhitespacePrefix() {
+        // A non-breaking space (U+00A0) separator after an existing space would still double up.
+        XCTAssertEqual(
+            CaretBoundary.reconcile("\u{00A0}Paris.", beforeCursor: "The capital of France is "),
+            "Paris."
+        )
+        // Several leading spaces collapse away entirely when the prefix already ends in whitespace.
+        XCTAssertEqual(
+            CaretBoundary.reconcile("   Paris.", beforeCursor: "The capital of France is "),
+            "Paris."
+        )
+    }
 }

@@ -51,19 +51,35 @@ final class CompletionUITests: XCTestCase {
     // MARK: - Font resolution
 
     @MainActor
-    func testResolveFontUsesFieldFontScaledByFactor() {
+    func testResolveFontKeepsFamilyAndSizesFromCaretHeight() {
+        // The field font's reported size is intentionally ignored; the typeface is sized from the
+        // caret height via the font's metrics, so the ghost's glyph box ≈ caretHeight × factor.
         let field = NSFont.systemFont(ofSize: 12)
-        let placement = OverlayPlacement(cursorRect: CGRect(x: 0, y: 0, width: 1, height: 20), fontSizeAdjustmentFactor: 2)
+        let caretHeight: CGFloat = 20
+        let factor: CGFloat = 2
+        let placement = OverlayPlacement(cursorRect: CGRect(x: 0, y: 0, width: 1, height: caretHeight), fontSizeAdjustmentFactor: Double(factor))
         let resolved = InlineGhostTextPresenter.resolveFont(field, placement: placement)
-        XCTAssertEqual(resolved.pointSize, 24, accuracy: 0.01)
+        XCTAssertEqual(resolved.familyName, field.familyName)
+        XCTAssertEqual(resolved.ascender - resolved.descender, caretHeight * factor, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testResolveFontIsStableWhenAXSizeAlreadyMatchesCaret() {
+        // When AX's reported size is already consistent with the caret height, sizing from the
+        // caret reproduces (close to) that size rather than changing it.
+        let field = NSFont.systemFont(ofSize: 24)
+        let caretHeight = field.ascender - field.descender // the caret a 24pt line would produce
+        let placement = OverlayPlacement(cursorRect: CGRect(x: 0, y: 0, width: 1, height: caretHeight))
+        let resolved = InlineGhostTextPresenter.resolveFont(field, placement: placement)
+        XCTAssertEqual(resolved.pointSize, 24, accuracy: 0.5)
     }
 
     @MainActor
     func testResolveFontFallsBackToCaretHeight() {
         let placement = OverlayPlacement(cursorRect: CGRect(x: 0, y: 0, width: 1, height: 20))
         let resolved = InlineGhostTextPresenter.resolveFont(nil, placement: placement)
-        // Estimated from caret height (20 * 0.72 ≈ 14.4), clamped into [8, 48].
+        // Estimated from caret height (20 * 0.83 ≈ 16.6), clamped into [8, 96].
         XCTAssertGreaterThanOrEqual(resolved.pointSize, 8)
-        XCTAssertLessThanOrEqual(resolved.pointSize, 48)
+        XCTAssertLessThanOrEqual(resolved.pointSize, 96)
     }
 }

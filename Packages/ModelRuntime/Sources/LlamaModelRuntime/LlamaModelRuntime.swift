@@ -35,13 +35,32 @@ public actor LlamaModelRuntime: LocalModelRuntime {
     nonisolated internal var vocabPointer: OpaquePointer { vocab }
     private nonisolated let reuseThreshold: Int
     private nonisolated let nBatch: Int
+    /// When true, `anchoredLogits` decodes the base prompt once, snapshots the sequence state, and
+    /// restores that snapshot before decoding each branch's suffix — instead of re-prefilling the
+    /// whole prompt per branch (see ADR-018). Gated so it can be disabled if ever incorrect.
+    private nonisolated let enableKVFork: Bool
+    /// The single sequence the runtime decodes into.
+    private nonisolated let anchorSeq: llama_seq_id = 0
+    /// Tokens whose post-decode sequence state is captured in `anchorSnapshot`.
+    private var anchorTokens: [TokenID] = []
+    /// Serialized seq-0 state (`llama_state_seq_get_data`) immediately after decoding `anchorTokens`.
+    /// Recurrent-memory safe (unlike cross-sequence `seq_cp`, which aborts on this hybrid model).
+    private var anchorSnapshot: [UInt8]?
+    /// Next-token logits at the end of `anchorTokens`, cached so the empty-suffix root branch needs
+    /// no decode and stays correct even after a sibling branch overwrote the live logits buffer.
+    private var anchorEndLogits: [TokenLogit]?
 
     private var currentTokens: [TokenID] = []
     /// How many tokens the most recent `prepare(promptTokens:)` actually pushed through
     /// `llama_decode`. Exposed for tests that want to assert KV reuse really happened.
     public private(set) var lastPrepareDecodedCount: Int = 0
 
-    public init(modelURL: URL, contextLength: Int = 4096, reuseThreshold: Int = 8) throws {
+    public init(
+        modelURL: URL,
+        contextLength: Int = 4096,
+        reuseThreshold: Int = 8,
+        enableKVFork: Bool = true
+    ) throws {
         guard ModelContainer.modelExists(at: modelURL) else {
             throw LlamaRuntimeError.modelFileMissing(path: modelURL.path)
         }
@@ -89,6 +108,7 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         self.memory = loadedMemory
         self.reuseThreshold = max(0, reuseThreshold)
         self.nBatch = Int(llama_n_batch(loadedCtx))
+        self.enableKVFork = enableKVFork
         self.metadata = ModelMetadata(
             identifier: modelURL.lastPathComponent,
             family: "llama",
@@ -129,9 +149,9 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         // partially rewound, so a later decode collides with a position the memory still holds
         // (M-RoPE requires the new start position Y to satisfy X < Y). For every non-append
         // case we clear and fully re-decode, which is always correct on both attention-only and
-        // hybrid models. The multi-branch decoder (ADR-010) leans on this: it re-`prepare`s
-        // divergent branch paths constantly, so the safe fallback matters more than the rollback
-        // fast path. (Efficient branch reuse is a future KV-fork optimization.)
+        // hybrid models. The multi-branch decoder no longer relies on this path for branches — it
+        // calls `anchoredLogits` (ADR-018), which decodes the base prompt once and snapshot/restores
+        // it per branch. `prepare` remains the pure-append-or-clear path for greedy/profiling callers.
         let isPureAppend = common == currentTokens.count
         let shouldReuse = isPureAppend && common >= reuseThreshold && common > 0
 
@@ -163,6 +183,12 @@ public actor LlamaModelRuntime: LocalModelRuntime {
 
     public func logitsForNextToken() async throws -> [TokenLogit] {
         guard !currentTokens.isEmpty else { return [] }
+        return try readLogits()
+    }
+
+    /// Reads the logits buffer from the most recent `llama_decode` (last position). Unlike
+    /// `logitsForNextToken`, no `currentTokens` guard — callers that just decoded know logits exist.
+    private func readLogits() throws -> [TokenLogit] {
         guard let raw = llama_get_logits_ith(ctx, -1) else {
             throw LlamaRuntimeError.logitsUnavailable
         }
@@ -187,18 +213,116 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         llama_memory_clear(memory, true)
         currentTokens = []
         lastPrepareDecodedCount = 0
+        anchorTokens = []
+        anchorSnapshot = nil
+        anchorEndLogits = nil
+    }
+
+    // MARK: - Anchored KV reuse (ADR-018)
+
+    /// Next-token logits for `anchor + suffix`. Decodes `anchor` once, snapshots the sequence state
+    /// (`llama_state_seq_get_data`), then for every branch restores that snapshot and decodes only
+    /// the divergent `suffix` — instead of re-prefilling the whole prompt per branch. Across
+    /// keystrokes the anchor grows by the typed tokens, which is a pure append of the prior anchor,
+    /// so only the typed delta is decoded.
+    ///
+    /// Snapshot/restore (not cross-sequence `seq_cp`) is used because this model's hybrid recurrent
+    /// memory aborts on `seq_cp`; `get_data`/`set_data` serialize the full per-sequence state
+    /// (attention KV + recurrent state) and are safe.
+    public func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit] {
+        guard enableKVFork else {
+            try await prepare(promptTokens: anchor + suffix)
+            return try await logitsForNextToken()
+        }
+        if anchor.isEmpty && suffix.isEmpty { return [] }
+        let total = anchor.count + suffix.count
+        if total > metadata.contextLength {
+            throw LlamaRuntimeError.promptTooLong(promptTokens: total, contextLength: metadata.contextLength)
+        }
+
+        // 1. Ensure a snapshot for exactly `anchor` exists (cheap when it already does).
+        try ensureAnchor(anchor)
+
+        // 2. Root branch (empty suffix): the cached anchor-end logits are always valid for the
+        //    current anchor, even after a sibling branch overwrote the live logits buffer.
+        if suffix.isEmpty {
+            if let cached = anchorEndLogits { return cached }
+            return try readLogits()
+        }
+
+        // 3. Branch: restore the anchor snapshot (discards any previous branch's suffix from the
+        //    sequence) and decode just this branch's suffix.
+        try restoreAnchor()
+        try decodeTokens(suffix, startingAt: anchor.count, seqID: anchorSeq)
+        currentTokens = anchor + suffix
+        return try readLogits()
+    }
+
+    /// Makes `anchorSnapshot`/`anchorEndLogits` describe exactly `anchor`. Reuses an existing
+    /// snapshot when `anchor` extends it (cross-keystroke append decodes only the typed delta);
+    /// otherwise clears and fully decodes. No `reuseThreshold` gate — a single typed token must
+    /// reuse.
+    private func ensureAnchor(_ anchor: [TokenID]) throws {
+        if anchorSnapshot != nil && anchorTokens == anchor {
+            lastPrepareDecodedCount = 0
+            return
+        }
+
+        if let snapshot = anchorSnapshot,
+           anchorTokens.count < anchor.count,
+           Self.commonPrefixLength(anchorTokens, anchor) == anchorTokens.count,
+           !anchorTokens.isEmpty {
+            // Cross-keystroke append: restore the prior anchor, decode only the typed delta.
+            try restore(snapshot)
+            let delta = Array(anchor[anchorTokens.count..<anchor.count])
+            try decodeTokens(delta, startingAt: anchorTokens.count, seqID: anchorSeq)
+            lastPrepareDecodedCount = delta.count
+        } else {
+            llama_memory_clear(memory, true)
+            try decodeTokens(anchor, startingAt: 0, seqID: anchorSeq)
+            lastPrepareDecodedCount = anchor.count
+        }
+        currentTokens = anchor
+        anchorTokens = anchor
+        anchorSnapshot = try captureSequenceState()
+        anchorEndLogits = try readLogits()
+    }
+
+    /// Restores the live sequence to the captured `anchor` state.
+    private func restoreAnchor() throws {
+        guard let snapshot = anchorSnapshot else { return }
+        try restore(snapshot)
+        currentTokens = anchorTokens
+    }
+
+    private func captureSequenceState() throws -> [UInt8] {
+        let size = llama_state_seq_get_size(ctx, anchorSeq)
+        guard size > 0 else { throw LlamaRuntimeError.sequenceStateSnapshotFailed }
+        var buffer = [UInt8](repeating: 0, count: size)
+        let written = buffer.withUnsafeMutableBufferPointer {
+            llama_state_seq_get_data(ctx, $0.baseAddress, size, anchorSeq)
+        }
+        guard written > 0 else { throw LlamaRuntimeError.sequenceStateSnapshotFailed }
+        return buffer
+    }
+
+    private func restore(_ snapshot: [UInt8]) throws {
+        let read = snapshot.withUnsafeBufferPointer {
+            llama_state_seq_set_data(ctx, $0.baseAddress, snapshot.count, anchorSeq)
+        }
+        guard read > 0 else { throw LlamaRuntimeError.sequenceStateSnapshotFailed }
     }
 
     // MARK: - Internals
 
-    private func decodeTokens(_ tokens: [TokenID], startingAt startPos: Int) throws {
+    private func decodeTokens(_ tokens: [TokenID], startingAt startPos: Int, seqID: llama_seq_id = 0) throws {
         guard !tokens.isEmpty else { return }
         var offset = 0
         while offset < tokens.count {
             let end = min(offset + nBatch, tokens.count)
             let chunk = Array(tokens[offset..<end])
             let isLastChunk = (end == tokens.count)
-            try decodeChunk(chunk, startingAt: startPos + offset, requestLogitsOnLast: isLastChunk)
+            try decodeChunk(chunk, startingAt: startPos + offset, requestLogitsOnLast: isLastChunk, seqID: seqID)
             offset = end
         }
     }
@@ -208,7 +332,8 @@ public actor LlamaModelRuntime: LocalModelRuntime {
     private func decodeChunk(
         _ tokens: [TokenID],
         startingAt startPos: Int,
-        requestLogitsOnLast: Bool
+        requestLogitsOnLast: Bool,
+        seqID: llama_seq_id = 0
     ) throws {
         var batch = llama_batch_init(Int32(tokens.count), 0, 1)
         defer { llama_batch_free(batch) }
@@ -216,7 +341,7 @@ public actor LlamaModelRuntime: LocalModelRuntime {
             batch.token[i] = llama_token(tokens[i])
             batch.pos[i] = llama_pos(startPos + i)
             batch.n_seq_id[i] = 1
-            batch.seq_id[i]![0] = 0
+            batch.seq_id[i]![0] = seqID
             let isLast = (i == tokens.count - 1)
             batch.logits[i] = (isLast && requestLogitsOnLast) ? 1 : 0
         }
