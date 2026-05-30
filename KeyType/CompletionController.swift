@@ -54,15 +54,19 @@ final class CompletionController {
     private(set) var loadState: LoadState = .idle
     private(set) var isRunning = false
 
-    /// The completion currently shown as ghost text and its originating context (used by the Tab
-    /// acceptance controller). Nil when nothing is displayed.
+    /// The completion currently shown as ghost text (the portion still ahead of the live caret).
+    /// Nil when nothing is displayed. Exposed for the Tab acceptance controller / UI binding.
     private(set) var visibleCandidate: CompletionCandidate?
-    private var visibleContext: TextFieldContext?
-    /// The *raw* model completion (before caret-boundary reconciliation), kept so insertion can
-    /// re-reconcile against the live prefix — the leading separator decision must be made against
-    /// the text as it is when the user accepts, not as it was when the suggestion was generated.
-    private var visibleRawText: String?
-    /// The most recent focused-field context seen, used as the live prefix at acceptance time.
+
+    /// The *anchor* of the live suggestion: the caret-reconciled completion text exactly as the
+    /// model produced it for `anchorContext`. The text actually shown/inserted is re-derived from
+    /// this against the *live* caret every keystroke (`liveCompletion(for:)`) — as the user types
+    /// the suggested characters it shrinks, and when they diverge it is dropped. This is what keeps
+    /// the overlay from going stale (and prevents the doubled-character bug where a suggestion
+    /// generated for "…more " was inserted verbatim after the user had already typed "…more e").
+    private var anchorText: String?
+    private var anchorContext: TextFieldContext?
+    /// The most recent focused-field context seen — the live caret the suggestion is reconciled to.
     private var latestContext: TextFieldContext?
 
     var completionsEnabled = true {
@@ -150,11 +154,17 @@ final class CompletionController {
         guard key != lastContextKey else { return }
         lastContextKey = key
 
-        guard let placement = placementResolver.placement(for: context) else { reset(); return }
+        guard placementResolver.placement(for: context) != nil else { reset(); return }
 
         // Resolve the field font and foreground color now, on the main actor, before suspending
         // into generation, so the ghost text matches the field's typeface and color.
         let style = FieldFontResolver.currentStyle()
+
+        // The context just changed (the dedup above let us through), so the on-screen suggestion is
+        // from the *previous* caret. Re-derive it against the new caret first: if the user typed the
+        // suggested characters it shrinks and follows the cursor; if they diverged (or deleted) it is
+        // dropped immediately — never left dangling and stale. A fresh generation follows below.
+        renderSuggestion(for: context, style: style)
 
         // Token healing (ADR-019): when the caret sits mid-word, prompt from the last clean token
         // boundary and constrain regeneration to the already-typed bytes, so the model can reach
@@ -190,7 +200,7 @@ final class CompletionController {
                 do {
                     let candidates = try await engine.completions(for: request)
                     try Task.checkCancellation()
-                    self.present(candidates, request: request, placement: placement, style: style)
+                    self.present(candidates, request: request, style: style)
                 } catch is CancellationError {
                     // Superseded by a newer keystroke — leave the current ghost as-is.
                 } catch {
@@ -203,7 +213,6 @@ final class CompletionController {
     private func present(
         _ candidates: [CompletionCandidate],
         request: CompletionRequest,
-        placement: OverlayPlacement,
         style: ResolvedFieldStyle
     ) {
         let ctx = PredictionLog.contextTail(request.context.beforeCursor)
@@ -224,41 +233,56 @@ final class CompletionController {
         }
 
         // When the prompt was healed (ADR-019), the completion re-emits the already-typed stem
-        // (" great today."); strip it back off so only the genuinely new text ("at today.") is shown
-        // and inserted.
+        // (" great today."); strip it back off so only the genuinely new text ("at today.") remains.
         let completion = request.requiredPrefixBytes.isEmpty
             ? best.text
             : MidWordHealing.strip(best.text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
 
-        // Re-align the candidate's leading whitespace against the live text so we neither lose nor
-        // double the separator space (the prompt was built from a trailing-trimmed prefix). See
-        // ADR-017 / CaretBoundary.
-        let reconciledText = CaretBoundary.reconcile(completion, beforeCursor: request.context.beforeCursor)
-        guard !reconciledText.isEmpty else {
+        // Re-align the leading whitespace against the prefix this was generated for (ADR-017 /
+        // CaretBoundary). This reconciled text is the suggestion *anchor*; what is actually shown and
+        // inserted is re-derived from it against the live caret, so it stays correct even though the
+        // user may have typed more during generation.
+        let anchored = CaretBoundary.reconcile(completion, beforeCursor: request.context.beforeCursor)
+        guard !anchored.isEmpty else {
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(emptyAfterBoundary)")
             clearCompletion()
             return
         }
-        let candidate = reconciledText == best.text ? best : CompletionCandidate(
-            text: reconciledText,
-            tokenIDs: best.tokenIDs,
-            logProbability: best.logProbability,
-            displayWidth: best.displayWidth,
-            mode: best.mode
-        )
 
-        predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SHOWN \"\(PredictionLog.escape(candidate.text))\"")
+        anchorText = anchored
+        anchorContext = request.context
+        predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SHOWN \"\(PredictionLog.escape(anchored))\"")
+        renderSuggestion(for: latestContext ?? request.context, style: style)
+    }
+
+    /// Renders the anchored suggestion (if any) against `live`: shows the portion still ahead of the
+    /// caret at the live placement, or clears everything when the user has typed past / diverged from
+    /// it. The single place the overlay is shown, so display always matches the live caret.
+    private func renderSuggestion(for live: TextFieldContext, style: ResolvedFieldStyle) {
+        guard let shown = liveCompletion(for: live), !shown.isEmpty,
+              let placement = placementResolver.placement(for: live) else {
+            clearCompletion()
+            return
+        }
+        let candidate = CompletionCandidate(text: shown, mode: .prose)
         visibleCandidate = candidate
-        visibleRawText = completion
-        visibleContext = request.context
         presenter.show(candidate: candidate, placement: placement, font: style.font, textColor: style.color)
+    }
+
+    /// The portion of the anchored completion still ahead of the live caret, or `nil` when the
+    /// suggestion no longer applies. Valid only while the user *extends* the anchor's prefix by
+    /// typing the suggested characters: any deletion, caret jump, change to the text after the
+    /// cursor, or a divergent keystroke invalidates it (returns `nil`).
+    private func liveCompletion(for live: TextFieldContext) -> String? {
+        guard let anchorText, let anchorContext else { return nil }
+        return SuggestionAnchor.remaining(anchorText: anchorText, anchor: anchorContext, live: live)
     }
 
     private func clearCompletion() {
         presenter.hide()
         visibleCandidate = nil
-        visibleRawText = nil
-        visibleContext = nil
+        anchorText = nil
+        anchorContext = nil
     }
 
     /// Hide any ghost text and forget the last context, so the next snapshot is treated as new.
@@ -273,7 +297,7 @@ final class CompletionController {
 
     /// True when there is a visible completion the user is allowed to accept with Tab.
     var canAcceptCompletion: Bool {
-        guard visibleCandidate != nil, let context = visibleContext else { return false }
+        guard visibleCandidate != nil, let context = latestContext ?? anchorContext else { return false }
         return compatibilityStore.policy(for: context.target).allowsTabAcceptance
     }
 
@@ -295,17 +319,14 @@ final class CompletionController {
         insert(text: text, context: context)
     }
 
-    /// Reconciles the raw model completion against the **live** prefix (the most recent context, not
-    /// the one the suggestion was generated from) so the leading separator is correct for the field
-    /// as it is at the moment of acceptance — fixing doubled and missing spaces when the trailing
-    /// whitespace changed during the generation/debounce window. Returns the text to insert and the
-    /// context to insert it into, or nil if nothing remains after reconciliation.
+    /// The text to insert and the context to insert it into, derived from the anchored suggestion
+    /// against the **live** caret (`liveCompletion(for:)`). Because the anchor already consumed any
+    /// characters the user typed after the suggestion appeared, this never re-inserts already-typed
+    /// text (no doubled characters) and never re-inserts a suggestion the user has diverged from.
     private func insertionText() -> (text: String, context: TextFieldContext)? {
-        guard let raw = visibleRawText, let shown = visibleContext else { return nil }
-        let live = latestContext ?? shown
-        let reconciled = CaretBoundary.reconcile(raw, beforeCursor: live.beforeCursor)
-        guard !reconciled.isEmpty else { return nil }
-        return (reconciled, live)
+        guard let live = latestContext ?? anchorContext,
+              let text = liveCompletion(for: live), !text.isEmpty else { return nil }
+        return (text, live)
     }
 
     private func insert(text: String, context: TextFieldContext) {
