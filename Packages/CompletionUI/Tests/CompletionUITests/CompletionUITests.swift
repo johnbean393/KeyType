@@ -98,6 +98,93 @@ final class CompletionUITests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testGhostTextWrapsOverflowingFirstWordToFieldLeadingEdge() {
+        let font = NSFont.monospacedSystemFont(ofSize: 20, weight: .regular)
+        let lineHeight: CGFloat = 24
+        let lines = GhostTextOverlayWindow.wrappedLines(
+            for: "Olympic.",
+            font: font,
+            firstLineWidth: 2,
+            fullLineWidth: 300,
+            firstLineInset: 120,
+            lineHeight: lineHeight
+        )
+
+        XCTAssertEqual(lines, [
+            GhostTextLine(text: "", leadingInset: 120, reservedHeight: lineHeight),
+            GhostTextLine(text: "Olympic.", leadingInset: 0, reservedHeight: lineHeight)
+        ])
+    }
+
+    @MainActor
+    func testGhostTextWrapsAtWordBoundariesAfterCaretLine() {
+        let font = NSFont.monospacedSystemFont(ofSize: 20, weight: .regular)
+        let lineHeight: CGFloat = 24
+        let wordWidth = ("current" as NSString).size(withAttributes: [.font: font]).width
+        let spaceWidth = (" " as NSString).size(withAttributes: [.font: font]).width
+        let lines = GhostTextOverlayWindow.wrappedLines(
+            for: "current text is:",
+            font: font,
+            firstLineWidth: wordWidth + spaceWidth + 1,
+            fullLineWidth: 300,
+            firstLineInset: 80,
+            lineHeight: lineHeight
+        )
+
+        XCTAssertEqual(lines.map(\.text), ["current", "text is:"])
+        XCTAssertEqual(lines.map(\.leadingInset), [80, 0])
+    }
+
+    @MainActor
+    func testGhostTextPreservesLeadingSpaceOnFirstRenderedLine() {
+        let font = NSFont.monospacedSystemFont(ofSize: 20, weight: .regular)
+        let lineHeight: CGFloat = 24
+        let lines = GhostTextOverlayWindow.wrappedLines(
+            for: " It has 9",
+            font: font,
+            firstLineWidth: 300,
+            fullLineWidth: 300,
+            firstLineInset: 120,
+            lineHeight: lineHeight
+        )
+
+        XCTAssertEqual(lines.map(\.text), [" It has 9"])
+        XCTAssertEqual(lines.map(\.leadingInset), [120])
+    }
+
+    @MainActor
+    func testGhostTextDropsLeadingSpaceAfterWrappingToFieldEdge() {
+        let font = NSFont.monospacedSystemFont(ofSize: 20, weight: .regular)
+        let lineHeight: CGFloat = 24
+        let lines = GhostTextOverlayWindow.wrappedLines(
+            for: " It has 9",
+            font: font,
+            firstLineWidth: 2,
+            fullLineWidth: 300,
+            firstLineInset: 120,
+            lineHeight: lineHeight
+        )
+
+        XCTAssertEqual(lines.map(\.text), ["", "It has 9"])
+        XCTAssertEqual(lines.map(\.leadingInset), [120, 0])
+    }
+
+    @MainActor
+    func testGhostTextLayoutUsesFieldWidthForWrappedInlineText() {
+        let font = NSFont.monospacedSystemFont(ofSize: 20, weight: .regular)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 285, y: 100, width: 2, height: 24),
+            fieldRect: CGRect(x: 20, y: 80, width: 300, height: 80)
+        )
+        let layout = GhostTextOverlayWindow.layout(for: "Olympic.", font: font, placement: placement)
+
+        XCTAssertEqual(layout.frame.minX, 20)
+        XCTAssertEqual(layout.frame.width, 300)
+        XCTAssertEqual(layout.lines.map(\.text), ["", "Olympic."])
+        XCTAssertEqual(layout.lines.map(\.leadingInset), [267, 0])
+    }
+
     // MARK: - Font resolution
 
     @MainActor

@@ -29,30 +29,16 @@ public final class GhostTextOverlayWindow {
     public func show(text: String, font: NSFont, placement: OverlayPlacement, textColor: NSColor? = nil) {
         guard !text.isEmpty else { hide(); return }
 
-        hosting.rootView = GhostTextView(text: text, font: font, isRightToLeft: placement.isRightToLeft, textColor: textColor)
-
-        let caret = placement.cursorRect
-        let lineHeight = max(caret.height, ceil(font.ascender - font.descender))
-        let singleLineWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 2
-        let maxWidth = Self.availableTextWidth(for: placement, singleLineWidth: singleLineWidth)
-        let measuredWidth = min(singleLineWidth, maxWidth)
-        let height = Self.measuredTextHeight(text, font: font, width: measuredWidth, minimumHeight: lineHeight)
-
-        let x: CGFloat
-        let y: CGFloat
-        switch placement.mode {
-        case .mirror:
-            x = placement.isRightToLeft ? caret.maxX - measuredWidth : caret.minX
-            y = caret.maxY + 2 - CGFloat(placement.verticalOffset)
-        default:
-            x = placement.isRightToLeft
-                ? caret.minX - measuredWidth
-                : caret.maxX
-            y = caret.minY + (caret.height - height) / 2 - CGFloat(placement.verticalOffset)
-        }
+        let layout = Self.layout(for: text, font: font, placement: placement)
+        hosting.rootView = GhostTextView(
+            lines: layout.lines,
+            font: font,
+            isRightToLeft: placement.isRightToLeft,
+            textColor: textColor
+        )
 
         window.setFrame(
-            CGRect(x: x, y: y, width: measuredWidth, height: height),
+            layout.frame.offsetBy(dx: 0, dy: -CGFloat(placement.verticalOffset)),
             display: true
         )
 
@@ -108,19 +94,148 @@ public final class GhostTextOverlayWindow {
         return max(1, min(singleLineWidth, floor(remaining)))
     }
 
-    private static func measuredTextHeight(
-        _ text: String,
-        font: NSFont,
-        width: CGFloat,
-        minimumHeight: CGFloat
-    ) -> CGFloat {
-        guard width > 0 else { return minimumHeight }
-        let rect = (text as NSString).boundingRect(
-            with: CGSize(width: width, height: .greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font]
+    struct Layout: Equatable {
+        var frame: CGRect
+        var lines: [GhostTextLine]
+    }
+
+    static func layout(for text: String, font: NSFont, placement: OverlayPlacement) -> Layout {
+        let caret = placement.cursorRect
+        let lineHeight = max(caret.height, ceil(font.ascender - font.descender))
+        let singleLineWidth = ceil(measuredWidth(text, font: font)) + 2
+
+        guard
+            placement.mode != .mirror,
+            !placement.isRightToLeft,
+            let field = placement.fieldRect,
+            !field.isEmpty,
+            caret.maxX < field.maxX
+        else {
+            let width = availableTextWidth(for: placement, singleLineWidth: singleLineWidth)
+            let x: CGFloat
+            let y: CGFloat
+            switch placement.mode {
+            case .mirror:
+                x = placement.isRightToLeft ? caret.maxX - width : caret.minX
+                y = caret.maxY + 2
+            default:
+                x = placement.isRightToLeft ? caret.minX - width : caret.maxX
+                y = caret.minY + (caret.height - lineHeight) / 2
+            }
+            return Layout(
+                frame: CGRect(x: x, y: y, width: width, height: lineHeight),
+                lines: [GhostTextLine(text: text, reservedHeight: lineHeight)]
+            )
+        }
+
+        let firstLineInset = max(0, caret.maxX - field.minX)
+        let firstLineWidth = max(1, field.maxX - caret.maxX)
+        let fullLineWidth = max(1, field.width)
+        let lines = wrappedLines(
+            for: text,
+            font: font,
+            firstLineWidth: firstLineWidth,
+            fullLineWidth: fullLineWidth,
+            firstLineInset: firstLineInset,
+            lineHeight: lineHeight
         )
-        return max(minimumHeight, ceil(rect.height))
+        let height = lineHeight * CGFloat(lines.count)
+        let y = caret.minY + (caret.height - lineHeight) / 2 - (height - lineHeight)
+
+        return Layout(
+            frame: CGRect(x: field.minX, y: y, width: fullLineWidth, height: height),
+            lines: lines
+        )
+    }
+
+    static func wrappedLines(
+        for text: String,
+        font: NSFont,
+        firstLineWidth: CGFloat,
+        fullLineWidth: CGFloat,
+        firstLineInset: CGFloat,
+        lineHeight: CGFloat
+    ) -> [GhostTextLine] {
+        let tokens = wrappingTokens(in: text)
+        guard !tokens.isEmpty else {
+            return [GhostTextLine(text: "", leadingInset: firstLineInset, reservedHeight: lineHeight)]
+        }
+
+        var lines: [GhostTextLine] = []
+        var current = ""
+        var currentWidth: CGFloat = 0
+        var capacity = max(1, firstLineWidth)
+
+        func appendCurrent() {
+            let lineText = lines.isEmpty
+                ? current.trimmingTrailingWhitespace()
+                : current.trimmingCharacters(in: .whitespaces)
+            let inset = lines.isEmpty ? firstLineInset : 0
+            lines.append(GhostTextLine(text: lineText, leadingInset: inset, reservedHeight: lineHeight))
+            current = ""
+            currentWidth = 0
+            capacity = max(1, fullLineWidth)
+        }
+
+        for rawToken in tokens {
+            var token = rawToken
+            if current.isEmpty, !lines.isEmpty {
+                token = token.trimmingCharacters(in: .whitespaces)
+            }
+            guard !token.isEmpty else { continue }
+
+            let tokenWidth = measuredWidth(token, font: font)
+            if current.isEmpty, tokenWidth > capacity, lines.isEmpty {
+                lines.append(GhostTextLine(text: "", leadingInset: firstLineInset, reservedHeight: lineHeight))
+                capacity = max(1, fullLineWidth)
+                token = token.trimmingCharacters(in: .whitespaces)
+            } else if !current.isEmpty, currentWidth + tokenWidth > capacity {
+                appendCurrent()
+                token = token.trimmingCharacters(in: .whitespaces)
+            }
+
+            guard !token.isEmpty else { continue }
+            current += token
+            currentWidth += measuredWidth(token, font: font)
+        }
+
+        if !current.isEmpty {
+            appendCurrent()
+        }
+
+        return lines.isEmpty
+            ? [GhostTextLine(text: "", leadingInset: firstLineInset, reservedHeight: lineHeight)]
+            : lines
+    }
+
+    private static func wrappingTokens(in text: String) -> [String] {
+        var tokens: [String] = []
+        var index = text.startIndex
+        while index < text.endIndex {
+            let start = index
+            let isWhitespace = text[index].isWhitespace
+            while index < text.endIndex, text[index].isWhitespace == isWhitespace {
+                index = text.index(after: index)
+            }
+            tokens.append(String(text[start..<index]))
+        }
+        return tokens
+    }
+
+    private static func measuredWidth(_ text: String, font: NSFont) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: font]).width
+    }
+}
+
+private extension String {
+    func trimmingTrailingWhitespace() -> String {
+        var end = endIndex
+        while end > startIndex {
+            let previous = index(before: end)
+            guard self[previous].isWhitespace else { break }
+            end = previous
+        }
+        return String(self[..<end])
     }
 }
 

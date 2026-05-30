@@ -116,8 +116,20 @@ public final class NoopCompletionOverlayPresenter: CompletionOverlayPresenting {
 /// and clipped, so it reads as a natural continuation of what the user typed. When the field's
 /// foreground color is known it's used at `ghostOpacity` (so colored/inverted fields look right);
 /// otherwise it falls back to the system secondary color.
-public struct GhostTextView: View {
+public struct GhostTextLine: Equatable {
     public var text: String
+    public var leadingInset: CGFloat
+    public var reservedHeight: CGFloat?
+
+    public init(text: String, leadingInset: CGFloat = 0, reservedHeight: CGFloat? = nil) {
+        self.text = text
+        self.leadingInset = leadingInset
+        self.reservedHeight = reservedHeight
+    }
+}
+
+public struct GhostTextView: View {
+    public var lines: [GhostTextLine]
     public var font: NSFont
     public var isRightToLeft: Bool
     public var textColor: NSColor?
@@ -131,7 +143,19 @@ public struct GhostTextView: View {
         isRightToLeft: Bool = false,
         textColor: NSColor? = nil
     ) {
-        self.text = text
+        self.lines = [GhostTextLine(text: text)]
+        self.font = font
+        self.isRightToLeft = isRightToLeft
+        self.textColor = textColor
+    }
+
+    public init(
+        lines: [GhostTextLine],
+        font: NSFont = .systemFont(ofSize: NSFont.systemFontSize),
+        isRightToLeft: Bool = false,
+        textColor: NSColor? = nil
+    ) {
+        self.lines = lines.isEmpty ? [GhostTextLine(text: "")] : lines
         self.font = font
         self.isRightToLeft = isRightToLeft
         self.textColor = textColor
@@ -145,11 +169,18 @@ public struct GhostTextView: View {
     }
 
     public var body: some View {
-        Text(text)
-            .font(Font(font as CTFont))
-            .foregroundStyle(foregroundStyle)
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: isRightToLeft ? .trailing : .leading, spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Text(line.text)
+                    .font(Font(font as CTFont))
+                    .foregroundStyle(foregroundStyle)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.leading, isRightToLeft ? 0 : line.leadingInset)
+                    .padding(.trailing, isRightToLeft ? line.leadingInset : 0)
+                    .frame(height: line.reservedHeight, alignment: .top)
+            }
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isRightToLeft ? .trailing : .leading)
             .environment(\.layoutDirection, isRightToLeft ? .rightToLeft : .leftToRight)
     }
