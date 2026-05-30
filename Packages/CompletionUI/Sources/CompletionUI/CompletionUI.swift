@@ -15,6 +15,7 @@ public enum OverlayMode: Equatable {
 
 public struct OverlayPlacement: Equatable {
     public var cursorRect: CGRect
+    public var fieldRect: CGRect?
     public var mode: OverlayMode
     public var isRightToLeft: Bool
     public var verticalOffset: Double
@@ -22,12 +23,14 @@ public struct OverlayPlacement: Equatable {
 
     public init(
         cursorRect: CGRect,
+        fieldRect: CGRect? = nil,
         mode: OverlayMode = .inline,
         isRightToLeft: Bool = false,
         verticalOffset: Double = 0,
         fontSizeAdjustmentFactor: Double = 1
     ) {
         self.cursorRect = cursorRect
+        self.fieldRect = fieldRect
         self.mode = mode
         self.isRightToLeft = isRightToLeft
         self.verticalOffset = verticalOffset
@@ -69,10 +72,25 @@ public struct OverlayPlacementResolver {
             return nil
         }
 
-        let policy = compatibilityStore.policy(for: context.target)
+        let policy = compatibilityStore.policy(for: context)
+        if policy.overlayPreference == .hidden {
+            return nil
+        }
+
+        let resolvedMode: OverlayMode
+        switch policy.overlayPreference {
+        case .inline:
+            resolvedMode = context.geometry.cursorRectQuality == .estimated ? .mirror : mode
+        case .textMirror:
+            resolvedMode = .mirror
+        case .hidden:
+            return nil
+        }
+
         return OverlayPlacement(
             cursorRect: cursorRect,
-            mode: mode,
+            fieldRect: context.geometry.fieldRect,
+            mode: resolvedMode,
             isRightToLeft: context.geometry.isRightToLeft,
             verticalOffset: policy.verticalAlignmentOffset,
             fontSizeAdjustmentFactor: policy.fontSizeAdjustmentFactor
@@ -130,8 +148,8 @@ public struct GhostTextView: View {
         Text(text)
             .font(Font(font as CTFont))
             .foregroundStyle(foregroundStyle)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isRightToLeft ? .trailing : .leading)
             .environment(\.layoutDirection, isRightToLeft ? .rightToLeft : .leftToRight)
     }

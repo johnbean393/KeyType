@@ -65,6 +65,15 @@ final class TextInsertionTests: XCTestCase {
         XCTAssertEqual(plan.text, "a\u{00a0}b")
     }
 
+    func testPlannerCarriesBackspaceWorkaround() {
+        let store = AppCompatibilityStore(overrides: [
+            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, requiresBackspaceAfterPaste: true)
+        ])
+        let plan = InsertionPlanner(compatibilityStore: store)
+            .plan(candidate: CompletionCandidate(text: " world"), context: context())
+        XCTAssertTrue(plan.backspaceAfterPaste)
+    }
+
     // MARK: - Inserter dispatch
 
     func testPasteboardPasteSavesWritesPastesRestores() async throws {

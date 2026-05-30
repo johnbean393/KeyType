@@ -1019,3 +1019,41 @@ text. Both are now closed:
     reference may not be set yet); the abort only reproduces with a loaded model, which by the time a
     user opens the menu and confirms is the live case.
 
+## ADR-022: App compatibility policies are context-aware and suppress risky fields
+
+- Status: accepted
+- Context: milestone M7 moves compatibility from a small bundle/domain table into behavior that must
+  decide whether completions are safe at the live focus target. Cotypist exposes the same broad knobs
+  in its bundle (`tabShortcutsDisabled`, paste-and-match-style/backspace workarounds, font-size and
+  vertical overlay offsets, terminal handling, and app/domain overrides), but KeyType must keep the
+  decision clean-room and aligned with its product rule: suppress before showing a bad or unsafe
+  completion. The risky cases are terminals/TUIs where Tab is often semantic, Google Docs-style web
+  editors with unreliable inline AX geometry, and password or secret fields where suggestions must
+  never appear.
+- Decision: make `AppCompatibilityStore` compute policy from the full `TextFieldContext`, not just
+  the app target:
+  - `TextFieldContext` carries caret geometry quality plus field traits for secure/password,
+    password-manager, web-field, and terminal-like contexts. `MacContextCapture` derives these from
+    AX roles/subroles, labels/placeholders, ancestor web areas, and known terminal/password-manager
+    bundle IDs.
+  - Secure fields, password managers, and sensitive labels/placeholders hard-disable completion,
+    Tab acceptance, training, environment context, and overlay display before generation or filtering.
+  - Terminal-like contexts hard-disable Tab acceptance and mid-line completions, switch generation to
+    terminal mode, and use a mirror overlay so native shell/TUI Tab behavior stays untouched.
+  - Web fields with estimated caret geometry, plus Google Docs-style domain overrides, use a
+    text-mirror overlay and paste-and-match-style insertion. Google Docs also enables the
+    backspace-after-paste workaround.
+  - App/domain overrides can tune overlay font size, vertical offset, insertion workarounds,
+    completion gating, mid-line rules, Tab acceptance, and custom prompt instructions.
+- Consequences:
+  - Compatibility decisions now stack app/domain defaults with live field traits, so the same browser
+    can allow normal fields, mirror Docs, and suppress password fields without special-case wiring in
+    the controller.
+  - Native Tab behavior wins over completion acceptance in terminals and excluded apps; this may
+    suppress some useful continuations, but matches KeyType's "prefer suppression" rule.
+  - Sensitive-field detection intentionally over-suppresses terms such as passcode, secret key, TOTP,
+    2FA/MFA, CVV/CVC, and security code. That keeps private surfaces safe at the cost of occasional
+    missed completions in benign support text.
+  - The policy is unit-tested for native/default behavior, Chromium/Google Docs, terminal handling,
+    and password exclusions; manual app-matrix validation should focus on AX traits and placement in
+    real windows rather than policy branching.

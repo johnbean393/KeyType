@@ -46,7 +46,7 @@ public struct InsertionPlanner {
     }
 
     public func plan(candidate: CompletionCandidate, context: TextFieldContext) -> InsertionPlan {
-        let policy = compatibilityStore.policy(for: context.target)
+        let policy = compatibilityStore.policy(for: context)
 
         let strategy: InsertionStrategy
         if let chunkSize = policy.stringInjectionChunkSize {
@@ -65,7 +65,8 @@ public struct InsertionPlanner {
             text: text,
             strategy: strategy,
             restorePasteboard: true,
-            useNonBreakingSpaceWorkaround: policy.insertionRequiresNonBreakingSpace
+            useNonBreakingSpaceWorkaround: policy.insertionRequiresNonBreakingSpace,
+            backspaceAfterPaste: policy.insertionRequiresBackspaceAfterPaste
         )
     }
 }

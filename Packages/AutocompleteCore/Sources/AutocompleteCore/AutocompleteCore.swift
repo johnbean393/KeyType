@@ -34,17 +34,52 @@ public struct TextSelection: Equatable {
 
 public struct TextFieldGeometry: Equatable {
     public var cursorRect: CGRect?
+    public var fieldRect: CGRect?
     public var isAtEndOfLine: Bool
     public var isRightToLeft: Bool
+    public var cursorRectQuality: CaretGeometryQuality
 
     public init(
         cursorRect: CGRect? = nil,
+        fieldRect: CGRect? = nil,
         isAtEndOfLine: Bool = true,
-        isRightToLeft: Bool = false
+        isRightToLeft: Bool = false,
+        cursorRectQuality: CaretGeometryQuality = .unknown
     ) {
         self.cursorRect = cursorRect
+        self.fieldRect = fieldRect
         self.isAtEndOfLine = isAtEndOfLine
         self.isRightToLeft = isRightToLeft
+        self.cursorRectQuality = cursorRectQuality
+    }
+}
+
+public enum CaretGeometryQuality: String, Equatable {
+    case exact
+    case derived
+    case estimated
+    case unknown
+}
+
+public struct TextFieldTraits: Equatable {
+    public var isSecureTextEntry: Bool
+    public var isPasswordField: Bool
+    public var isPasswordManagerContext: Bool
+    public var isWebField: Bool
+    public var isTerminalLike: Bool
+
+    public init(
+        isSecureTextEntry: Bool = false,
+        isPasswordField: Bool = false,
+        isPasswordManagerContext: Bool = false,
+        isWebField: Bool = false,
+        isTerminalLike: Bool = false
+    ) {
+        self.isSecureTextEntry = isSecureTextEntry
+        self.isPasswordField = isPasswordField
+        self.isPasswordManagerContext = isPasswordManagerContext
+        self.isWebField = isWebField
+        self.isTerminalLike = isTerminalLike
     }
 }
 
@@ -58,6 +93,7 @@ public struct TextFieldContext: Equatable {
     public var labels: [String]
     public var detectedLanguage: String?
     public var typingContext: String?
+    public var traits: TextFieldTraits
 
     public init(
         beforeCursor: String,
@@ -68,7 +104,8 @@ public struct TextFieldContext: Equatable {
         placeholder: String? = nil,
         labels: [String] = [],
         detectedLanguage: String? = nil,
-        typingContext: String? = nil
+        typingContext: String? = nil,
+        traits: TextFieldTraits = TextFieldTraits()
     ) {
         self.beforeCursor = beforeCursor
         self.afterCursor = afterCursor
@@ -79,6 +116,7 @@ public struct TextFieldContext: Equatable {
         self.labels = labels
         self.detectedLanguage = detectedLanguage
         self.typingContext = typingContext
+        self.traits = traits
     }
 }
 
@@ -141,6 +179,7 @@ public struct CompletionCandidate: Equatable, Identifiable {
 }
 
 public enum SuppressionReason: Equatable {
+    case secureFieldExcluded
     case completionsDisabled
     case midLineCompletionDisabled
     case tabShortcutsDisabled

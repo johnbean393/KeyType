@@ -401,6 +401,22 @@ enum AXCaretHelper {
         return nil
     }
 
+    static func boolValue(for attribute: CFString, on element: AXUIElement) -> Bool? {
+        guard let value = copyAttributeValue(attribute, on: element) else {
+            return nil
+        }
+
+        if let bool = value as? Bool {
+            return bool
+        }
+
+        if let number = value as? NSNumber {
+            return number.boolValue
+        }
+
+        return nil
+    }
+
     static func rangeValue(for attribute: CFString, on element: AXUIElement) -> NSRange? {
         guard let value = axValue(from: copyAttributeValue(attribute, on: element)) else {
             return nil

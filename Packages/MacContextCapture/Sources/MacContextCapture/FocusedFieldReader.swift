@@ -71,8 +71,10 @@ public struct FocusedFieldReader {
 
         let geometry = TextFieldGeometry(
             cursorRect: caretGeometry?.rect,
+            fieldRect: Self.fieldRect(for: element),
             isAtEndOfLine: split.isAtEndOfLine,
-            isRightToLeft: WritingDirection.isRightToLeft(split.beforeCursor.isEmpty ? rawValue : split.beforeCursor)
+            isRightToLeft: WritingDirection.isRightToLeft(split.beforeCursor.isEmpty ? rawValue : split.beforeCursor),
+            cursorRectQuality: Self.caretQuality(from: caretGeometry?.qualityLabel)
         )
 
         let target = AppTargetResolver.resolveAppTarget(for: element)
@@ -80,6 +82,12 @@ public struct FocusedFieldReader {
         let placeholder = AXCaretHelper.stringValue(for: kAXPlaceholderValueAttribute as CFString, on: element)
         let labels = AppTargetResolver.collectLabels(for: element)
         let language = LanguageDetector.detectLanguage(in: split.beforeCursor)
+        let traits = AppTargetResolver.collectTraits(
+            for: element,
+            target: target,
+            placeholder: placeholder,
+            labels: labels
+        )
 
         let context = TextFieldContext(
             beforeCursor: split.beforeCursor,
@@ -90,7 +98,8 @@ public struct FocusedFieldReader {
             placeholder: placeholder,
             labels: labels,
             detectedLanguage: language,
-            typingContext: nil
+            typingContext: nil,
+            traits: traits
         )
 
         return FocusedFieldSnapshot(
@@ -99,6 +108,23 @@ public struct FocusedFieldReader {
             caretSource: caretGeometry?.source,
             caretQuality: caretGeometry?.qualityLabel
         )
+    }
+
+    private static func caretQuality(from label: String?) -> CaretGeometryQuality {
+        switch label {
+        case "exact": .exact
+        case "derived": .derived
+        case "estimated": .estimated
+        default: .unknown
+        }
+    }
+
+    private static func fieldRect(for element: AXUIElement) -> CGRect? {
+        guard let axFrame = AXCaretHelper.rectValue(for: "AXFrame" as CFString, on: element),
+              !axFrame.isEmpty else {
+            return nil
+        }
+        return AXCaretHelper.cocoaRect(fromAccessibilityRect: axFrame)
     }
 }
 
@@ -157,12 +183,83 @@ enum AppTargetResolver {
         return labels
     }
 
+    static func collectTraits(
+        for element: AXUIElement,
+        target: AppTarget,
+        placeholder: String?,
+        labels: [String]
+    ) -> TextFieldTraits {
+        let role = AXCaretHelper.stringValue(for: kAXRoleAttribute as CFString, on: element) ?? ""
+        let subrole = AXCaretHelper.stringValue(for: kAXSubroleAttribute as CFString, on: element) ?? ""
+        let isSecure = role == "AXSecureTextField"
+            || subrole == "AXSecureTextField"
+            || AXCaretHelper.boolValue(for: "AXProtectedContent" as CFString, on: element) == true
+        let metadata = ([placeholder] + labels.map(Optional.some))
+            .compactMap { $0?.lowercased() }
+            .joined(separator: " ")
+
+        return TextFieldTraits(
+            isSecureTextEntry: isSecure,
+            isPasswordField: fieldMetadataLooksPasswordLike(metadata),
+            isPasswordManagerContext: passwordManagerBundleIDs.contains(target.bundleIdentifier),
+            isWebField: findAncestorWebArea(of: element) != nil,
+            isTerminalLike: terminalBundleIDs.contains(target.bundleIdentifier)
+        )
+    }
+
+    private static let terminalBundleIDs: Set<String> = [
+        "com.apple.Terminal",
+        "com.googlecode.iterm2",
+        "dev.warp.Warp-Stable",
+        "com.mitchellh.ghostty",
+        "com.mitchellh.ghostty.debug",
+        "org.alacritty",
+        "net.kovidgoyal.kitty",
+        "com.github.wez.wezterm"
+    ]
+
+    private static let passwordManagerBundleIDs: Set<String> = [
+        "com.1password.1password",
+        "com.apple.Passwords",
+        "com.bitwarden.desktop",
+        "com.callpod.keepermac.lite",
+        "com.dashlane.Dashlane",
+        "com.dashlane.dashlanephonefinal",
+        "com.keepersecurity.passwordmanager",
+        "com.lastpass.LastPass",
+        "com.lastpass.lastpassmacdesktop"
+    ]
+
+    private static func fieldMetadataLooksPasswordLike(_ metadata: String) -> Bool {
+        guard !metadata.isEmpty else { return false }
+        let terms = [
+            "password", "passcode", "passphrase", "master key", "secret key",
+            "security code", "verification code", "one-time code", "one time code",
+            "totp", "2fa", "mfa", "cvv", "cvc"
+        ]
+        return terms.contains { metadata.contains($0) }
+    }
+
     private static func findAncestorWindow(of element: AXUIElement) -> AXUIElement? {
         var current: AXUIElement? = element
         var depth = 0
         while let node = current, depth < 12 {
             let role = AXCaretHelper.stringValue(for: kAXRoleAttribute as CFString, on: node)
             if role == kAXWindowRole as String {
+                return node
+            }
+            current = AXCaretHelper.parentElement(of: node)
+            depth += 1
+        }
+        return nil
+    }
+
+    private static func findAncestorWebArea(of element: AXUIElement) -> AXUIElement? {
+        var current: AXUIElement? = element
+        var depth = 0
+        while let node = current, depth < 12 {
+            let role = AXCaretHelper.stringValue(for: kAXRoleAttribute as CFString, on: node)
+            if role == "AXWebArea" {
                 return node
             }
             current = AXCaretHelper.parentElement(of: node)

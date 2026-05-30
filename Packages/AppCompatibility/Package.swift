@@ -17,6 +17,10 @@ let package = Package(
             dependencies: [
                 .product(name: "AutocompleteCore", package: "AutocompleteCore")
             ]
+        ),
+        .testTarget(
+            name: "AppCompatibilityTests",
+            dependencies: ["AppCompatibility"]
         )
     ]
 )

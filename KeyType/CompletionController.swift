@@ -152,9 +152,10 @@ final class CompletionController {
 
         let context = snapshot.context
         latestContext = context
-        let policy = compatibilityStore.policy(for: context.target)
+        let policy = compatibilityStore.policy(for: context)
         guard policy.isCompletionEnabled,
-              policy.allowsMidLineCompletion || context.afterCursor.isEmpty
+              policy.allowsMidLineCompletion || context.afterCursor.isEmpty,
+              policy.allowsTabAcceptance
         else { reset(); return }
 
         // No usable prefix → don't generate (Cotypist's `emptyPrompt` gate). A base model given an
@@ -196,7 +197,7 @@ final class CompletionController {
             context: context,
             prompt: promptResult.prompt,
             requiredPrefixBytes: requiredPrefixBytes,
-            mode: .prose,
+            mode: policy.completionMode,
             maxCompletionTokens: 4 + (healSlack > 0 ? 2 : 0),
             maxDisplayWidth: 60 + healSlack
         )
@@ -312,7 +313,7 @@ final class CompletionController {
     /// True when there is a visible completion the user is allowed to accept with Tab.
     var canAcceptCompletion: Bool {
         guard visibleCandidate != nil, let context = latestContext ?? anchorContext else { return false }
-        return compatibilityStore.policy(for: context.target).allowsTabAcceptance
+        return compatibilityStore.policy(for: context).allowsTabAcceptance
     }
 
     /// Tab: insert the next word of the suggestion. The induced text change regenerates a fresh

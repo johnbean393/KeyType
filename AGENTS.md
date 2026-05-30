@@ -1,0 +1,25 @@
+# KeyType — Always-On Rules
+
+KeyType is an open-source, on-device, system-wide macOS tab-autocomplete utility — a clean-room
+alternative to the closed-source app *Cotypist*. **Read `docs/00-overview.md` first**; the full
+brief is `docs/00`–`05`. Log non-obvious decisions in `docs/05-decisions.md`.
+
+## Product principles
+- Narrow the problem: predict a *short* continuation at the cursor, then discard anything not
+  immediately insertable. Default `maxCompletionTokens` = 4.
+- **Prefer suppression to a wrong suggestion** — showing nothing beats a bad completion.
+- Base-model continuation: the prompt ends exactly at the cursor (not chat/instruct).
+- On-device & private: clipboard, screen/OCR, and writing history are local and opt-in.
+
+## Architecture & workflow
+- Target: macOS 15+, Swift. Logic lives in local SwiftPM packages under `Packages/`.
+  **Extend the existing module graph; do not rewrite it.** Cross-module types go in
+  `AutocompleteCore` (keep it free of AppKit/llama deps).
+- Reuse the proven caret/overlay code from the sibling `Red Dot` project for context capture and
+  the overlay window — port, don't reinvent (see `docs/01`).
+- Keep concrete wiring in the app target (`KeyTypeModuleGraph.swift`); keep packages decoupled.
+- For every package you touch: add/update tests and keep `swift build` + `swift test` green.
+- Generation must be cancellable (a newer keystroke cancels in-flight work); keep model decode off
+  the main actor; AX + overlay code is `@MainActor`.
+- Work one milestone at a time (`docs/04-roadmap.md`). **Only create git commits when the human
+  explicitly asks.**

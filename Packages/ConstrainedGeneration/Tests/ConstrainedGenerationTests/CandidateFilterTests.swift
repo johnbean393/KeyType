@@ -16,13 +16,19 @@ final class CandidateFilterTests: XCTestCase {
         maxCompletionTokens: Int = 4,
         maxDisplayWidth: Int = 80,
         language: String? = nil,
-        target: AppTarget = CandidateFilterTests.target
+        target: AppTarget = CandidateFilterTests.target,
+        placeholder: String? = nil,
+        labels: [String] = [],
+        traits: TextFieldTraits = TextFieldTraits()
     ) -> CompletionRequest {
         let context = TextFieldContext(
             beforeCursor: beforeCursor,
             afterCursor: afterCursor,
             target: target,
-            detectedLanguage: language
+            placeholder: placeholder,
+            labels: labels,
+            detectedLanguage: language,
+            traits: traits
         )
         return CompletionRequest(
             context: context,
@@ -79,6 +85,17 @@ final class CandidateFilterTests: XCTestCase {
         ])
         let filter = DefaultCandidateFilter(compatibilityStore: store)
         XCTAssertEqual(filter.suppressionReason(for: candidate(" world"), request: request()), .tabShortcutsDisabled)
+    }
+
+    func testSecureFieldExcluded() {
+        let filter = DefaultCandidateFilter(compatibilityStore: AppCompatibilityStore(overrides: []))
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate(" word"),
+                request: request(placeholder: "Password", traits: TextFieldTraits(isSecureTextEntry: true))
+            ),
+            .secureFieldExcluded
+        )
     }
 
     // MARK: - Content gates

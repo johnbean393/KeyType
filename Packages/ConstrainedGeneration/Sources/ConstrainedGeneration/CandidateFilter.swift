@@ -46,7 +46,8 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         // 1. App / policy gates — cheap and decisive. A field where completion is off, mid-line is
         //    disallowed (and text follows the cursor), or Tab acceptance is disabled (the only way
         //    to accept) should show nothing at all.
-        let policy = compatibilityStore.policy(for: request.context.target)
+        let policy = compatibilityStore.policy(for: request.context)
+        if policy.excludesSecureField { return .secureFieldExcluded }
         if !policy.isCompletionEnabled { return .completionsDisabled }
         if !policy.allowsMidLineCompletion, !request.context.afterCursor.isEmpty {
             return .midLineCompletionDisabled

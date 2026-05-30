@@ -32,13 +32,24 @@ public final class GhostTextOverlayWindow {
         hosting.rootView = GhostTextView(text: text, font: font, isRightToLeft: placement.isRightToLeft, textColor: textColor)
 
         let caret = placement.cursorRect
-        let measuredWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 2
-        let height = max(caret.height, ceil(font.ascender - font.descender))
+        let lineHeight = max(caret.height, ceil(font.ascender - font.descender))
+        let singleLineWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width) + 2
+        let maxWidth = Self.availableTextWidth(for: placement, singleLineWidth: singleLineWidth)
+        let measuredWidth = min(singleLineWidth, maxWidth)
+        let height = Self.measuredTextHeight(text, font: font, width: measuredWidth, minimumHeight: lineHeight)
 
-        let x: CGFloat = placement.isRightToLeft
-            ? caret.minX - measuredWidth
-            : caret.maxX
-        let y = caret.minY + (caret.height - height) / 2 - CGFloat(placement.verticalOffset)
+        let x: CGFloat
+        let y: CGFloat
+        switch placement.mode {
+        case .mirror:
+            x = placement.isRightToLeft ? caret.maxX - measuredWidth : caret.minX
+            y = caret.maxY + 2 - CGFloat(placement.verticalOffset)
+        default:
+            x = placement.isRightToLeft
+                ? caret.minX - measuredWidth
+                : caret.maxX
+            y = caret.minY + (caret.height - height) / 2 - CGFloat(placement.verticalOffset)
+        }
 
         window.setFrame(
             CGRect(x: x, y: y, width: measuredWidth, height: height),
@@ -76,6 +87,40 @@ public final class GhostTextOverlayWindow {
         panel.isReleasedWhenClosed = false
 
         return panel
+    }
+
+    static func availableTextWidth(for placement: OverlayPlacement, singleLineWidth: CGFloat) -> CGFloat {
+        guard let field = placement.fieldRect, !field.isEmpty else {
+            return max(1, singleLineWidth)
+        }
+
+        let caret = placement.cursorRect
+        let remaining: CGFloat
+        switch placement.mode {
+        case .mirror:
+            remaining = field.width
+        default:
+            remaining = placement.isRightToLeft
+                ? caret.minX - field.minX
+                : field.maxX - caret.maxX
+        }
+
+        return max(1, min(singleLineWidth, floor(remaining)))
+    }
+
+    private static func measuredTextHeight(
+        _ text: String,
+        font: NSFont,
+        width: CGFloat,
+        minimumHeight: CGFloat
+    ) -> CGFloat {
+        guard width > 0 else { return minimumHeight }
+        let rect = (text as NSString).boundingRect(
+            with: CGSize(width: width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font]
+        )
+        return max(minimumHeight, ceil(rect.height))
     }
 }
 

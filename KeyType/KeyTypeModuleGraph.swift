@@ -110,7 +110,7 @@ enum KeyTypeModuleGraph {
         screenText: String? = nil,
         mode: PromptTemplateMode = .baseContinuation
     ) -> PromptBuildResult {
-        let policy = compatibilityStore.policy(for: context.target)
+        let policy = compatibilityStore.policy(for: context)
         let query = WritingHistoryQuery(
             bundleIdentifier: context.target.bundleIdentifier,
             domain: context.target.domain,

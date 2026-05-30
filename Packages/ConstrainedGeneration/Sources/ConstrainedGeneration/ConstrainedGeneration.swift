@@ -41,9 +41,10 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
     }
 
     public func completions(for request: CompletionRequest) async throws -> [CompletionCandidate] {
-        let policy = compatibilityStore.policy(for: request.context.target)
+        let policy = compatibilityStore.policy(for: request.context)
         guard policy.isCompletionEnabled else { return [] }
         guard policy.allowsMidLineCompletion || request.context.afterCursor.isEmpty else { return [] }
+        guard policy.allowsTabAcceptance else { return [] }
 
         let (basePrompt, promptTail) = try makeBasePrompt(for: request)
 
