@@ -21,6 +21,34 @@ using a **local LLM**, and offers it as ghost text that you accept with **Tab**.
 
 It is a MIT-licensed alternative to the closed-source app *Cotypist*.
 
+## Getting started
+
+### Installation
+
+1. Download the latest release from the [releases](https://github.com/johnbean393/KeyType/releases) page
+2. Double-click the downloaded `KeyType.dmg` file
+3. Drag the `KeyType` app into `Applications`
+4. Open `KeyType` and complete the onboarding
+
+### Development
+
+Requirements: macOS 14+ and a recent version of Xcode.
+
+```sh
+git clone https://github.com/johnbean393/KeyType.git
+cd KeyType
+open KeyType.xcworkspace
+```
+
+Build/run the **KeyType** scheme.
+
+Per-package builds:
+
+```sh
+swift build --package-path Packages/AutocompleteCore
+swift test  --package-path Packages/Prompting
+```
+
 ## Repo layout
 
 ```
@@ -40,37 +68,6 @@ KeyType/
     ├── CompletionUI/             overlay rendering (inline ghost text)
     ├── TextInsertion/            pasteboard / keystroke insertion strategies
     └── AppCompatibility/         per-app / per-domain override policy
-```
-
-`AutocompleteCore` is the dependency-free shared contract; every other package depends on it.
-The app target (`KeyType/`) is the only wiring layer.
-
-## Getting started
-
-### Installation
-
-1. Download the latest release from the [releases](https://github.com/johnbean393/KeyType/releases) page
-2. Double-click the downloaded `KeyType.dmg` file
-3. Drag the `KeyType` app into `Applications`
-4. Open `KeyType` and complete the onboarding
-
-### Development
-
-Requirements: macOS 14+ and a recent version of Xcode.
-
-```sh
-git clone <this-repo>
-cd KeyType
-open KeyType.xcworkspace
-```
-
-Build/run the **KeyType** scheme.
-
-Per-package builds:
-
-```sh
-swift build --package-path Packages/AutocompleteCore
-swift test  --package-path Packages/Prompting
 ```
 
 ## License
