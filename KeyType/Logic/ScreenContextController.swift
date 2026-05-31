@@ -116,7 +116,11 @@ final class ScreenContextController {
 
     private func capture(for snapshot: FocusedFieldSnapshot) {
         guard let pid = frontmostPID(matching: snapshot.context.target.bundleIdentifier) else { return }
-        engine.refresh(pid: pid)
+        // The field's own text is already captured via AX; pass it so it's stripped from the OCR and
+        // screen context carries only the *surrounding* on-screen text.
+        let context = snapshot.context
+        let fieldText = context.beforeCursor + context.afterCursor
+        engine.refresh(pid: pid, fieldText: fieldText)
     }
 
     // MARK: - Eligibility

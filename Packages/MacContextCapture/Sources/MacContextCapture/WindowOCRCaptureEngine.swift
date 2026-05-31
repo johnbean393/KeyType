@@ -17,8 +17,10 @@ import ScreenCaptureKit
 /// with a fake (the real implementation needs a live display + Screen Recording permission).
 public protocol ScreenWindowTextCapturing: Sendable {
     /// Capture the focused window for `pid` and return its OCR'd text, or `nil` if there's no
-    /// suitable window / no recognised text.
-    func captureWindowText(pid: pid_t, maxLines: Int, maxChars: Int) async throws -> String?
+    /// suitable window / no recognised text. `fieldText` is the focused field's own text (already
+    /// captured via Accessibility); lines matching it are stripped so screen context doesn't
+    /// duplicate the field.
+    func captureWindowText(pid: pid_t, fieldText: String, maxLines: Int, maxChars: Int) async throws -> String?
 }
 
 /// `ScreenTextProviding` cache fed by an out-of-band capturer. Main-actor isolated: the completion
@@ -46,16 +48,22 @@ public final class WindowOCRCaptureEngine: ScreenTextProviding {
         self.maxChars = maxChars
     }
 
-    /// Kick off a fresh capture for `pid`, superseding any in-flight one. Fire-and-forget: the
-    /// cache updates when the capture completes. A failed/empty capture clears the cache so a stale
-    /// reading can't outlive the window it came from.
-    public func refresh(pid: pid_t) {
+    /// Kick off a fresh capture for `pid`, superseding any in-flight one. `fieldText` is the focused
+    /// field's own text, stripped from the OCR so screen context doesn't echo it. Fire-and-forget:
+    /// the cache updates when the capture completes. A failed/empty capture clears the cache so a
+    /// stale reading can't outlive the window it came from.
+    public func refresh(pid: pid_t, fieldText: String) {
         inFlight?.cancel()
         let capturer = self.capturer
         let maxLines = self.maxLines
         let maxChars = self.maxChars
         inFlight = Task { [weak self] in
-            let text = try? await capturer.captureWindowText(pid: pid, maxLines: maxLines, maxChars: maxChars)
+            let text = try? await capturer.captureWindowText(
+                pid: pid,
+                fieldText: fieldText,
+                maxLines: maxLines,
+                maxChars: maxChars
+            )
             guard let self, !Task.isCancelled else { return }
             self.latestScreenText = (text?.isEmpty == false) ? text : nil
         }
@@ -81,7 +89,7 @@ public struct ScreenCaptureKitWindowTextCapturer: ScreenWindowTextCapturing {
         self.maxCaptureDimension = maxCaptureDimension
     }
 
-    public func captureWindowText(pid: pid_t, maxLines: Int, maxChars: Int) async throws -> String? {
+    public func captureWindowText(pid: pid_t, fieldText: String, maxLines: Int, maxChars: Int) async throws -> String? {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let candidates = content.windows.map(ScreenWindowCandidate.init(window:))
         guard let windowID = ScreenWindowSelector.selectWindowID(forPID: pid, from: candidates),
@@ -100,7 +108,8 @@ public struct ScreenCaptureKitWindowTextCapturer: ScreenWindowTextCapturing {
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
 
         let lines = try await ScreenTextOCR.recognizeLines(in: image)
-        let text = ScreenTextOCR.cleanedText(fromLines: lines, maxLines: maxLines, maxChars: maxChars)
+        let withoutField = ScreenTextOCR.linesExcludingFieldText(lines, fieldText: fieldText)
+        let text = ScreenTextOCR.cleanedText(fromLines: withoutField, maxLines: maxLines, maxChars: maxChars)
         return text.isEmpty ? nil : text
     }
 }

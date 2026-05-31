@@ -1619,9 +1619,13 @@ text. Both are now closed:
     already imports AppKit/CoreGraphics), so no `.xcodeproj` package-product changes were needed;
     ScreenCaptureKit/Vision are auto-linked system frameworks. App Sandbox is already disabled
     (ADR-005) and Screen Recording is handled by TCC, so no new Info.plist usage key.
-  - Window OCR overlaps somewhat with the field's own AX-captured text; acceptable for v1. A later
-    refinement could subtract lines matching `beforeCursor`/`afterCursor`. Raw OCR is capped (40
-    lines / 2000 chars) before the section's token budget trims it further.
+  - The field's own text is already captured verbatim via AX, so OCR lines matching it are stripped
+    before assembly (`ScreenTextOCR.linesExcludingFieldText`): whitespace-/case-normalised containment
+    against `beforeCursor + afterCursor`, dropping any recognised line whose normalised form appears in
+    the normalised field text (soft-wrapped field segments are still contiguous substrings, so they're
+    caught). Short lines (< 4 normalised chars) are kept to avoid over-stripping a coincidental common
+    word. Screen context therefore carries the *surrounding* on-screen text, not an echo of the field.
+    Raw OCR is capped (40 lines / 2000 chars) before the section's token budget trims it further.
   - New tests cover the pure pieces (`ScreenWindowSelectorTests`, `ScreenTextOCRTests`) and the
     engine's caching/clear via a fake capturer (`WindowOCRCaptureEngineTests`), plus the provider
     stubs in `AutocompleteCore` (`ScreenTextProvidingTests`). `swift build`/`swift test` stay green

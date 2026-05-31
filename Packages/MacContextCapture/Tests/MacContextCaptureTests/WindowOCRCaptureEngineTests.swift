@@ -5,7 +5,7 @@ import XCTest
 final class WindowOCRCaptureEngineTests: XCTestCase {
     private struct FakeCapturer: ScreenWindowTextCapturing {
         let result: String?
-        func captureWindowText(pid: pid_t, maxLines: Int, maxChars: Int) async throws -> String? {
+        func captureWindowText(pid: pid_t, fieldText: String, maxLines: Int, maxChars: Int) async throws -> String? {
             result
         }
     }
@@ -20,14 +20,14 @@ final class WindowOCRCaptureEngineTests: XCTestCase {
 
     func testRefreshPopulatesCache() async {
         let engine = WindowOCRCaptureEngine(capturer: FakeCapturer(result: "hello\nworld"))
-        engine.refresh(pid: 1234)
+        engine.refresh(pid: 1234, fieldText: "")
         await waitUntil { engine.latestScreenText != nil }
         XCTAssertEqual(engine.latestScreenText, "hello\nworld")
     }
 
     func testEmptyResultLeavesCacheNil() async {
         let engine = WindowOCRCaptureEngine(capturer: FakeCapturer(result: ""))
-        engine.refresh(pid: 1234)
+        engine.refresh(pid: 1234, fieldText: "")
         await Task.yield()
         await Task.yield()
         XCTAssertNil(engine.latestScreenText)
@@ -35,7 +35,7 @@ final class WindowOCRCaptureEngineTests: XCTestCase {
 
     func testClearEmptiesCache() async {
         let engine = WindowOCRCaptureEngine(capturer: FakeCapturer(result: "cached text"))
-        engine.refresh(pid: 1234)
+        engine.refresh(pid: 1234, fieldText: "")
         await waitUntil { engine.latestScreenText != nil }
         engine.clear()
         XCTAssertNil(engine.latestScreenText)

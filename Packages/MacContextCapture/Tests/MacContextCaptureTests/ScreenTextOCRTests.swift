@@ -29,4 +29,38 @@ final class ScreenTextOCRTests: XCTestCase {
     func testEmptyInputProducesEmptyString() {
         XCTAssertEqual(ScreenTextOCR.cleanedText(fromLines: [], maxLines: 40, maxChars: 2000), "")
     }
+
+    // MARK: - Field-text stripping
+
+    func testStripsLinesThatAreTheFieldText() {
+        let lines = ["Inbox", "Hi team, here is the plan", "Sent 2m ago"]
+        let result = ScreenTextOCR.linesExcludingFieldText(lines, fieldText: "Hi team, here is the plan for tomorrow")
+        XCTAssertEqual(result, ["Inbox", "Sent 2m ago"])
+    }
+
+    func testStripsSoftWrappedFieldSegments() {
+        // The field text has no newline (soft-wrapped on screen); each OCR visual line is still a
+        // contiguous substring, so both should be dropped.
+        let lines = ["the quick brown fox", "jumps over the lazy dog", "Toolbar"]
+        let field = "the quick brown fox jumps over the lazy dog"
+        let result = ScreenTextOCR.linesExcludingFieldText(lines, fieldText: field)
+        XCTAssertEqual(result, ["Toolbar"])
+    }
+
+    func testMatchingIsWhitespaceAndCaseInsensitive() {
+        let lines = ["  HELLO   World  "]
+        let result = ScreenTextOCR.linesExcludingFieldText(lines, fieldText: "hello world")
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testKeepsShortLinesEvenIfPresentInField() {
+        let lines = ["OK", "Surrounding context line"]
+        let result = ScreenTextOCR.linesExcludingFieldText(lines, fieldText: "OK")
+        XCTAssertEqual(result, ["OK", "Surrounding context line"])
+    }
+
+    func testEmptyFieldTextKeepsEverything() {
+        let lines = ["one", "two"]
+        XCTAssertEqual(ScreenTextOCR.linesExcludingFieldText(lines, fieldText: ""), ["one", "two"])
+    }
 }
