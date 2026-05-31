@@ -1,3 +1,7 @@
+<p align="center" width="100%">
+<img width="120" alt="KeyType app icon" src="https://raw.githubusercontent.com/johnbean393/KeyType/main/.github/images/app-icon.png">
+</p>
+
 <h1 align="center">KeyType</h1>
 
 <p align="center">
@@ -71,4 +75,4 @@ swift test  --package-path Packages/Prompting
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see `[LICENSE](LICENSE)`.
