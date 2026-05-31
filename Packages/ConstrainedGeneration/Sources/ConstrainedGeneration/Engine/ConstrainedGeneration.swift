@@ -152,7 +152,19 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
             finalizeIfValid(branch, into: &finalized)
         }
 
-        return makeCandidates(from: finalized, mode: request.mode)
+        // Drop mid-line / FIM branches that merely reproduce the text already after the caret —
+        // accepting one would duplicate the user's own suffix. Cheap to do on the finalised set, and
+        // it lets a non-duplicative lower-ranked branch surface instead of the suffix copy. The
+        // `DefaultCandidateFilter` re-checks this as the documented last gate. See ADR-049.
+        let surviving = finalized.filter {
+            !SuffixOverlapGuard.duplicatesSuffix(
+                completion: $0.text,
+                beforeCursor: request.context.beforeCursor,
+                afterCursor: request.context.afterCursor
+            )
+        }
+
+        return makeCandidates(from: surviving, mode: request.mode)
     }
 
     // MARK: - Prompt assembly

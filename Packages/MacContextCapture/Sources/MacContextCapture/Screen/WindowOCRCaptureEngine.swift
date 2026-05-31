@@ -108,7 +108,10 @@ public struct ScreenCaptureKitWindowTextCapturer: ScreenWindowTextCapturing {
         let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
 
         let lines = try await ScreenTextOCR.recognizeLines(in: image)
-        let withoutField = ScreenTextOCR.linesExcludingFieldText(lines, fieldText: fieldText)
+        // Drop corrupted/garbled recognitions before they can reach the prompt (the model otherwise
+        // parrots OCR noise like "Ilne wilh real 5ulfix"). See ADR-049.
+        let plausible = ScreenTextOCR.droppingCorruptedLines(lines)
+        let withoutField = ScreenTextOCR.linesExcludingFieldText(plausible, fieldText: fieldText)
         let text = ScreenTextOCR.cleanedText(fromLines: withoutField, maxLines: maxLines, maxChars: maxChars)
         return text.isEmpty ? nil : text
     }

@@ -180,6 +180,47 @@ final class CandidateFilterTests: XCTestCase {
         XCTAssertNil(filter.suppressionReason(for: candidate(" cell."), request: request()))
     }
 
+    // MARK: - Suffix-duplication net
+
+    func testSuppressesCompletionDuplicatingAfterCursor() {
+        let filter = DefaultCandidateFilter()
+        // Mid-line caret: the model copies the text already after the cursor.
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate("performance to the RTX 5070, so it's"),
+                request: request(
+                    beforeCursor: "This GPU has a similar level of ",
+                    afterCursor: "performance to the RTX 5070, so it's close to a mid-range GPU."
+                )
+            ),
+            .duplicatesAfterCursor
+        )
+    }
+
+    func testSuppressesMidWordSuffixCopyWithGarbagePrefix() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate("**formance to the RTX 5070, so it's"),
+                request: request(
+                    beforeCursor: "This GPU has a similar level of p",
+                    afterCursor: "erformance to the RTX 5070, so it's close to a mid-range GPU."
+                )
+            ),
+            .duplicatesAfterCursor
+        )
+    }
+
+    func testKeepsGenuineMidLineCompletion() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(
+                for: candidate("like"),
+                request: request(beforeCursor: "I really ", afterCursor: "this idea is great")
+            )
+        )
+    }
+
     // MARK: - Typo net
 
     /// A recogniser that only accepts an explicit allow-list, mirroring the conservative

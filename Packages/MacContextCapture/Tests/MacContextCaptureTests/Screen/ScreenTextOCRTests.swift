@@ -63,4 +63,36 @@ final class ScreenTextOCRTests: XCTestCase {
         let lines = ["one", "two"]
         XCTAssertEqual(ScreenTextOCR.linesExcludingFieldText(lines, fieldText: ""), ["one", "two"])
     }
+
+    // MARK: - Corruption guard
+
+    func testDropsLinesWithReplacementCharacter() {
+        let lines = ["A clean line of text", "garb\u{FFFD}led recognition here"]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), ["A clean line of text"])
+    }
+
+    func testDropsSymbolHeavyLines() {
+        let lines = ["Subject: schedule", "▮▮ ◊◊ ╳╳ ¶¶ §§ ‡‡"]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), ["Subject: schedule"])
+    }
+
+    func testKeepsOrdinaryProse() {
+        let lines = ["This GPU has a similar level of performance to the RTX 5070, so it's close."]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), lines)
+    }
+
+    func testKeepsTechnicalTextWithModelNamesAndNumbers() {
+        // Model names, version numbers, hyphenation, and code-ish punctuation must NOT be flagged.
+        let lines = [
+            "Nvidia is about to launch their N1X SoC.",
+            "a 20-core MediaTek GPU and a 10-core Nvidia GPU",
+            "let x = foo(bar) + baz[0] // 50% done"
+        ]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), lines)
+    }
+
+    func testKeepsBulletedListItems() {
+        let lines = ["• First item", "• Second item"]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), lines)
+    }
 }

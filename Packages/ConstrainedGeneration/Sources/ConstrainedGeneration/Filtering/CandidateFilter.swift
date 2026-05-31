@@ -79,7 +79,18 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         //    insertable as an inline completion.
         if !Self.isInsertionSafe(candidate.text) { return .insertionUnsafe }
 
-        // 7. Final typo net (the in-beam guard of ADR-015 is the primary defence).
+        // 7. Suffix-duplication net (the engine drops these too; this is the documented last gate).
+        //    A mid-line / FIM completion that just reproduces the text already after the caret would
+        //    duplicate the user's own words on accept — suppress it. See ADR-049.
+        if SuffixOverlapGuard.duplicatesSuffix(
+            completion: candidate.text,
+            beforeCursor: request.context.beforeCursor,
+            afterCursor: request.context.afterCursor
+        ) {
+            return .duplicatesAfterCursor
+        }
+
+        // 8. Final typo net (the in-beam guard of ADR-015 is the primary defence).
         if looksLikeCurrentWordTypo(candidate: candidate, request: request) {
             return .currentWordLooksLikeTypo
         }

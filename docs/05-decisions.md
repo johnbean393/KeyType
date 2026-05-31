@@ -1967,6 +1967,40 @@ text. Both are now closed:
   inline and capsule forms as the caret moves to/from the end of a line. Tab/Shift+Tab acceptance and
   the live shrink-as-you-type anchor are unaffected (only the presentation layer changed).
 
+## ADR-049 — Suppress suffix-duplicating completions; guard against corrupted OCR context
+
+- Date: 2026-05-31
+- Status: accepted
+- Context: A `predictions.log` review of mid-line completions showed two quality defects. (1) On a
+  small model, fill-in-the-middle decoding routinely degenerates into **copying the suffix** back
+  out as the "middle": with the caret at "…level of per|formance to the RTX 5070…" the model emitted
+  "formance to the RTX 5070, so it's" — exactly the text already after the caret (often with a stray
+  leading `**`/`•`). Accepting it duplicates the user's own words; nothing in the pipeline caught it.
+  (2) The opt-in screen-OCR context fed **corrupted recognitions** into the prompt ("Ilne wilh real
+  5ulfix 4 capsul•"), which the base model then parroted.
+- Decision:
+  - **Suffix-overlap suppression.** Added `SuffixOverlapGuard` (AutocompleteCore) which, comparing on
+    alphanumerics only (so leading garbage glyphs don't defeat it), flags a completion that
+    reproduces the head of `afterCursor` — both the boundary-aligned case (suffix starts with the
+    completion) and the mid-word case (the caret split a word, so the copy starts a few chars into
+    the suffix, bounded by the straddled word remainder). It is applied in the engine (drops such
+    branches from the finalised set so a non-duplicative branch can surface) and re-checked in
+    `DefaultCandidateFilter` as the documented last gate, with a new
+    `SuppressionReason.duplicatesAfterCursor`. Conservative: never fires without a suffix or below a
+    minimum overlap, so ordinary end-of-line continuations are untouched. Aligns with "prefer
+    suppression to a wrong suggestion".
+  - **Corrupted-OCR guard.** `ScreenTextOCR.recognizeLines` now drops Vision candidates below a
+    confidence threshold (the primary signal of a mangled recognition), and a new
+    `ScreenTextOCR.droppingCorruptedLines` removes lines with replacement characters, high symbol
+    density, or too few real word characters — tuned to leave prose, model names, version numbers,
+    and code punctuation intact. Wired into the capturer before field-text stripping.
+- Consequences: Mid-line FIM no longer offers (or inserts) duplicates of the existing suffix — in the
+  common "caret inside an already-complete sentence" case it now shows nothing, which is the intended
+  behaviour. OCR context that reaches the prompt is higher quality; the cost is occasionally dropping
+  low-confidence-but-real lines, which is acceptable for an optional context source. All affected
+  package suites (AutocompleteCore, ConstrainedGeneration, MacContextCapture, CompletionUI) are green
+  in release.
+
 ## ADR-049 — The separator leads the next word, not the previous one
 
 - Date: 2026-05-31
