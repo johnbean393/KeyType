@@ -27,6 +27,7 @@ struct MenuBarLabel: View {
 struct MenuBarView: View {
     @Environment(PermissionsManager.self) private var permissions
     @Environment(CompletionController.self) private var completion
+    @Environment(UpdaterController.self) private var updater
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -49,6 +50,12 @@ struct MenuBarView: View {
                 openWindow(id: AppDelegate.settingsWindowID)
             }
             .keyboardShortcut(",")
+
+            Button("Check for Updates…") {
+                NSApp.activate(ignoringOtherApps: true)
+                updater.checkForUpdates()
+            }
+            .disabled(!updater.canCheckForUpdates)
 
             Divider()
 

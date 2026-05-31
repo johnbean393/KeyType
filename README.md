@@ -1,31 +1,21 @@
-# KeyType
+<h1 align="center">KeyType</h1>
+
+<p align="center">
+An open-source, on-device, system-wide tab-autocomplete utility for macOS.
+</p>
+
+<p align="center">
+  <a href="https://github.com/johnbean393/KeyType/releases/latest">
+    <img src="https://img.shields.io/badge/Download_DMG-Latest_Release-blue?style=for-the-badge&logo=apple&logoColor=white" alt="Download DMG">
+  </a>
+</p>
 
 **KeyType** is an open-source, on-device, system-wide **tab-autocomplete utility for macOS**.
+
 It watches the focused text field across any app, predicts a short continuation at the cursor
 using a **local LLM**, and offers it as ghost text that you accept with **Tab**.
 
-It is a clean-room, MIT-licensed alternative to the closed-source app *Cotypist*.
-
-> **Status:** built and running. The full pipeline — context capture, local model runtime,
-> constrained decoding, overlay, and Tab insertion — is implemented and works on device. Work is
-> now maintenance and iteration (see the [improvement backlog](docs/04-roadmap.md#improvement-backlog)).
-
-## Read this first
-
-The authoritative brief lives in [`docs/`](docs/). **Start with
-[`docs/00-overview.md`](docs/00-overview.md)** and read across:
-
-| Doc | Contents |
-| --- | --- |
-| [`docs/00-overview.md`](docs/00-overview.md) | What/why, principles, repo layout, what's shipped |
-| [`docs/01-architecture.md`](docs/01-architecture.md) | Module graph, responsibilities, data flow |
-| [`docs/02-prompting.md`](docs/02-prompting.md) | Prompt sections, budgeting, base-vs-chat, FIM |
-| [`docs/03-token-profiles.md`](docs/03-token-profiles.md) | ACPF binary format, builder, runtime contract |
-| [`docs/04-roadmap.md`](docs/04-roadmap.md) | Completed-milestone archive + improvement backlog |
-| [`docs/05-decisions.md`](docs/05-decisions.md) | Append-only ADR-style decision log (indexed) |
-| [`docs/06-quality-playbook.md`](docs/06-quality-playbook.md) | Triaging bad/missing completions |
-| [`docs/07-performance.md`](docs/07-performance.md) | Latency budget + profiling methodology |
-| [`docs/08-app-compatibility.md`](docs/08-app-compatibility.md) | Adding a per-app/domain override |
+It is a MIT-licensed alternative to the closed-source app *Cotypist*.
 
 ## Repo layout
 
@@ -53,7 +43,16 @@ The app target (`KeyType/`) is the only wiring layer.
 
 ## Getting started
 
-Requirements: macOS 15+ and a recent Xcode (the project was created with Xcode 26.4).
+### Installation
+
+1. Download the latest release from the [releases](https://github.com/johnbean393/KeyType/releases) page
+2. Double-click the downloaded `KeyType.dmg` file
+3. Drag the `KeyType` app into `Applications`
+4. Open `KeyType` and complete the onboarding
+
+### Development
+
+Requirements: macOS 14+ and a recent version of Xcode.
 
 ```sh
 git clone <this-repo>
@@ -61,10 +60,7 @@ cd KeyType
 open KeyType.xcworkspace
 ```
 
-Build/run the **KeyType** scheme. KeyType is a background **menu-bar / agent app** — it does
-not show a dock icon. On first launch the onboarding window walks you through granting
-**Accessibility** permission (required so KeyType can read the focused text field) and,
-optionally, **Screen Recording** (for richer context capture).
+Build/run the **KeyType** scheme.
 
 Per-package builds:
 
@@ -72,17 +68,6 @@ Per-package builds:
 swift build --package-path Packages/AutocompleteCore
 swift test  --package-path Packages/Prompting
 ```
-
-## Contributing
-
-KeyType is a clean-room reconstruction; don't paste code from closed-source predecessors.
-- Pick up work from the [improvement backlog](docs/04-roadmap.md#improvement-backlog); make the
-  smallest change behind the existing protocols (extend the module graph, don't rewrite it).
-- Triage completion quality from the prediction log first ([`docs/06-quality-playbook.md`](docs/06-quality-playbook.md));
-  measure latency in a release build ([`docs/07-performance.md`](docs/07-performance.md)).
-- Keep `swift build` + `swift test` green for every package you touch.
-- Log non-obvious decisions in [`docs/05-decisions.md`](docs/05-decisions.md).
-- Commits happen only when the human asks.
 
 ## License
 

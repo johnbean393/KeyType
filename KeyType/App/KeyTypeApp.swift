@@ -18,6 +18,7 @@ struct KeyTypeApp: App {
                 .environment(appDelegate.permissions)
                 .environment(appDelegate.contextCapture)
                 .environment(appDelegate.completion)
+                .environment(appDelegate.updater)
         } label: {
             MenuBarLabel()
         }

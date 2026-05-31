@@ -22,10 +22,13 @@ public enum SuffixOverlapGuard {
     /// `true` when inserting `completion` at the caret would just duplicate text already present in
     /// `afterCursor`.
     ///
-    /// Two duplication shapes are caught:
+    /// Three duplication shapes are caught:
     /// 1. **Boundary-aligned** — the completion reproduces the head of the suffix verbatim
     ///    (`afterCursor` normalised starts with the completion normalised).
-    /// 2. **Mid-word** — the caret split a word, so the suffix opens with the remainder of that
+    /// 2. **Suffix-contained** — the completion *contains* the whole upcoming suffix (e.g. the
+    ///    completion finishes the straddled word and then re-types the rest: "ithub repo for KeyType."
+    ///    when the suffix is "hub repo for KeyType."). Inserting it always duplicates that text.
+    /// 3. **Mid-word** — the caret split a word, so the suffix opens with the remainder of that
     ///    word; the completion's copy of the downstream text then starts a few characters into the
     ///    suffix. The allowed start offset is bounded by that straddled word remainder, so this can
     ///    only fire when the caret is genuinely inside a word.
@@ -36,7 +39,8 @@ public enum SuffixOverlapGuard {
         completion: String,
         beforeCursor: String,
         afterCursor: String,
-        minimumOverlap: Int = 3
+        minimumOverlap: Int = 3,
+        minimumContainedOverlap: Int = 8
     ) -> Bool {
         let normalizedCompletion = normalizedAlphanumerics(completion)
         let normalizedSuffix = normalizedAlphanumerics(afterCursor)
@@ -47,7 +51,14 @@ public enum SuffixOverlapGuard {
         // 1. Boundary-aligned duplication.
         if normalizedSuffix.hasPrefix(normalizedCompletion) { return true }
 
-        // 2. Mid-word duplication. Only when the caret sits inside a word (the char before the caret
+        // 2. Suffix-contained duplication: the completion already includes the entire upcoming
+        //    suffix, so inserting it would re-type text the user already has. Requires a substantial
+        //    suffix so a short common run can't trip it.
+        if normalizedSuffix.count >= minimumContainedOverlap, normalizedCompletion.contains(normalizedSuffix) {
+            return true
+        }
+
+        // 3. Mid-word duplication. Only when the caret sits inside a word (the char before the caret
         //    and the char after it are both word characters) and the completion is substantial.
         guard endsInWordCharacter(beforeCursor), normalizedCompletion.count >= 6 else { return false }
         let straddleRemainder = normalizedAlphanumerics(leadingWordRun(afterCursor))

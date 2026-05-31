@@ -83,6 +83,12 @@ public enum ScreenTextOCR {
         guard !trimmed.isEmpty else { return true } // blank lines are dropped downstream
         if trimmed.unicodeScalars.contains("\u{FFFD}") { return false }
 
+        // Digit-substituted words ("qu81ity" for "quality", "h3llo") are a hallmark of OCR mangling
+        // and are exactly what the model parrots. Drop the line on any such token. Trailing/leading
+        // digit groups and ALL-CAPS+digit tokens are left alone, so "RTX 5070", "N1X", "utf8",
+        // "20-core", and "macOS15" all pass. See ADR-050.
+        if containsDigitSubstitutedWord(trimmed) { return false }
+
         var wordChars = 0
         var symbolChars = 0
         var total = 0
@@ -100,6 +106,28 @@ public enum ScreenTextOCR {
         if Double(symbolChars) / Double(total) > maxSymbolRatio { return false }
         if Double(wordChars) / Double(total) < minimumWordCharRatio { return false }
         return true
+    }
+
+    /// `true` when any token in `text` looks like a word with a digit substituted *inside* it — a
+    /// digit that has a lowercase letter somewhere before it and any letter somewhere after it
+    /// (e.g. "qu81ity", "h3llo"). This is the signature of OCR confusing letters for digits
+    /// (l→1, a→4/8, o→0, e→3, s→5). Trailing digits ("utf8", "v2"), leading digits ("3D", "5070"),
+    /// and ALL-CAPS model names ("N1X", "RTX5070") are deliberately *not* flagged.
+    static func containsDigitSubstitutedWord(_ text: String) -> Bool {
+        for token in text.split(whereSeparator: { !($0.isLetter || $0.isNumber) }) {
+            if isDigitSubstitutedWord(token) { return true }
+        }
+        return false
+    }
+
+    private static func isDigitSubstitutedWord(_ token: Substring) -> Bool {
+        let characters = Array(token)
+        for index in characters.indices where characters[index].isNumber {
+            let hasLowercaseBefore = characters[..<index].contains { $0.isLowercase }
+            let hasLetterAfter = characters[(index + 1)...].contains { $0.isLetter }
+            if hasLowercaseBefore && hasLetterAfter { return true }
+        }
+        return false
     }
 
     /// Drop OCR lines that are just the focused field's own text — that content is already captured

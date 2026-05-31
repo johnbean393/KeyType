@@ -25,6 +25,33 @@ final class SuffixOverlapGuardTests: XCTestCase {
         ))
     }
 
+    // MARK: - Suffix-contained duplication (completion re-types the suffix)
+
+    func testSuppressesCompletionContainingTheWholeSuffix() {
+        // Caret after "…create a Git"; afterCursor = "hub repo for KeyType.". The (stale) completion
+        // finishes the word and re-types the rest, so it contains the suffix verbatim.
+        XCTAssertTrue(duplicates(
+            "ithub repo for KeyType.",
+            before: "Assume I will create a Git",
+            after: "hub repo for KeyType."
+        ))
+    }
+
+    func testSuppressesCompletionContainingSuffixAtWordBoundary() {
+        // Field "…create a Git repo for KeyType." with the caret after the word "Git".
+        XCTAssertTrue(duplicates(
+            "ithub repo for KeyType.",
+            before: "Assume I will create a Git",
+            after: " repo for KeyType."
+        ))
+    }
+
+    func testKeepsCompletionThatContainsOnlyAShortSharedRun() {
+        // Suffix " to me" is below the contained-overlap floor, so a completion that happens to
+        // include it is not suppressed on that basis.
+        XCTAssertFalse(duplicates("send it to me", before: "Please ", after: " to me"))
+    }
+
     // MARK: - Mid-word duplication (caret inside a word)
 
     func testSuppressesMidWordCopyWithGarbagePrefix() {

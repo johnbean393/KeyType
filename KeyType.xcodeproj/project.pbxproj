@@ -23,6 +23,7 @@
 		4B5450012FC9600000000008 /* TextInsertion in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000018 /* TextInsertion */; };
 		4B5450012FC9600000000009 /* AppCompatibility in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000019 /* AppCompatibility */; };
 		4B5450012FC96000000000F0 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC96000000000F1 /* LaunchAtLogin */; };
+		4B5450012FC9600000000201 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000200 /* Sparkle */; };
 		4B5450012FC960000000000A /* KeyTypeModuleGraph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */; };
 		4B5450012FC9600000000030 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000031 /* AppDelegate.swift */; };
 		4B5450012FC9600000000032 /* PermissionsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000033 /* PermissionsManager.swift */; };
@@ -61,6 +62,7 @@
 		4B5450012FC96000000000CB /* PermissionGuidanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000CC /* PermissionGuidanceController.swift */; };
 		4B5450012FC96000000000CD /* ScreenFrameReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000CE /* ScreenFrameReader.swift */; };
 		4B5450012FC96000000000D1 /* KeyType.icon in Resources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000D0 /* KeyType.icon */; };
+		4B5450012FC9600000000211 /* UpdaterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000210 /* UpdaterController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -101,6 +103,7 @@
 		4B5450012FC9600000000044 /* FieldFontResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldFontResolver.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000046 /* SystemWordRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWordRecognizer.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000049 /* KeyType.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeyType.entitlements; sourceTree = "<group>"; };
+		4B5450012FC9600000000220 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		4B5450012FC9600000000054 /* PredictionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionLog.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000063 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingHistoryRecorder.swift; sourceTree = "<group>"; };
@@ -125,6 +128,7 @@
 		4B5450012FC96000000000CC /* PermissionGuidanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionGuidanceController.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000000CE /* ScreenFrameReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenFrameReader.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000000D0 /* KeyType.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = KeyType.icon; sourceTree = "<group>"; };
+		4B5450012FC9600000000210 /* UpdaterController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -134,6 +138,7 @@
 			files = (
 				4B5450012FC9600000000009 /* AppCompatibility in Frameworks */,
 				4B5450012FC96000000000F0 /* LaunchAtLogin in Frameworks */,
+				4B5450012FC9600000000201 /* Sparkle in Frameworks */,
 				4B5450012FC9600000000001 /* AutocompleteCore in Frameworks */,
 				4B5450012FC9600000000007 /* CompletionUI in Frameworks */,
 				4B5450012FC9600000000006 /* ConstrainedGeneration in Frameworks */,
@@ -193,6 +198,7 @@
 				20ECCAEE2FCBE7BF00005943 /* Views */,
 				20ECCAEF2FCBE7D700005943 /* Logic */,
 				4B5450012FC9600000000049 /* KeyType.entitlements */,
+				4B5450012FC9600000000220 /* Info.plist */,
 				4B5450012FC96000000000D0 /* KeyType.icon */,
 				20DD9A7A2FC95AB900BE1F8C /* Assets.xcassets */,
 			);
@@ -247,8 +253,17 @@
 				4B5450012FC96000000000C0 /* Permission */,
 				4B5450012FC9600000000103 /* Settings */,
 				4B5450012FC9600000000104 /* Telemetry */,
+				4B5450012FC9600000000212 /* Updates */,
 			);
 			path = Logic;
+			sourceTree = "<group>";
+		};
+		4B5450012FC9600000000212 /* Updates */ = {
+			isa = PBXGroup;
+			children = (
+				4B5450012FC9600000000210 /* UpdaterController.swift */,
+			);
+			path = Updates;
 			sourceTree = "<group>";
 		};
 		4B5450012FC9600000000100 /* Completion */ = {
@@ -387,6 +402,7 @@
 			packageProductDependencies = (
 				4B5450012FC9600000000019 /* AppCompatibility */,
 				4B5450012FC96000000000F1 /* LaunchAtLogin */,
+				4B5450012FC9600000000200 /* Sparkle */,
 				4B5450012FC9600000000011 /* AutocompleteCore */,
 				4B5450012FC9600000000017 /* CompletionUI */,
 				4B5450012FC9600000000016 /* ConstrainedGeneration */,
@@ -478,6 +494,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4B5450012FC96000000000F2 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */,
+				4B5450012FC9600000000202 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */,
 				4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */,
 				4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */,
@@ -559,6 +576,7 @@
 				4B5450012FC9600000000083 /* ModelSetupCoordinator.swift in Sources */,
 				4B5450012FC9600000000085 /* KeyRecorderView.swift in Sources */,
 				4B5450012FC960000000000A /* KeyTypeModuleGraph.swift in Sources */,
+				4B5450012FC9600000000211 /* UpdaterController.swift in Sources */,
 				20DD9A822FC95AB900BE1F8C /* KeyTypeApp.swift in Sources */,
 				4B5450012FC96000000000C1 /* PermissionKind.swift in Sources */,
 				4B5450012FC96000000000C3 /* PermissionHostApp.swift in Sources */,
@@ -738,10 +756,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KeyType/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -774,10 +790,8 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_LSUIElement = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KeyType/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -973,6 +987,14 @@
 				minimumVersion = 1.1.0;
 			};
 		};
+		4B5450012FC9600000000202 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -980,6 +1002,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4B5450012FC96000000000F2 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */;
 			productName = LaunchAtLogin;
+		};
+		4B5450012FC9600000000200 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000202 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
 		};
 		4B5450012FC9600000000011 /* AutocompleteCore */ = {
 			isa = XCSwiftPackageProductDependency;

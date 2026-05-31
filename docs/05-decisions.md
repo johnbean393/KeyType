@@ -74,6 +74,7 @@ row here.**
 | 048 | Mid-line (FIM) completions render in a capsule | ui |
 | 049 | Suppress suffix-duplicating completions; OCR guard | generation |
 | 050 | The separator leads the next word, not the previous one | insertion |
+| 051 | Release & distribution: Developer-ID DMG + Sparkle appcast | distribution |
 
 ---
 
@@ -2061,6 +2062,34 @@ text. Both are now closed:
   package suites (AutocompleteCore, ConstrainedGeneration, MacContextCapture, CompletionUI) are green
   in release.
 
+## ADR-050 — Catch suffix-containing duplicates and digit-substituted OCR words
+
+- Date: 2026-05-31
+- Status: accepted
+- Context: A follow-up `predictions.log` review surfaced two gaps left by ADR-049. (1) A mid-word
+  caret produced a completion that *finished the straddled word and then re-typed the rest of the
+  line* — e.g. caret at "…create a Git|hub repo for KeyType." with completion
+  "ithub repo for KeyType.". The completion is *longer* than the suffix (it prepends a word
+  completion), so ADR-049's prefix/offset checks missed it; it rendered as a stale-looking mid-text
+  capsule. (2) OCR still leaked digit-substituted words ("qu81ity" for "quality"), which the model
+  parroted — ADR-049's symbol/confidence guards don't flag all-alphanumeric mojibake, and letter-digit
+  mixes were deliberately spared to protect "RTX 5070"/"N1X".
+- Decision:
+  - **Suffix-contained duplication.** `SuffixOverlapGuard` now also suppresses a completion whose
+    normalised form *contains* the whole normalised suffix (above a minimum length). Inserting such a
+    completion always duplicates the existing suffix, so this is safe and covers the
+    "complete-the-word-then-retype-the-rest" shape.
+  - **Digit-substituted OCR words.** `ScreenTextOCR` now drops a line containing any token with a
+    digit *substituted inside a lowercase word* — a digit that has a lowercase letter before it and
+    any letter after it ("qu81ity", "h3llo"). Trailing digits ("utf8", "v2"), leading digits ("3D",
+    "5070"), hyphen-split units ("20-core"), and ALL-CAPS model names ("N1X", "RTX5070") are left
+    untouched, so legitimate technical text survives.
+- Consequences: Stale/duplicate mid-word completions no longer appear (they suppress to nothing), and
+  the most common OCR letter→digit corruption no longer reaches the prompt. The digit-substitution
+  rule can drop developer jargon like "k8s"/"i18n" from *surrounding screen context* (never from the
+  field's own AX text), an acceptable trade for an optional context source. Suites for the affected
+  packages are green in release; the app target builds.
+
 ## ADR-050 — The separator leads the next word, not the previous one
 
 - Date: 2026-05-31
@@ -2079,3 +2108,36 @@ text. Both are now closed:
   space-led word) rather than `["world", ", ", "today"]`. Insertion is unchanged in aggregate — the
   walk still reconstructs the full string and `acceptNextWord` loops `split` over the shrinking
   remainder via the anchor — only the boundary at which the separator is inserted moved by one unit.
+
+## ADR-051 — Release & distribution: Developer-ID DMG + Sparkle appcast
+
+- Date: 2026-05-31
+- Status: accepted
+- Context: KeyType ships outside the Mac App Store (App Sandbox is off and it links a dynamic
+  llama.cpp framework, ADR-005/007), so it had no way to deliver itself or push updates to users.
+  We needed a repeatable, scripted release and an in-app auto-update path that doesn't compromise
+  the on-device/private posture.
+- Decision: Distribute a Developer-ID-signed, notarized, stapled `.dmg` attached to a GitHub
+  release, and auto-update via **Sparkle 2** reading a signed appcast.
+  - Sparkle is added as a remote SwiftPM dependency on the app target only (the `Packages/*` graph
+    stays AppKit/Sparkle-free, per the module-graph rule). A small `@MainActor @Observable`
+    `UpdaterController` wraps `SPUStandardUpdaterController`; the menu bar gains a
+    "Check for Updates…" item. Scheduled background checks come for free.
+  - The EdDSA **public** key and the feed URL live in the generated Info.plist via
+    `INFOPLIST_KEY_SUPublicEDKey` / `INFOPLIST_KEY_SUFeedURL` (the target keeps
+    `GENERATE_INFOPLIST_FILE = YES`). The private key stays in the developer's login keychain and
+    is never committed.
+  - `SUFeedURL` points at `https://johnbean393.github.io/KeyType/appcast.xml`, served by GitHub
+    Pages from the repo's `docs/` folder. `docs/appcast.xml` is committed (skeleton + one `<item>`
+    per release).
+  - `Scripts/release.sh` (orchestration) + `Scripts/prepareRelease.sh` (DMG + notarize + Sparkle
+    sign) + `Scripts/ExportOptions.plist` (developer-id) drive the whole flow: archive → export →
+    notarize app → DropDMG → notarize/staple DMG → `sign_update` → prepend the appcast `<item>` →
+    commit/push → `gh release create`. Mirrors the proven Hivecrew tooling; min OS 14.0, tag
+    `v<version>.0`, DMG named `KeyType.<version>.dmg`.
+- Consequences: Releasing is one command but depends on machine-local prerequisites (Developer-ID
+  cert, a notarytool keychain profile named `development`, DropDMG with an "App Distribution"
+  config, the Sparkle CLI at `SPARKLE_BIN`, an authenticated `gh`, and GitHub Pages enabled on
+  `/docs`). Updates are only as trustworthy as the EdDSA private key, so it must be backed up and
+  kept off the repo. Bumping `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` before a release is
+  required; the script warns when metadata is unchanged since the last tag.

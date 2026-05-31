@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings: SettingsStore
     /// Owns model download + ACPF profile generation; shared by the onboarding wizard and Settings.
     let modelSetup = ModelSetupCoordinator()
+    /// Owns the Sparkle updater (in-app updates via the signed appcast). See `UpdaterController`.
+    let updater = UpdaterController()
     // One AX tracker feeds the (debug) context capture, the live completion pipeline, and the
     // writing-history recorder.
     private let tracker: AccessibilityContextTracker

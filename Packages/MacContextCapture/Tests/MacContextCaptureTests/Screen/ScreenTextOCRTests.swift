@@ -95,4 +95,20 @@ final class ScreenTextOCRTests: XCTestCase {
         let lines = ["• First item", "• Second item"]
         XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), lines)
     }
+
+    func testDropsLinesWithDigitSubstitutedWords() {
+        // OCR letter→digit confusion ("quality" → "qu81ity", "defect" → "defecti" stays, but the
+        // garbled token is enough to drop the whole line).
+        let lines = ["A clean sentence about quality", "wrongly classified as a mid-tsM qu81ity defecti."]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), ["A clean sentence about quality"])
+    }
+
+    func testDigitSubstitutionDoesNotFlagTechnicalTokens() {
+        // Trailing/leading digits and ALL-CAPS model names must survive.
+        let lines = [
+            "Running k0 tests on the RTX 5070 and N1X SoC",
+            "utf8 encoding, version v2, 20-core CPU, macOS15"
+        ]
+        XCTAssertEqual(ScreenTextOCR.droppingCorruptedLines(lines), lines)
+    }
 }
