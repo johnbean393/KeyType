@@ -99,10 +99,14 @@ public enum ProfileSelfCheck {
     }
 
     public static func checkTriePresence(profile: MmapAutocompleteProfile) throws {
-        // For every non-excluded token, walking its bytes from the trie root must reach
-        // a node whose `terminal_token_id == id`. This is the writer-correctness
-        // invariant the brief calls out ("Every non-excluded token appears in the
-        // prefix trie").
+        // For every non-excluded token, walking its bytes from the trie root must reach a
+        // terminal node. Normally that node's terminal id == this token. But some
+        // tokenizers (e.g. Gemma) contain *duplicate* tokens — distinct ids whose raw
+        // bytes are byte-for-byte identical. A byte-keyed trie cannot tell them apart:
+        // they share one node, so only one id can be that node's terminal. That is
+        // correct (the trie is a byte oracle and both ids decode to the same text), so a
+        // different terminal is accepted only when its bytes are identical. A non-terminal
+        // node, or a terminal whose bytes differ, is a genuine writer bug.
         for id in 0..<profile.vocabularySize {
             let tokenID = TokenID(id)
             // `.code` mode is the least restrictive baseline (no newline ban, no emoji
@@ -113,10 +117,14 @@ public enum ProfileSelfCheck {
             guard let state = profile.prefixStart(requiredBytes: bytes) else {
                 throw Failure(check: "triePresence", detail: "token \(id) bytes not walkable from root")
             }
-            let terminal = profile.terminalTokenID(at: state)
-            if terminal != tokenID {
+            guard let terminal = profile.terminalTokenID(at: state) else {
                 throw Failure(check: "triePresence",
-                              detail: "token \(id) reached state \(state.nodeIndex) but terminal=\(terminal as Any)")
+                              detail: "token \(id) reached non-terminal state \(state.nodeIndex)")
+            }
+            // Accept a different terminal only for a true duplicate (identical bytes).
+            if terminal != tokenID && profile.bytes(for: terminal) != bytes {
+                throw Failure(check: "triePresence",
+                              detail: "token \(id) reached state \(state.nodeIndex) but terminal=\(terminal) has different bytes")
             }
         }
     }

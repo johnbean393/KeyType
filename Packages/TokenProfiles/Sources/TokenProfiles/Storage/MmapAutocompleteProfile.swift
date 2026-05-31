@@ -327,20 +327,31 @@ public final class MmapAutocompleteProfile: AutocompleteProfile {
         return TrieState(nodeIndex: node)
     }
 
-    /// True iff token `id`'s bytes can be walked from `state.nodeIndex` and the walk
-    /// ends at a node whose `terminal_token_id == id`. The "token is a prefix of
-    /// required" case is handled by the protocol's `tokenAllowed(_:afterRequiredPrefix:)`.
+    /// True iff token `id`'s bytes can be walked from `state.nodeIndex` and the walk ends
+    /// at a terminal node for those bytes. Usually that node's `terminal_token_id == id`;
+    /// for duplicate-byte tokenizers (e.g. Gemma) the stored terminal may be a different
+    /// id whose bytes are identical, which still validly completes `id`'s bytes — so we
+    /// compare bytes, not ids. Excluded ids are never trie members and are rejected up
+    /// front, so a non-excluded duplicate can't smuggle one back in. The "token is a prefix
+    /// of required" case is handled by the protocol's `tokenAllowed(_:afterRequiredPrefix:)`.
     public func tokenAllowed(_ id: TokenID, in state: TrieState) -> Bool {
         guard let raw = rawRecord(for: id) else { return false }
         let tokenBytes = bytes(forRaw: raw)
         guard !tokenBytes.isEmpty else { return false }
+        // The trie holds only non-excluded tokens (ACPFWriter.buildAndCompactTrie gates on
+        // the base `.excluded` flag), so an excluded id is never a member: reject it before
+        // the byte-equality fallback can match it against a non-excluded duplicate's bytes.
+        guard !TokenProfileFlags(rawValue: raw.flags).contains(.excluded) else { return false }
         var node = state.nodeIndex
         for b in tokenBytes {
             guard let next = followEdge(from: node, byte: b) else { return false }
             node = next
         }
         let terminal = trieNode(at: node).terminalTokenID
-        return terminal == Int32(id)
+        guard terminal >= 0 else { return false }
+        if terminal == Int32(id) { return true }
+        // Duplicate token: accept when the stored terminal's bytes match `id`'s bytes.
+        return withRawBytes(for: TokenID(terminal)) { $0.elementsEqual(tokenBytes) } ?? false
     }
 
     /// Advance the trie state by all bytes of token `id`. Returns `nil` if any byte

@@ -81,6 +81,7 @@ row here.**
 | 055 | Drop a word break the model emits after a healed stem | generation |
 | 056 | Mid-word quality: accurate OCR, dead-end + charset guards | generation |
 | 057 | Mid-line FIM quality: truncate-at-overlap, suffix rerank, windowing | generation |
+| 059 | Trie self-check tolerates duplicate-byte tokens (Gemma) | token-profiles |
 
 ---
 
@@ -2379,3 +2380,37 @@ text. Both are now closed:
   completion/AX pipeline is untouched — this is purely presentation. Trade-off: SwiftUI `onDisappear`
   semantics for `Window` scenes are the close signal; if a future macOS regression stops firing it on a
   red-button close, the revert would need an `NSWindow` close observer instead.
+
+## ADR-059 — Prefix-trie self-check tolerates duplicate-byte tokens (Gemma)
+
+- Date: 2026-06-01
+- Status: accepted
+- Context: Selecting a Gemma model (`gemma-v262144`, ADR-035) aborted in-app profile
+  generation with `Profile self-check failed: - [triePresence] token 239 reached state 2
+  but terminal=Optional(249732)`, and ADR-052 then deleted the half-built artifact, so the
+  model was unusable. Root cause: Gemma's vocabulary contains *duplicate* tokens — distinct
+  ids whose raw bytes are byte-for-byte identical (here 239 and 249732). The ACPF prefix
+  trie (ADR-009) is keyed purely on bytes and stores a single `terminal_token_id` per node,
+  so duplicates collide on one node and only the last writer's id survives as the terminal.
+  `ProfileSelfCheck.checkTriePresence` asserted exact identity (`terminal == id`) for every
+  non-excluded token, which is unsatisfiable when two non-excluded tokens share bytes. The
+  same wrong assumption sat in the trie-state `MmapAutocompleteProfile.tokenAllowed(_:in:)`
+  (`terminal == id`), a latent admissibility bug for any duplicate-byte tokenizer.
+- Decision: treat the trie as a *byte oracle*, not a token-id map. Walking a non-excluded
+  token's bytes from the root must reach a **terminal** node; a different stored terminal id
+  is accepted **only** when its bytes are byte-for-byte identical (a genuine duplicate). A
+  non-terminal node, or a terminal whose bytes differ, is still a hard failure. The same
+  byte-equality rule replaces the id-identity check in `tokenAllowed(_:in:)`, which also
+  rejects ids the trie builder would exclude (base `.excluded` flag) so a non-excluded
+  duplicate cannot make an excluded token admissible. No schema or
+  writer change: the on-disk format, the byte-based runtime admissibility path
+  (`tokenAllowed(_:afterRequiredPrefix:)`, used by the decoder) and the per-record
+  `trieTerminal` jump field are untouched, so existing profiles keep loading.
+- Consequences: Gemma (and any duplicate-byte tokenizer) builds and validates again; the
+  self-check still catches real corruption (missing path / non-terminal / bytes mismatch).
+  The trie deliberately cannot tell duplicates apart — which id wins a shared node is an
+  insertion-order detail and intentionally not asserted. `terminalTokenID(at:)` stays a raw
+  accessor (returns whatever id is stored). Tests: `DuplicateTokenTrieTests` builds profiles
+  with identical-byte ids and asserts the self-check passes, both non-excluded duplicates are
+  admissible, and an excluded duplicate is rejected; the strict `TriePresenceTests` still
+  guards the no-duplicate fixture.
