@@ -78,4 +78,18 @@ final class MidWordHealingTests: XCTestCase {
         // Model re-emitted only the stem with no continuation → nothing new to show.
         XCTAssertEqual(MidWordHealing.strip(" gre", heal: " gre"), "")
     }
+
+    func testStripDropsWordBreakAfterStem() {
+        // The model satisfied the forced stem then started a *new* word — the leading separator must
+        // not survive, or it inserts as a stray space mid-word ("aft" + " ernoon" → "aft ernoon").
+        // See ADR-055.
+        XCTAssertEqual(MidWordHealing.strip(" aft ernoon", heal: " aft"), "ernoon")
+        XCTAssertEqual(MidWordHealing.strip(" gre at", heal: " gre"), "at")
+    }
+
+    func testStripKeepsInternalWhitespaceAfterRealContinuation() {
+        // A clean sub-word continuation has no leading space; only the genuine word break is dropped,
+        // so spaces *between* later words are preserved.
+        XCTAssertEqual(MidWordHealing.strip(" afternoon nap", heal: " aft"), "ernoon nap")
+    }
 }

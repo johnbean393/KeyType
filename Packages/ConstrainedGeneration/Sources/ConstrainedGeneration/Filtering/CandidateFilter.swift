@@ -90,6 +90,13 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         //    insertable as an inline completion.
         if !Self.isInsertionSafe(candidate.text) { return .insertionUnsafe }
 
+        // 6a. Mid-word charset net (the in-beam `MidWordCharsetGuard` is the primary defence): a
+        //     prose completion that closes the typed word with a garbage symbol ("gre"→"at$") or
+        //     piles up punctuation ("....") is corruption, not insertable text. See ADR-052.
+        if MidWordCharsetGuard.violates(completion: candidate.text, request: request) {
+            return .insertionUnsafe
+        }
+
         // 7. Suffix-duplication net (the engine drops these too; this is the documented last gate).
         //    A mid-line / FIM completion that just reproduces the text already after the caret would
         //    duplicate the user's own words on accept — suppress it. See ADR-049.
@@ -104,6 +111,14 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         // 8. Final typo net (the in-beam guard of ADR-015 is the primary defence).
         if looksLikeCurrentWordTypo(candidate: candidate, request: request) {
             return .currentWordLooksLikeTypo
+        }
+
+        // 9. Dead-end mid-word net: the word is still *open* on a stem that can't begin any
+        //    dictionary word, so it could never resolve to a real word (e.g. a lone "x" after
+        //    "th"). Catches the small-model failure of completing mid-word with a useless single
+        //    letter. See ADR-052.
+        if currentWordIsDeadEnd(candidate: candidate, request: request) {
+            return .currentWordHasNoValidCompletion
         }
 
         return nil
@@ -168,5 +183,39 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         if contextWords.contains(word.lowercased()) { return false } // already-used term, not a typo
 
         return !wordRecognizer.recognizes(word, language: request.context.detectedLanguage)
+    }
+
+    // MARK: - Dead-end mid-word net
+
+    /// `true` when the candidate leaves the user's current word *open* on a stem that cannot begin
+    /// any dictionary word — the mirror of `looksLikeCurrentWordTypo` for the still-open case (which
+    /// the typo net deliberately never judges). Same conservative eligibility, the same heal-aware
+    /// reconstruction, and the same already-used-term exemption; silent unless a recogniser is wired.
+    private func currentWordIsDeadEnd(
+        candidate: CompletionCandidate,
+        request: CompletionRequest
+    ) -> Bool {
+        guard let wordRecognizer else { return false }
+        guard request.mode == .prose || request.mode == .correction else { return false }
+
+        let stem = CurrentWordTypoGuard.trailingWord(of: request.context.beforeCursor)
+        guard !stem.isEmpty else { return false } // model started a fresh word — leave it
+
+        let judged = request.requiredPrefixBytes.isEmpty
+            ? candidate.text
+            : MidWordHealing.strip(candidate.text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
+
+        let lead = CurrentWordTypoGuard.leadingWord(of: judged)
+        guard !lead.isEmpty else { return false } // completion opened on a boundary — not our word
+        guard lead.count == judged.count else { return false } // word already closed → typo net's job
+
+        let word = stem + lead
+        guard CurrentWordTypoGuard.isEligible(word) else { return false }
+
+        let contextWords = CurrentWordTypoGuard.words(in: request.context.beforeCursor)
+            .union(CurrentWordTypoGuard.words(in: request.context.afterCursor))
+        if contextWords.contains(word.lowercased()) { return false } // already-used term, keep
+
+        return !wordRecognizer.canCompleteWord(prefix: word, language: request.context.detectedLanguage)
     }
 }

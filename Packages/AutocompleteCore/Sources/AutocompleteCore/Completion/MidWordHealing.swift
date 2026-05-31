@@ -38,10 +38,19 @@ public enum MidWordHealing {
 
     /// Removes the healed stem from a completion so only the genuinely new text remains. The decoder
     /// guarantees a finalised completion begins with the full `heal` bytes (the required prefix was
-    /// satisfied), so this is a plain prefix drop; it is defensive against a mismatch.
+    /// satisfied), so the stem removal is a plain prefix drop; it is defensive against a mismatch.
+    ///
+    /// Any whitespace immediately following the stem is also dropped. Healing only fires mid-word (the
+    /// caret sits inside the word being typed), so the continuation must attach directly to the partial
+    /// word — a leading separator means the model treated the forced stem as a *complete* word and
+    /// started a new one (e.g. forced `" aft"` then emitted `" aft ernoon"`). Keeping that space would
+    /// insert it verbatim after the partial word (`"aft" + " ernoon"` → `"aft ernoon"`); `CaretBoundary`
+    /// can't catch it because the live prefix ends in a letter, not whitespace. See ADR-055.
     public static func strip(_ completion: String, heal: String) -> String {
         guard completion.hasPrefix(heal) else { return completion }
-        return String(completion.dropFirst(heal.count))
+        var rest = Substring(completion.dropFirst(heal.count))
+        while let first = rest.first, first.isWhitespace { rest = rest.dropFirst() }
+        return String(rest)
     }
 }
 

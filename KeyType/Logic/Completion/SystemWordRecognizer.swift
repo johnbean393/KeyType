@@ -36,6 +36,28 @@ struct SystemWordRecognizer: WordRecognizing, SynchronousWordRecognizing {
         return Self.isRecognized(word, language: language)
     }
 
+    /// `false` only when the system dictionary has **no** completion for the partial word `prefix`
+    /// — the signal that a mid-word stem could never resolve to a real word (ADR-052). Conservative:
+    /// returns `true` for an empty prefix, off the main thread, or whenever the checker can't answer
+    /// (a `nil` result), so a legitimate in-progress word is never suppressed.
+    func canCompleteWord(prefix: String, language: String?) -> Bool {
+        guard !prefix.isEmpty else { return true }
+        guard Thread.isMainThread else { return true }
+        let checker = NSSpellChecker.shared
+        let resolved = Self.resolveLanguage(language, checker: checker)
+        checker.automaticallyIdentifiesLanguages = (resolved == nil)
+        let range = NSRange(location: 0, length: (prefix as NSString).length)
+        guard let completions = checker.completions(
+            forPartialWordRange: range,
+            in: prefix,
+            language: resolved,
+            inSpellDocumentWithTag: 0
+        ) else {
+            return true // checker couldn't evaluate → assume viable
+        }
+        return !completions.isEmpty
+    }
+
     /// The shared `NSSpellChecker` lookup. Must run on the main thread (the shared checker is
     /// main-thread affine); both seams above guarantee that before calling.
     private static func isRecognized(_ word: String, language: String?) -> Bool {

@@ -293,4 +293,99 @@ final class CandidateFilterTests: XCTestCase {
             filter.suppressionReason(for: candidate("orow.", tokenIDs: [1]), request: request(beforeCursor: "see you tom"))
         )
     }
+
+    // MARK: - Dead-end mid-word net (ADR-052)
+
+    /// A recogniser whose `canCompleteWord` only accepts an explicit set of viable prefixes.
+    private struct PrefixRecognizer: SynchronousWordRecognizing {
+        let viablePrefixes: Set<String>
+        func recognizes(_ word: String, language: String?) -> Bool { true }
+        func canCompleteWord(prefix: String, language: String?) -> Bool {
+            viablePrefixes.contains(prefix.lowercased())
+        }
+    }
+
+    func testOpenWordOnDeadEndStemIsSuppressed() {
+        // User typed "th"; the model leaves the word open as "thx" — no English word starts "thx".
+        let filter = DefaultCandidateFilter(wordRecognizer: PrefixRecognizer(viablePrefixes: ["thr"]))
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate("x"), request: request(beforeCursor: "see you wi th".replacingOccurrences(of: " th", with: "th"))),
+            .currentWordHasNoValidCompletion
+        )
+    }
+
+    func testOpenWordOnViablePrefixIsKept() {
+        // "thr" can begin "through"/"three" — a budget-truncated open word must NOT be suppressed.
+        let filter = DefaultCandidateFilter(wordRecognizer: PrefixRecognizer(viablePrefixes: ["thr"]))
+        XCTAssertNil(
+            filter.suppressionReason(for: candidate("r"), request: request(beforeCursor: "go th"))
+        )
+    }
+
+    func testClosedWordIsLeftToTheTypoNetNotTheDeadEndNet() {
+        // A closed word is the typo net's job; the dead-end net (canCompleteWord) must not fire on it.
+        let filter = DefaultCandidateFilter(wordRecognizer: PrefixRecognizer(viablePrefixes: []))
+        // "tom" + "orrow." closes the word; recognizes() returns true here, so it is accepted.
+        XCTAssertNil(
+            filter.suppressionReason(for: candidate("orrow."), request: request(beforeCursor: "see you tom"))
+        )
+    }
+
+    func testDeadEndNetInertWithoutRecognizer() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(for: candidate("x"), request: request(beforeCursor: "see you th"))
+        )
+    }
+
+    // MARK: - Mid-word charset net (ADR-052)
+
+    func testSuppressesJunkSymbolClosingTheCurrentWord() {
+        let filter = DefaultCandidateFilter()
+        // User typed "gre"; the model closes the word with a stray "$".
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate("at$ stuff"), request: request(beforeCursor: "this is gre")),
+            .insertionUnsafe
+        )
+    }
+
+    func testSuppressesExcessivePunctuationRun() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate("at...."), request: request(beforeCursor: "this is gre")),
+            .insertionUnsafe
+        )
+    }
+
+    func testKeepsCleanWordCloserPunctuation() {
+        let filter = DefaultCandidateFilter()
+        // A normal sentence-ending period (or ellipsis) closing the word is fine.
+        XCTAssertNil(filter.suppressionReason(for: candidate("at."), request: request(beforeCursor: "this is gre")))
+        XCTAssertNil(filter.suppressionReason(for: candidate("at..."), request: request(beforeCursor: "this is gre")))
+    }
+
+    func testCharsetNetIgnoresSymbolStartingAFreshWord() {
+        // beforeCursor ends on a complete word + space → no open word → "$5" is a legit fresh token.
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(filter.suppressionReason(for: candidate("$5 today"), request: request(beforeCursor: "it costs ")))
+    }
+
+    func testCharsetNetSkippedInCodeMode() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(for: candidate("at$ stuff"), request: request(beforeCursor: "let gre", mode: .code))
+        )
+    }
+
+    func testHealedJunkCloserIsSuppressed() {
+        // Healed request: the heal " gre" is re-emitted, then the model glues a "$".
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate(" great$ idea"),
+                request: request(beforeCursor: "this is gre", requiredPrefixBytes: Array(" gre".utf8))
+            ),
+            .insertionUnsafe
+        )
+    }
 }

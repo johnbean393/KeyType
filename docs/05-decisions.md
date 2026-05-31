@@ -75,6 +75,10 @@ row here.**
 | 049 | Suppress suffix-duplicating completions; OCR guard | generation |
 | 050 | The separator leads the next word, not the previous one | insertion |
 | 051 | Release & distribution: Developer-ID DMG + Sparkle appcast | distribution |
+| 052 | A failed profile build must not leave a usable artifact | model-runtime |
+| 053 | Hide completion latency without changing candidate quality | performance |
+| 054 | Redraw the remaining ghost text eagerly on Tab acceptance | ui |
+| 055 | Drop a word break the model emits after a healed stem | generation |
 
 ---
 
@@ -2235,3 +2239,28 @@ text. Both are now closed:
     (LTR rightward, RTL leftward).
   - Capsule/mid-line acceptance is deliberately unchanged (the inline reposition heuristic doesn't apply),
     so this carries no regression risk for fill-in-the-middle completions.
+
+## ADR-055 — Drop a word break the model emits after a healed stem
+
+- Date: 2026-06-01
+- Status: accepted
+- Context: A user typing `"I am just doing my aft"` (caret mid-word, nothing after) saw the suggestion
+  insert as `"aft ernoon"` instead of `"afternoon"` — a stray space appeared after the partial word
+  on Tab. Mid-word token healing (ADR-019) backs the prompt up to the last clean boundary and forces
+  the decoder to re-emit the stem as a required prefix (here `" aft"`). `GenerationBranch.consumePrefix`
+  only constrains tokens *until* the prefix is satisfied; once `" aft"` is emitted the branch is free to
+  continue with any token. Usually the model continues the sub-word cleanly (`" afternoon"`), but
+  sometimes it treats the forced stem as a *complete* word and starts a new one, emitting `" aft ernoon"`.
+  `MidWordHealing.strip` removed only the stem bytes, leaving `" ernoon"` with a leading space.
+  `CaretBoundary.reconcile` would have dropped that space, but it only does so when the live `beforeCursor`
+  ends in whitespace — and healing's precondition guarantees it ends in a letter/digit, so the gate never
+  fired. The trailing-whitespace trim in `present()` (ADR-024) only handles a dangling space at the end.
+  The result was an intermittent stray space, depending on whether the model broke the word after the stem.
+- Decision: After dropping the healed stem, `MidWordHealing.strip` also drops any whitespace immediately
+  following it. Healing only fires when the caret sits inside the word being typed, so the genuinely new
+  text must attach directly to the partial word; a leading separator is always a spurious word break and
+  is safe to remove. Spaces *between* later words in the completion are untouched.
+- Consequences: Mid-word completions insert flush against the partial word again (`"aft" + "ernoon"`).
+  The fix is localized to `strip` (the one place the healed stem is removed) rather than widening
+  `CaretBoundary`'s whitespace rule, which must stay gated for the non-heal path. Covered by new
+  `MidWordHealingTests` cases (`" aft ernoon"`/`" gre at"` → no stray space; internal spaces preserved).
