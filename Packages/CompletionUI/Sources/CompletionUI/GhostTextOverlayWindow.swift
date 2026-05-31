@@ -71,6 +71,7 @@ public final class GhostTextOverlayWindow {
         panel.level = .screenSaver
         panel.isOpaque = false
         panel.isReleasedWhenClosed = false
+        panel.animationBehavior = .none
 
         return panel
     }
