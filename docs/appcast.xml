@@ -2,6 +2,14 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
     <channel>
         <title>KeyType</title>
+        <item>
+            <title>1.0</title>
+            <pubDate>Mon, 01 Jun 2026 00:22:14 +0800</pubDate>
+            <sparkle:version>1</sparkle:version>
+            <sparkle:shortVersionString>1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/johnbean393/KeyType/releases/download/v1.0.0/KeyType.1.0.dmg" sparkle:edSignature="GNsikvV/J4BdM5wcbO284+QIgjcAZmp7qR1DDuUwHQg8D7dZJAUoBnb9xcK6i571zD6peiCutistngWTrD3RDw==" length="14050875" type="application/octet-stream"/>
+        </item>
         <link>https://johnbean393.github.io/KeyType/appcast.xml</link>
         <description>Most recent updates to KeyType.</description>
         <language>en</language>
