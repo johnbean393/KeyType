@@ -24,7 +24,10 @@ struct KeyTypeApp: App {
         .menuBarExtraStyle(.menu)
 
         Window("KeyType", id: AppDelegate.onboardingWindowID) {
-            OnboardingView(markCompleted: { appDelegate.markOnboardingCompleted() })
+            OnboardingView(
+                permissionGuidance: appDelegate.permissionGuidance,
+                markCompleted: { appDelegate.markOnboardingCompleted() }
+            )
                 .environment(appDelegate.permissions)
                 .environment(appDelegate.settings)
                 .environment(appDelegate.modelSetup)

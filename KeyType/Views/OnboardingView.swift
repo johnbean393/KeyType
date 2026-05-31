@@ -16,6 +16,7 @@ import ModelRuntime
 import SwiftUI
 
 struct OnboardingView: View {
+    let permissionGuidance: PermissionGuidanceController
     var markCompleted: () -> Void = {}
 
     @Environment(PermissionsManager.self) private var permissions
@@ -53,6 +54,12 @@ struct OnboardingView: View {
             permissions.refresh()
             modelSetup.refresh()
         }
+        // The guided overlay is a floating panel tied to the permissions step. Tear it down when the
+        // user navigates away or closes onboarding so it can't linger over System Settings.
+        .onChange(of: step) { _, newStep in
+            if newStep != .permissions { permissionGuidance.dismiss() }
+        }
+        .onDisappear { permissionGuidance.dismiss() }
     }
 
     // MARK: - Step content
@@ -176,32 +183,26 @@ struct OnboardingView: View {
         )
         VStack(spacing: 10) {
             PermissionCard(
-                title: "Accessibility",
+                kind: .accessibility,
                 requirement: .required,
                 explanation: "Reads the focused text field and caret position across any app.",
-                isGranted: permissions.accessibility.isGranted
-            ) {
-                if !permissions.accessibility.isGranted { _ = permissions.requestAccessibility() }
-                permissions.openAccessibilitySettings()
-            }
+                isGranted: permissions.accessibility.isGranted,
+                guidance: permissionGuidance
+            )
             PermissionCard(
-                title: "Input Monitoring",
+                kind: .inputMonitoring,
                 requirement: .required,
                 explanation: "Detects the global accept key (Tab) so KeyType can insert a completion.",
-                isGranted: permissions.inputMonitoring.isGranted
-            ) {
-                if !permissions.inputMonitoring.isGranted { _ = permissions.requestInputMonitoring() }
-                permissions.openInputMonitoringSettings()
-            }
+                isGranted: permissions.inputMonitoring.isGranted,
+                guidance: permissionGuidance
+            )
             PermissionCard(
-                title: "Screen Recording",
+                kind: .screenRecording,
                 requirement: .optional,
                 explanation: "Optional. Lets KeyType read on-screen text (OCR) from the focused window as extra context, when you enable it in Privacy. KeyType works without it.",
-                isGranted: permissions.screenRecording.isGranted
-            ) {
-                if !permissions.screenRecording.isGranted { _ = permissions.requestScreenRecording() }
-                permissions.openScreenRecordingSettings()
-            }
+                isGranted: permissions.screenRecording.isGranted,
+                guidance: permissionGuidance
+            )
         }
     }
 
@@ -468,11 +469,14 @@ private struct PermissionCard: View {
         var tint: Color { self == .required ? .accentColor : .secondary }
     }
 
-    let title: String
+    let kind: PermissionKind
     let requirement: Requirement
     let explanation: String
     let isGranted: Bool
-    let action: () -> Void
+    let guidance: PermissionGuidanceController
+
+    /// Screen-space rect of the Allow button, captured so the guided overlay can animate out of it.
+    @State private var allowButtonFrame = CGRect.zero
 
     var body: some View {
         CardContainer {
@@ -480,7 +484,7 @@ private struct PermissionCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: isGranted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                         .foregroundStyle(isGranted ? Color.green : (requirement == .required ? Color.orange : Color.secondary))
-                    Text(title).font(.headline)
+                    Text(kind.title).font(.headline)
                     Text(requirement.label)
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -496,8 +500,11 @@ private struct PermissionCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if !isGranted {
-                    Button("Open \(title) Settings", action: action)
-                        .buttonStyle(.borderedProminent)
+                    Button("Allow") {
+                        guidance.requestAccess(for: kind, sourceFrameInScreen: allowButtonFrame)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .background(ScreenFrameReader(frameInScreen: $allowButtonFrame))
                 }
             }
         }

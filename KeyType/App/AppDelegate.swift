@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static let currentOnboardingVersion = 1
 
     let permissions: PermissionsManager
+    /// Drives the "drag KeyType into the System Settings list" guided permission flow.
+    let permissionGuidance: PermissionGuidanceController
     let settings: SettingsStore
     /// Owns model download + ACPF profile generation; shared by the onboarding wizard and Settings.
     let modelSetup = ModelSetupCoordinator()
@@ -49,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     override init() {
         let permissions = PermissionsManager()
         self.permissions = permissions
+        self.permissionGuidance = PermissionGuidanceController(permissions: permissions)
         let tracker = AccessibilityContextTracker()
         self.tracker = tracker
         let settings = SettingsStore()

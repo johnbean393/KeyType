@@ -112,6 +112,36 @@ final class PermissionsManager {
         return granted
     }
 
+    // MARK: - Kind-based access
+
+    /// Latest cached grant state for a specific permission kind. Lets higher-level UI and the
+    /// guided drag flow reason in terms of `PermissionKind` instead of three separate properties.
+    func isGranted(_ kind: PermissionKind) -> Bool {
+        switch kind {
+        case .accessibility: accessibility.isGranted
+        case .inputMonitoring: inputMonitoring.isGranted
+        case .screenRecording: screenRecording.isGranted
+        }
+    }
+
+    /// Asks macOS to register or prompt for the current process before any manual guidance. TCC
+    /// grants permission to the running process's code identity, so resolving that identity through
+    /// the native request API first makes the subsequent drag helper a reliable convenience rather
+    /// than the thing that establishes identity.
+    @discardableResult
+    func requestSystemAccess(for kind: PermissionKind) -> Bool {
+        switch kind {
+        case .accessibility: requestAccessibility()
+        case .inputMonitoring: requestInputMonitoring()
+        case .screenRecording: requestScreenRecording()
+        }
+    }
+
+    /// Opens the System Settings pane matching the permission kind.
+    func openSettings(for kind: PermissionKind) {
+        openSettings(pane: kind.settingsPane)
+    }
+
     // MARK: - Deep links
 
     func openAccessibilitySettings() {

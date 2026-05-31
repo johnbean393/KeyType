@@ -52,6 +52,13 @@
 		4B5450012FC96000000000AC /* SetupSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000AD /* SetupSettingsView.swift */; };
 		4B5450012FC96000000000AE /* DeveloperSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000AF /* DeveloperSettingsView.swift */; };
 		4B5450012FC96000000000B0 /* ScreenContextController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000B1 /* ScreenContextController.swift */; };
+		4B5450012FC96000000000C1 /* PermissionKind.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000C2 /* PermissionKind.swift */; };
+		4B5450012FC96000000000C3 /* PermissionHostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000C4 /* PermissionHostApp.swift */; };
+		4B5450012FC96000000000C5 /* SystemSettingsWindowLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000C6 /* SystemSettingsWindowLocator.swift */; };
+		4B5450012FC96000000000C7 /* PermissionDragSourceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000C8 /* PermissionDragSourceView.swift */; };
+		4B5450012FC96000000000C9 /* PermissionOverlayWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000CA /* PermissionOverlayWindowController.swift */; };
+		4B5450012FC96000000000CB /* PermissionGuidanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000CC /* PermissionGuidanceController.swift */; };
+		4B5450012FC96000000000CD /* ScreenFrameReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000000CE /* ScreenFrameReader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -108,6 +115,13 @@
 		4B5450012FC96000000000AD /* SetupSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupSettingsView.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000000AF /* DeveloperSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperSettingsView.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000000B1 /* ScreenContextController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenContextController.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000C2 /* PermissionKind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionKind.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000C4 /* PermissionHostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionHostApp.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000C6 /* SystemSettingsWindowLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSettingsWindowLocator.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000C8 /* PermissionDragSourceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionDragSourceView.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000CA /* PermissionOverlayWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionOverlayWindowController.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000CC /* PermissionGuidanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionGuidanceController.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000000CE /* ScreenFrameReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenFrameReader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -222,6 +236,7 @@
 				4B5450012FC96000000000AB /* StatisticsSettingsView.swift */,
 				4B5450012FC96000000000AD /* SetupSettingsView.swift */,
 				4B5450012FC96000000000AF /* DeveloperSettingsView.swift */,
+				4B5450012FC96000000000CE /* ScreenFrameReader.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -238,12 +253,26 @@
 				4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */,
 				4B5450012FC9600000000082 /* ModelSetupCoordinator.swift */,
 				4B5450012FC9600000000033 /* PermissionsManager.swift */,
+				4B5450012FC96000000000C0 /* Permission */,
 				4B5450012FC9600000000054 /* PredictionLog.swift */,
 				4B5450012FC9600000000063 /* SettingsStore.swift */,
 				4B5450012FC9600000000046 /* SystemWordRecognizer.swift */,
 				4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */,
 			);
 			path = Logic;
+			sourceTree = "<group>";
+		};
+		4B5450012FC96000000000C0 /* Permission */ = {
+			isa = PBXGroup;
+			children = (
+				4B5450012FC96000000000C2 /* PermissionKind.swift */,
+				4B5450012FC96000000000C4 /* PermissionHostApp.swift */,
+				4B5450012FC96000000000C6 /* SystemSettingsWindowLocator.swift */,
+				4B5450012FC96000000000C8 /* PermissionDragSourceView.swift */,
+				4B5450012FC96000000000CA /* PermissionOverlayWindowController.swift */,
+				4B5450012FC96000000000CC /* PermissionGuidanceController.swift */,
+			);
+			path = Permission;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -435,6 +464,13 @@
 				4B5450012FC9600000000085 /* KeyRecorderView.swift in Sources */,
 				4B5450012FC960000000000A /* KeyTypeModuleGraph.swift in Sources */,
 				20DD9A822FC95AB900BE1F8C /* KeyTypeApp.swift in Sources */,
+				4B5450012FC96000000000C1 /* PermissionKind.swift in Sources */,
+				4B5450012FC96000000000C3 /* PermissionHostApp.swift in Sources */,
+				4B5450012FC96000000000C5 /* SystemSettingsWindowLocator.swift in Sources */,
+				4B5450012FC96000000000C7 /* PermissionDragSourceView.swift in Sources */,
+				4B5450012FC96000000000C9 /* PermissionOverlayWindowController.swift in Sources */,
+				4B5450012FC96000000000CB /* PermissionGuidanceController.swift in Sources */,
+				4B5450012FC96000000000CD /* ScreenFrameReader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
