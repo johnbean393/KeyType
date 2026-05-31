@@ -35,9 +35,9 @@ This is implemented today in `Packages/Prompting/Sources/Prompting/Prompting.swi
 - Truncate **toward the caret**: `beforeCursor` keeps its *tail*, `afterCursor` keeps its *head*.
 - Use semantic trimming (whole lines/sentences) for `previousUserInputs`; hard caps for
 clipboard/OCR.
-- Keep the whole prompt within `maxPromptTokens` (latency budget). The current builder uses an
-**approximate** counter (`ceil(chars/4)`); replace with the real tokenizer counter from
-`ModelRuntime` once available.
+- Keep the whole prompt within `maxPromptTokens` (latency budget). The builder counts tokens with
+the real **tokenizer-backed** `PromptTokenCounting` from `ModelRuntime` (ADR-008); the approximate
+`ceil(chars/4)` counter remains only as a fallback when no tokenizer is wired (e.g. some tests).
 
 ## Base vs. chat templates
 

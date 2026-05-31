@@ -1,12 +1,18 @@
-# KeyType — Roadmap & Milestones
+# KeyType — Milestones (archive) & Improvement Backlog
 
-Hand the agent **one milestone per session**. Each is an independently testable vertical slice
-with explicit acceptance criteria. Keep `swift build`/`swift test` green for every package you
-touch, and log decisions in `05-decisions.md`.
+The app is **built and shipping**. The milestone list below (M0–M8) is the **completed
+construction history**, kept for context on how each subsystem came to be and where its
+acceptance criteria live. For ongoing work, jump to the **[Improvement backlog](#improvement-backlog)**
+at the bottom — that is the living section.
 
-Legend: ✅ done · 🟡 partial · ⬜ not started.
+When you pick up backlog work: make the smallest change behind the existing protocols, keep
+`swift build`/`swift test` green for every package you touch, and log decisions in `05-decisions.md`.
+
+Legend: ✅ done · 🟡 partial / has deferred follow-ups.
 
 ---
+
+# Completed milestones (archive)
 
 ## M0 — Repo hygiene & app shell  ✅
 
@@ -108,9 +114,12 @@ prompt stays within `maxPromptTokens` measured by the real counter.
 
 ---
 
-## M4 — Token profiles: ACPF format + builder  🟡
+## M4 — Token profiles: ACPF format + builder  ✅
 
-Give the sampler real vocabulary intelligence.
+Give the sampler real vocabulary intelligence. **Done** — the on-disk `ACPF` schema (ADR-009),
+the memory-mapped `MmapAutocompleteProfile` reader, and the offline builder all shipped; profiles
+are generated in-app per model family during model download (ADR-034). The tasks/acceptance below
+are the original spec.
 
 **Tasks**
 
@@ -224,9 +233,45 @@ local (encrypted DB + local JSON telemetry) and is clearable in one action.
 
 ---
 
-## Cross-cutting definition of done (every milestone)
+## Cross-cutting definition of done (every change)
 
 - New logic lives behind the `AutocompleteCore` protocols; packages stay decoupled.
 - Tests added/updated; `swift build` + `swift test` green for touched packages.
 - A decision-log entry added to `05-decisions.md` for any non-obvious choice.
+
+---
+
+# Improvement backlog
+
+The living section. These are **themes**, not a linear plan — pick whatever the current evidence
+(prediction log, telemetry, a user report) says matters most. Add, re-prioritize, or strike items
+freely; promote anything substantial into an ADR when you act on it. Status is illustrative, not a
+commitment.
+
+### Completion quality
+- Reduce false suppression and assistant-reply leakage; widen the `predictions.log`-driven test
+  corpus as new failure classes appear (see `06-quality-playbook.md`).
+- Mid-line / FIM quality on small models (suffix-duplication, capsule legibility) — ADR-048/049.
+- ⬜ **Autocorrect / typo mode** as a distinct path from completion — *deferred* (ADR-023); the
+  in-beam typo guard (ADR-015) covers the worst case for now.
+
+### Latency & resource use
+- Hold the per-keystroke steady-state budget as models/contexts grow; keep profiling in release
+  and recording wins (see `07-performance.md`, ADR-012/043–046).
+- Memory/battery footprint of the resident model; load/unload policy when idle.
+
+### App & domain coverage
+- Grow the `AppCompatibility` matrix as new apps surface broken Tab/insertion/overlay behavior
+  (see `08-app-compatibility.md`, ADR-022/027–033).
+
+### Models
+- Support additional model families (catalog entries + ACPF generation + family resolution) —
+  ADR-034/035; keep arbitrary user-GGUF import working — ADR-036.
+
+### Personalization & settings
+- Improve writing-history retrieval/selection and surface acceptance lift; expand telemetry-driven
+  threshold tuning while keeping all data local (ADR-023).
+
+### Packaging & distribution
+- Code signing, notarization, and a release/update story for shipping builds to users.
 

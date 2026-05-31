@@ -1,8 +1,10 @@
-# KeyType — Project Overview & Agent Handoff
+# KeyType — Project Overview
 
-> **Read this first.** This document and its siblings (`01`–`05`) are the authoritative
+> **Read this first.** This document and its siblings (`01`–`08`) are the authoritative
 > brief for any human or AI agent working on KeyType. Treat them as the source of truth.
-> When you make a meaningful decision, append it to `05-decisions.md`.
+> The app is **built and shipping**; this packet now supports maintenance and iteration
+> rather than initial construction. When you make a meaningful decision, append it to
+> `05-decisions.md`.
 
 ## What KeyType is
 
@@ -39,7 +41,7 @@ triple-nested; that has been fixed):
 KeyType/                          ← git root / workspace root
 ├── .cursor/rules/keytype.mdc     ← always-on agent guardrails
 ├── .gitignore
-├── docs/                         ← THIS handoff packet (00–05)
+├── docs/                         ← THIS project brief & playbooks (00–08)
 ├── KeyType.xcworkspace/          ← open this in Xcode
 ├── KeyType.xcodeproj/
 ├── KeyType/                      ← app target sources (menu-bar app shell lives here)
@@ -59,50 +61,66 @@ KeyType/                          ← git root / workspace root
     └── AppCompatibility/         ← per-app / per-domain override policy
 ```
 
-The package graph already mirrors the target architecture and contains **real domain types
-and protocols** plus stub/in-memory implementations. Your job is to fill in the real
-implementations behind those protocols — **extend this graph, do not rewrite it.**
+The package graph mirrors the runtime architecture and contains **real implementations** behind
+the `AutocompleteCore` protocols. When you change it, **extend this graph, do not rewrite it.**
 
-## Current state (as of handoff)
+## What's shipped (how it works today)
 
-- ✅ Module graph + `AutocompleteCore` contract types (`TextFieldContext`, `CompletionRequest`,
-`CompletionCandidate`, `SuppressionReason`, protocols) — solid.
-- ✅ `Prompting` — working sectioned/budgeted builder (approximate token counter).
-- ✅ `ConstrainedGeneration` — greedy branch loop against the profile + runtime protocols.
-- ✅ `TokenProfiles` — in-memory profile + flags; **ACPF on-disk format not yet built**.
-- ✅ `AppCompatibility`, `TextInsertion`, `CompletionUI` — policy/plan/placement types with
-stub presenters/inserters.
-- 🟡 `ModelRuntime` — **only a `StubModelRuntime` exists. No real llama.cpp yet.**
+The full end-to-end pipeline is real and runs on device. Capture → policy → prompt → model →
+constrained decode → filter → overlay → Tab-insert all work against live models.
+
+- ✅ `AutocompleteCore` — the stable contract: `TextFieldContext`, `CompletionRequest`,
+  `CompletionCandidate`, the `SuppressionReason` taxonomy, and the core protocols.
 - ✅ `MacContextCapture` — AX-notification-driven tracker + ported caret-geometry resolver
-populate a full `TextFieldContext` (before/after, selection, caret rect, EOL, RTL, app,
-window, browser domain, labels, language). See ADR-006.
-- 🟡 App target — still the default SwiftData window template; needs to become a background
-menu-bar/agent app.
-- 🎁 **Proven caret-tracking code exists** in the sibling `Red Dot` project and should be
-ported into `MacContextCapture` + `CompletionUI` (see `01-architecture.md`).
+  populate a full `TextFieldContext` (before/after, selection, caret rect, EOL, RTL, app,
+  window, browser domain, labels, language). See ADR-006.
+- ✅ `Prompting` — sectioned/budgeted builder with a **tokenizer-backed** counter, caret-boundary
+  sanitization, native FIM for mid-line, and per-app environment-context gating (ADR-008/017).
+- ✅ `ModelRuntime` — `LlamaModelRuntime` over the prebuilt llama.cpp xcframework: GGUF load,
+  tokenize/detokenize, batch decode, next-token logits, EOS/EOT, and KV prefix reuse via
+  snapshot/restore. `StubModelRuntime` is retained for tests (ADR-007/018).
+- ✅ `ConstrainedGeneration` — real multi-branch search (branch width / cutoff / min-prob),
+  top-k/top-p/temperature sampling, trie admissibility, required-prefix enforcement, sentence-
+  boundary stop, in-beam typo guard, suffix-overlap suppression, and cancellation (ADR-010+).
+- ✅ `TokenProfiles` — the on-disk **ACPF** format with a memory-mapped reader and an offline
+  builder; profiles are generated in-app per model family (ADR-009/034).
+- ✅ `CompletionUI` — inline ghost-text overlay at the caret, plus the mid-line capsule and
+  text-mirror fallbacks (ADR-016/048).
+- ✅ `TextInsertion` — real ⌘V/match-style/chunk/char insertion with clipboard save/restore and
+  per-app workarounds (ADR-016).
+- ✅ `AppCompatibility` — context-aware per-app/per-domain overrides (gating, mid-line rules, Tab
+  handling, insertion/overlay tuning, secure-field exclusion) (ADR-022+).
+- ✅ App target — background menu-bar / agent app with onboarding, in-app model download, Settings,
+  encrypted local writing history, and local telemetry (ADR-005/023/034).
+
+For the current set of open improvement themes (vs. the completed build milestones), see
+`04-roadmap.md`.
 
 ## How to work on this project
 
-- **One milestone per session** (see `04-roadmap.md`), each with explicit acceptance criteria.
-- Keep `swift build` and `swift test` green for any package you touch.
-- Write tests first where practical (especially profiles, prompting, constrained generation).
-- Record decisions in `05-decisions.md`.
-- Commit per milestone, with clear messages — **but only when the human asks you to commit.**
-- **Debugging completion quality:** the running app writes every prediction + acceptance outcome to
-  `~/Library/Application Support/KeyType/Logs/predictions.log` (truncated each launch). Check it
-  first when a completion looks wrong or missing — details in `01-architecture.md` → *Debugging &
-  observability*.
+- **Make the smallest change behind the existing protocols** that fixes the problem; extend the
+  module graph, don't widen public APIs or add packages without a real need.
+- **Quality issues:** reproduce, then read the prediction log *before* editing code — see
+  `06-quality-playbook.md` (and *Debugging & observability* in `01-architecture.md`).
+- **Latency work:** always measure in a **release** build — see `07-performance.md`.
+- **App/domain behavior:** add an `AppCompatibility` override — see `08-app-compatibility.md`.
+- Keep `swift build` and `swift test` green for any package you touch; add/update tests.
+- Record non-obvious decisions as a new ADR in `05-decisions.md`.
+- Commit with clear messages — **but only when the human asks you to commit.**
 
 ## Document index
 
 
-| Doc                    | Contents                                                     |
-| ---------------------- | ------------------------------------------------------------ |
-| `00-overview.md`       | This file: what/why, clean-room rules, layout, current state |
-| `01-architecture.md`   | Module graph, responsibilities, data flow, Red Dot reuse     |
-| `02-prompting.md`      | Prompt sections, budgeting, base-vs-chat, example prompt     |
-| `03-token-profiles.md` | ACPF binary format, builder, runtime contract, tests         |
-| `04-roadmap.md`        | Phased milestones with acceptance criteria                   |
-| `05-decisions.md`      | Append-only decision log (ADR-style)                         |
+| Doc                       | Contents                                                       |
+| ------------------------- | -------------------------------------------------------------- |
+| `00-overview.md`          | This file: what/why, clean-room rules, layout, what's shipped  |
+| `01-architecture.md`      | Module graph, responsibilities, data flow, observability       |
+| `02-prompting.md`         | Prompt sections, budgeting, base-vs-chat, FIM, example prompt  |
+| `03-token-profiles.md`    | ACPF binary format, builder, runtime contract, tests           |
+| `04-roadmap.md`           | Completed-milestone archive + the live improvement backlog     |
+| `05-decisions.md`         | Append-only decision log (ADR-style), with an index            |
+| `06-quality-playbook.md`  | Triaging bad/missing completions from `predictions.log`        |
+| `07-performance.md`       | Latency budget, release-build rule, profiling methodology      |
+| `08-app-compatibility.md` | How to add a new per-app / per-domain override                 |
 
 

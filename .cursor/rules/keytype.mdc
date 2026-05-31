@@ -5,26 +5,22 @@ alwaysApply: true
 
 # KeyType — Always-On Rules
 
+> **Source of truth: [`AGENTS.md`](../../AGENTS.md).** This rule is a pointer so the guardrails
+> apply inside Cursor; keep substantive edits in `AGENTS.md` so the two can't drift.
+
 KeyType is an open-source, on-device, system-wide macOS tab-autocomplete utility — a clean-room
-alternative to the closed-source app *Cotypist*. **Read `docs/00-overview.md` first**; the full
-brief is `docs/00`–`05`. Log non-obvious decisions in `docs/05-decisions.md`.
+alternative to the closed-source app *Cotypist*. It is **built and shipping**; work is maintenance
+and iteration. **Read `docs/00-overview.md` first.**
 
-## Product principles
-- Narrow the problem: predict a *short* continuation at the cursor, then discard anything not
-  immediately insertable. Default `maxCompletionTokens` = 4.
-- **Prefer suppression to a wrong suggestion** — showing nothing beats a bad completion.
-- Base-model continuation: the prompt ends exactly at the cursor (not chat/instruct).
-- On-device & private: clipboard, screen/OCR, and writing history are local and opt-in.
+The non-negotiables (full detail in `AGENTS.md`):
 
-## Architecture & workflow
-- Target: macOS 15+, Swift. Logic lives in local SwiftPM packages under `Packages/`.
-  **Extend the existing module graph; do not rewrite it.** Cross-module types go in
-  `AutocompleteCore` (keep it free of AppKit/llama deps).
-- Reuse the proven caret/overlay code from the sibling `Red Dot` project for context capture and
-  the overlay window — port, don't reinvent (see `docs/01`).
-- Keep concrete wiring in the app target (`KeyTypeModuleGraph.swift`); keep packages decoupled.
-- For every package you touch: add/update tests and keep `swift build` + `swift test` green.
-- Generation must be cancellable (a newer keystroke cancels in-flight work); keep model decode off
-  the main actor; AX + overlay code is `@MainActor`.
-- Work one milestone at a time (`docs/04-roadmap.md`). **Only create git commits when the human
-  explicitly asks.**
+- **Prefer suppression to a wrong suggestion**; predict a *short* base-model continuation that
+  ends exactly at the cursor; keep it on-device and private (clipboard/OCR/history opt-in).
+- **Extend the existing module graph; do not rewrite it.** Cross-module types go in
+  `AutocompleteCore` (no AppKit/llama deps); the app target is the only wiring layer.
+- Generation is cancellable; model decode runs off the main actor; AX + overlay code is `@MainActor`.
+- Make the smallest change behind the existing protocols; add/update tests and keep
+  `swift build` + `swift test` green for every package you touch.
+- Triage quality from `predictions.log` first; measure latency in a **release** build.
+- Log non-obvious decisions as a new ADR in `docs/05-decisions.md`.
+- **Only create git commits when the human explicitly asks.**

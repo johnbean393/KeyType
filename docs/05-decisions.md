@@ -17,6 +17,66 @@ Template:
 
 ---
 
+## Index
+
+Newest at the bottom of the file. **When you add an ADR, use the next sequential number and add a
+row here.**
+
+| #   | Title | Area |
+| --- | ----- | ---- |
+| 001 | Reconstruction, MIT license | project |
+| 002 | Modular SwiftPM package architecture | architecture |
+| 003 | Flatten the nested repository structure | project |
+| 004 | Reuse Red Dot caret-tracking code | context-capture |
+| 005 | Background menu-bar app shell; App Sandbox disabled | app |
+| 006 | Notification-driven context capture | context-capture |
+| 007 | llama.cpp via prebuilt xcframework `binaryTarget` | model-runtime |
+| 008 | Tokenizer-backed prompt budgeting / `maxPromptTokens` | prompting |
+| 009 | ACPF on-disk token-profile schema | token-profiles |
+| 010 | Constrained multi-branch decoding | generation |
+| 011 | Real-model generation fixes (digest, exclusion, recurrent KV) | generation |
+| 012 | Decoder latency: measure in release; beam tuning | performance |
+| 013 | Context-aware sentence-boundary stop | generation |
+| 014 | Multilingual robustness of the pipeline | generation |
+| 015 | Current-word typo guard inside the beam | generation |
+| 016 | Filtering, inline overlay, insertion, Tab accept → MVP | ui/insertion |
+| 017 | Caret boundary, FIM, environment-context policy | prompting |
+| 018 | KV branch reuse — prefill once, snapshot/restore | model-runtime |
+| 019 | Mid-word token healing | generation |
+| 020 | Suggestion anchoring against the live caret | ui |
+| 021 | Confirm-and-tear-down on quit (ggml-metal abort) | app |
+| 022 | Context-aware app-compatibility policies | app-compatibility |
+| 023 | Personalization & polish (history, telemetry, Settings) | personalization |
+| 024 | Prediction-log quality fixes | generation |
+| 025 | Required-prefix decoding bypasses raw-logit pre-selection | generation |
+| 026 | Typo net sees through the heal | generation |
+| 027 | Resolve browser web-area focus to editable descendant | context-capture |
+| 028 | Estimated browser carets stay inline | ui |
+| 029 | Browser ghost text: defensive color, multiline estimates | ui |
+| 030 | Treat Cursor as a code editor target | app-compatibility |
+| 031 | Treat WeChat as an explicit chat surface | app-compatibility |
+| 032 | Read Apple Mail compose bodies from focused HTML | app-compatibility |
+| 033 | Reject container-sized caret bounds in multiline web | context-capture |
+| 034 | In-app model download + auto ACPF + family resolution | model-runtime |
+| 035 | Catalog artifacts pinned to base GGUFs | model-runtime |
+| 036 | Import an arbitrary user-supplied GGUF | model-runtime |
+| 037 | Dismiss stale completions from the key tap | generation |
+| 038 | Trailing punctuation is a separate Tab unit | insertion |
+| 039 | Tag synthesized insertion events so key taps ignore them | insertion |
+| 040 | On-screen text (OCR) context via focused-window capture | context-capture |
+| 041 | Guided drag-and-drop permission flow | app |
+| 042 | KeyType app icon direction | app |
+| 043 | Batched beam-frontier decoding | performance |
+| 044 | Detailed component profile — snapshot capture is next lever | performance |
+| 045 | The "20 ms capture" was a sync artifact | performance |
+| 046 | Incremental beam decoding | performance |
+| 047 | Group source files by responsibility inside targets | architecture |
+| 048 | Mid-line (FIM) completions render in a capsule | ui |
+| 049 | Suppress suffix-duplicating completions; OCR guard | generation |
+| 050 | The separator leads the next word, not the previous one | insertion |
+
+---
+
 ## ADR-001 — Reconstruction, MIT license
 
 - Date: 2026-05-29
@@ -2001,7 +2061,7 @@ text. Both are now closed:
   package suites (AutocompleteCore, ConstrainedGeneration, MacContextCapture, CompletionUI) are green
   in release.
 
-## ADR-049 — The separator leads the next word, not the previous one
+## ADR-050 — The separator leads the next word, not the previous one
 
 - Date: 2026-05-31
 - Status: accepted (refines ADR-038, which had the head *trail* through the word's whitespace)

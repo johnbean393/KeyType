@@ -17,17 +17,20 @@ clean-room design — **do not implement Cotypist's `FEBI` format or reuse its l
 - ❌ Not a model adapter, not user training data, not a model replacement.
 - Regenerate whenever the tokenizer vocabulary changes.
 
-## Current code state
+## Current code state — shipped
 
-`Packages/TokenProfiles` already defines the **runtime contract** and an in-memory implementation:
+`Packages/TokenProfiles` implements both the runtime contract and the on-disk format:
 - `AutocompleteProfile` protocol: `record(for:)`, `isExcluded(_:mode:)`, `bias(for:mode:)`,
-  `displayWidth(for:)`, `stopBehavior(for:)`, `tokenAllowed(_:afterRequiredPrefix:)`.
-- `TokenProfileRecord`, `TokenProfileFlags` (OptionSet), `TokenStopBehavior`,
-  `InMemoryAutocompleteProfile`.
+  `displayWidth(for:)`, `stopBehavior(for:)`, `tokenAllowed(_:afterRequiredPrefix:)`, with
+  `TokenProfileRecord`, `TokenProfileFlags` (OptionSet), `TokenStopBehavior`, and
+  `InMemoryAutocompleteProfile` (used in tests).
+- The on-disk **`ACPF`** binary format with a memory-mapped reader
+  (`MmapAutocompleteProfile: AutocompleteProfile`) and an **offline builder** that produces the file
+  from a GGUF tokenizer (ADR-009). Profiles are generated in-app per model family during model
+  download (ADR-034).
 
-**Missing (the milestone):** the on-disk `ACPF` binary format — a memory-mapped reader
-(`MmapAutocompleteProfile: AutocompleteProfile`) and an **offline builder** that produces the file
-from a GGUF tokenizer.
+The spec below documents that shipped format and its validation contract; treat it as the
+reference when changing the schema or builder (bump the schema version on any layout change).
 
 ## What to store
 
