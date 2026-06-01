@@ -28,8 +28,6 @@
 		4B5450012FC9600000000036 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000037 /* MenuBarView.swift */; };
 		4B5450012FC9600000000038 /* ContextCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000039 /* ContextCaptureController.swift */; };
 		4B5450012FC9600000000041 /* CompletionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000040 /* CompletionController.swift */; };
-		4B5450012FC96000000002A1 /* CompletionPromotionCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */; };
-		4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */; };
 		4B5450012FC9600000000043 /* CompletionAcceptanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */; };
 		4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000044 /* FieldFontResolver.swift */; };
 		4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000046 /* SystemWordRecognizer.swift */; };
@@ -65,6 +63,8 @@
 		4B5450012FC96000000000F0 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC96000000000F1 /* LaunchAtLogin */; };
 		4B5450012FC9600000000201 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000200 /* Sparkle */; };
 		4B5450012FC9600000000211 /* UpdaterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000210 /* UpdaterController.swift */; };
+		4B5450012FC96000000002A1 /* CompletionPromotionCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */; };
+		4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,8 +100,6 @@
 		4B5450012FC9600000000037 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000039 /* ContextCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCaptureController.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000040 /* CompletionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionController.swift; sourceTree = "<group>"; };
-		4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionPromotionCache.swift; sourceTree = "<group>"; };
-		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionAcceptanceController.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000044 /* FieldFontResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldFontResolver.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000046 /* SystemWordRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWordRecognizer.swift; sourceTree = "<group>"; };
@@ -133,6 +131,8 @@
 		4B5450012FC96000000000D0 /* KeyType.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = KeyType.icon; sourceTree = "<group>"; };
 		4B5450012FC9600000000210 /* UpdaterController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterController.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000220 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionPromotionCache.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -758,7 +758,7 @@
 				CODE_SIGN_ENTITLEMENTS = KeyType/KeyType.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -771,7 +771,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -792,7 +792,7 @@
 				CODE_SIGN_ENTITLEMENTS = KeyType/KeyType.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -805,7 +805,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

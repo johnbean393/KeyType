@@ -14,6 +14,12 @@ An open-source, on-device, system-wide tab-autocomplete utility for macOS.
   </a>
 </p>
 
+<p align="center">
+  <a href="https://youtu.be/1huNPFQHqi8">
+    <img src="https://img.youtube.com/vi/1huNPFQHqi8/maxresdefault.jpg" alt="Watch the KeyType demo video" width="720">
+  </a>
+</p>
+
 **KeyType** is an open-source, on-device, system-wide **tab-autocomplete utility for macOS**.
 
 It watches the focused text field across any app, predicts a short continuation at the cursor
