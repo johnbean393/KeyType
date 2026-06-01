@@ -3,6 +3,14 @@
     <channel>
         <title>KeyType</title>
         <item>
+            <title>1.2</title>
+            <pubDate>Tue, 02 Jun 2026 02:20:41 +0800</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>1.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/johnbean393/KeyType/releases/download/v1.2.0/KeyType.1.2.dmg" sparkle:edSignature="2L5zbZ3XXHwcDNZqM/VFzAGX2ZEplUfzKa7GW0AJrmjsX7X8AjFFx0SDEpqhnu6qTfuXHaSVAFiN0FwcXG2UBQ==" length="14144908" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>1.1</title>
             <pubDate>Mon, 01 Jun 2026 04:47:19 +0800</pubDate>
             <sparkle:version>2</sparkle:version>
