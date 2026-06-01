@@ -2414,3 +2414,55 @@ text. Both are now closed:
   with identical-byte ids and asserts the self-check passes, both non-excluded duplicates are
   admissible, and an excluded duplicate is rejected; the strict `TriePresenceTests` still
   guards the no-duplicate fixture.
+
+## ADR-060 — Reuse still-matching generated branches after the next keystroke
+
+- Date: 2026-06-01
+- Status: accepted
+- Context: Branching search can produce several plausible continuations, but the UI historically
+  anchored only the displayed top candidate. If the user typed the next character of a lower-ranked
+  branch, the top candidate was invalidated and the controller discarded the whole suggestion before
+  waiting for a fresh decode. That was correct for safety, but wasteful in the common case where a
+  non-top generated branch already exactly matched the user's next character.
+- Decision: after a shown prediction, keep a short-lived, string-only promotion cache containing the
+  filter-approved, caret-reconciled candidate anchors from that generation, ranked by source order and
+  score. On each append-only context change, or immediately on key-down before the AX snapshot arrives,
+  promote the first cached branch whose anchor still matches the live typed prefix and whose remaining
+  text is at least three characters. Recompute instead when there is no typed delta, the context changed
+  in any non-append way (target, suffix, deletion, caret jump, active selected text), no branch
+  matches, or all matches have only a one- or two-character remainder. Harmless AX metadata refreshes
+  such as caret selection-range movement, typing context, labels, placeholder, or detected language do
+  not invalidate an otherwise append-only match. Normal clearing paths (`reset`,
+  suppression, no match, too-short match, acceptance teardown, stop/shutdown) clear the cache. The cache
+  deliberately stores no logits, KV state, token branches, or model memory; a promoted branch is just a
+  previously generated string re-anchored against the live caret.
+- Consequences: the first post-generation keystroke can now keep a lower-ranked branch alive without a
+  decode, while still falling back to generation whenever the cache signal is weak. This trades a small
+  bounded string array per shown prediction for avoided decodes and avoids retaining expensive model
+  internals. A quantification test with five distinct first-letter branches shows 5/6 typed choices are
+  reusable with branch promotion versus 1/6 with top-candidate-only reuse (recomputes drop from 5/6 to
+  1/6, an 80% reduction for that fixture). The test also covers lower-rank promotion, no-match
+  recompute, too-short recompute, active-selection recompute, and metadata refresh preservation.
+
+## ADR-061 — Held Tab-acceptance remainders outrank branch-promotion cache decisions
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: ADR-060's promotion cache is intentionally conservative: it recomputes when the live
+  context has active selected text or when a matching branch has only a one- or two-character remainder. That
+  policy is right for speculative type-through, but it is wrong during word-by-word Tab acceptance.
+  Once the user has explicitly accepted the first word of a shown completion, the remaining anchored
+  text is no longer a speculative branch candidate; it is the held continuation the user is walking
+  through with repeated Tab presses. Letting the cache run first could clear that held continuation,
+  including long remainders when a post-insert AX snapshot briefly reports an active selection.
+- Decision: while `holdAnchor` is active, the controller first re-renders the held anchor against the
+  live context and returns, before consulting the promotion cache or starting generation. Starting a
+  word-by-word hold also clears the promotion cache, because it is not needed until the held suggestion
+  is exhausted or abandoned. Transient post-insert snapshots that still match the held anchor but lack
+  usable caret placement preserve the visible remainder instead of calling `reset`; the next good
+  snapshot re-pins it.
+- Consequences: accepting the first word of a completion keeps the rest available, including short
+  remainders (`"hi"`, `"."`) and long remainders whose AX selection state changed after insertion. The cache
+  remains authoritative for ordinary typing, but never overrules an explicit Tab-acceptance hold.
+  Regression tests cover both a short remainder rejected by the cache floor and a long remainder
+  rejected by cache context validation while still valid under the held anchor.

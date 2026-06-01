@@ -84,6 +84,9 @@ final class CompletionController {
     /// generated for "…more " was inserted verbatim after the user had already typed "…more e").
     private var anchorText: String?
     private var anchorContext: TextFieldContext?
+    /// Reconciled, filter-approved candidate anchors from the most recent generation. Used to keep a
+    /// lower-ranked branch alive when the user types into it; cleared on every normal reset/recompute.
+    private var promotionCache: CompletionPromotionCache?
     /// The most recent focused-field context seen — the live caret the suggestion is reconciled to.
     private var latestContext: TextFieldContext?
     private var frozenSideContext: FrozenPromptSideContext?
@@ -249,7 +252,12 @@ final class CompletionController {
     private func handle(_ snapshot: FocusedFieldSnapshot?) {
         // Conditions under which there can be no suggestion: tear everything down and reset.
         guard completionsEnabled, loadState == .ready, let engine else { reset(); return }
-        guard let snapshot, let caretRect = snapshot.caretRect, !caretRect.isEmpty else { reset(); return }
+        guard let snapshot else { reset(); return }
+        guard let caretRect = snapshot.caretRect, !caretRect.isEmpty else {
+            if preserveHeldCompletion(for: snapshot.context) { return }
+            reset()
+            return
+        }
 
         let context = snapshot.context
         latestContext = context
@@ -282,27 +290,42 @@ final class CompletionController {
         lastContextKey = key
         lastCaretRect = caretRect
 
-        guard placementResolver.placement(for: context) != nil else { reset(); return }
+        guard placementResolver.placement(for: context) != nil else {
+            if preserveHeldCompletion(for: context, contextKey: key) { return }
+            reset()
+            return
+        }
 
         // Resolve the field font and foreground color now, on the main actor, before suspending
         // into generation, so the ghost text matches the field's typeface and color.
         let style = FieldFontResolver.currentStyle()
 
-        // The context just changed (the dedup above let us through), so the on-screen suggestion is
-        // from the *previous* caret. Re-derive it against the new caret first: if the user typed the
-        // suggested characters it shrinks and follows the cursor; if they diverged (or deleted) it is
-        // dropped immediately — never left dangling and stale. A fresh generation follows below.
-        renderSuggestion(for: context, style: style)
-
         // Holding an accepted suggestion: while its remainder still applies to the live caret, keep it
         // on screen and skip regeneration so repeated Tab presses accept subsequent words of the SAME
         // completion (rather than producing a fresh one after each word). Once the remainder is
         // exhausted or the user diverges, fall through to a fresh generation below.
+        //
+        // This must run before promotion-cache reuse: the cache has a "remaining text must be at least
+        // 3 characters" guard for speculative type-through, but word-by-word Tab acceptance must keep
+        // valid short remainders such as "hi" or ".".
         if holdAnchor {
-            if let remaining = liveCompletion(for: context), !remaining.isEmpty {
+            if renderSuggestion(for: context, style: style, clearOnFailure: false) {
                 return
             }
             holdAnchor = false
+        }
+
+        // The context just changed (the dedup above let us through), so the on-screen suggestion is
+        // from the *previous* caret. Try to reuse the last generated candidate set: if the user typed
+        // into any still-compatible branch (including a lower-ranked one), promote it and skip this
+        // decode. Otherwise drop the stale ghost and let a fresh generation run below.
+        switch applyPromotionCacheIfUseful(for: context, style: style) {
+        case .reused:
+            return
+        case .mustRecompute:
+            break
+        case .notApplicable:
+            renderSuggestion(for: context, style: style)
         }
 
         // Token healing (ADR-019): when the caret sits mid-word, prompt from the last clean token
@@ -399,28 +422,14 @@ final class CompletionController {
 
         // When the prompt was healed (ADR-019), the completion re-emits the already-typed stem
         // (" great today."); strip it back off so only the genuinely new text ("at today.") remains.
-        let completion = request.requiredPrefixBytes.isEmpty
-            ? best.text
-            : MidWordHealing.strip(best.text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
-
-        // Re-align the leading whitespace against the prefix this was generated for (ADR-017 /
-        // CaretBoundary). This reconciled text is the suggestion *anchor*; what is actually shown and
-        // inserted is re-derived from it against the live caret, so it stays correct even though the
-        // user may have typed more during generation.
-        var anchored = CaretBoundary.reconcile(completion, beforeCursor: request.context.beforeCursor)
-        // Drop trailing whitespace for an end-of-line append: a dangling space renders as a phantom
-        // gap in the ghost text and inserts a stray separator on accept. Mid-line keeps it — there the
-        // trailing space may be the genuine separator before the existing after-cursor text. See ADR-024.
-        if request.context.afterCursor.isEmpty {
-            while let last = anchored.last, last.isWhitespace { anchored.removeLast() }
-        }
-        guard !anchored.isEmpty else {
+        guard let anchored = anchorText(for: best, request: request, applyingFilter: false) else {
             telemetry.recordSuppressed(reason: "emptyAfterBoundary")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(emptyAfterBoundary)")
             clearCompletion()
             return
         }
 
+        promotionCache = makePromotionCache(from: candidates, request: request)
         anchorText = anchored
         anchorContext = request.context
         telemetry.recordShown()
@@ -428,6 +437,57 @@ final class CompletionController {
         if !renderSuggestion(for: latestContext ?? request.context, style: style, clearOnFailure: false) {
             _ = renderSuggestion(for: request.context, style: style)
         }
+    }
+
+    private func anchorText(
+        for candidate: CompletionCandidate,
+        request: CompletionRequest,
+        applyingFilter: Bool
+    ) -> String? {
+        if applyingFilter, filter.suppressionReason(for: candidate, request: request) != nil {
+            return nil
+        }
+
+        let completion = request.requiredPrefixBytes.isEmpty
+            ? candidate.text
+            : MidWordHealing.strip(candidate.text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
+
+        // Re-align the leading whitespace against the prefix this was generated for (ADR-017 /
+        // CaretBoundary). This reconciled text is the suggestion *anchor*; what is actually shown and
+        // inserted is re-derived from it against the live caret.
+        var anchored = CaretBoundary.reconcile(completion, beforeCursor: request.context.beforeCursor)
+        // Drop trailing whitespace for an end-of-line append: a dangling space renders as a phantom
+        // gap in the ghost text and inserts a stray separator on accept. Mid-line keeps it — there the
+        // trailing space may be the genuine separator before the existing after-cursor text. See ADR-024.
+        if request.context.afterCursor.isEmpty {
+            while let last = anchored.last, last.isWhitespace { anchored.removeLast() }
+        }
+        return anchored.isEmpty ? nil : anchored
+    }
+
+    private func makePromotionCache(
+        from candidates: [CompletionCandidate],
+        request: CompletionRequest
+    ) -> CompletionPromotionCache? {
+        var seen = Set<String>()
+        var entries: [CompletionPromotionCache.Entry] = []
+        entries.reserveCapacity(candidates.count)
+
+        for (rank, candidate) in candidates.enumerated() {
+            guard let anchored = anchorText(for: candidate, request: request, applyingFilter: true),
+                  seen.insert(anchored).inserted
+            else { continue }
+            entries.append(
+                CompletionPromotionCache.Entry(
+                    anchorText: anchored,
+                    sourceRank: rank,
+                    logProbability: candidate.logProbability
+                )
+            )
+        }
+
+        guard !entries.isEmpty else { return nil }
+        return CompletionPromotionCache(anchorContext: request.context, entries: entries)
     }
 
     nonisolated static func adaptiveDebounceNanoseconds(lastGenerationLatencyMs: Double?) -> UInt64 {
@@ -533,6 +593,43 @@ final class CompletionController {
         }
     }
 
+    private enum PromotionCacheApplication {
+        case reused
+        case mustRecompute
+        case notApplicable
+    }
+
+    @discardableResult
+    private func applyPromotionCacheIfUseful(
+        for live: TextFieldContext,
+        style: ResolvedFieldStyle,
+        updateLatestContext: Bool = false
+    ) -> PromotionCacheApplication {
+        guard let cache = promotionCache else { return .notApplicable }
+
+        switch cache.decision(for: live) {
+        case let .promote(promotion):
+            anchorText = promotion.anchorText
+            anchorContext = cache.anchorContext
+            if updateLatestContext { latestContext = live }
+            guard renderSuggestion(for: live, style: style, clearOnFailure: false) else {
+                clearCompletion()
+                return .mustRecompute
+            }
+            predictionLog.append(
+                "PROMOTE rank=\(promotion.sourceRank) remaining=\"\(PredictionLog.escape(promotion.remainingText))\""
+            )
+            return .reused
+
+        case .recompute(.noTypedDelta):
+            return .notApplicable
+
+        case .recompute:
+            clearCompletion()
+            return .mustRecompute
+        }
+    }
+
     /// Renders the anchored suggestion (if any) against `live`: shows the portion still ahead of the
     /// caret at the live placement, or clears everything when the user has typed past / diverged from
     /// it. The single place the overlay is shown, so display always matches the live caret.
@@ -574,11 +671,29 @@ final class CompletionController {
         return SuggestionAnchor.remaining(anchorText: anchorText, anchor: anchorContext, live: live)
     }
 
-    private func clearCompletion() {
+    private func preserveHeldCompletion(for context: TextFieldContext, contextKey: String? = nil) -> Bool {
+        guard holdAnchor,
+              let remaining = liveCompletion(for: context),
+              !remaining.isEmpty
+        else {
+            return false
+        }
+
+        latestContext = context
+        visibleCandidate = CompletionCandidate(text: remaining, mode: .prose)
+        if let contextKey {
+            lastContextKey = contextKey
+            lastCaretRect = nil
+        }
+        return true
+    }
+
+    private func clearCompletion(clearPromotionCache: Bool = true) {
         presenter.hide()
         visibleCandidate = nil
         anchorText = nil
         anchorContext = nil
+        if clearPromotionCache { promotionCache = nil }
         holdAnchor = false
     }
 
@@ -629,14 +744,19 @@ final class CompletionController {
     /// outdated ghost text visibly lingers for a beat after each key. See ADR-037.
     ///
     /// `typed` is the plain text the key inserts, or `nil` for keys that don't insert plain text
-    /// (delete, arrows, return, escape, ⌘/⌃ shortcuts). When the user is typing the suggested
-    /// characters the suggestion is kept so the AX pipeline can shrink it in place (no flicker);
-    /// anything else clears it now and abandons any in-flight generation, so a result returning for the
-    /// previous caret can't re-show the stale suggestion.
+    /// (delete, arrows, return, escape, ⌘/⌃ shortcuts). When the user is typing into any cached
+    /// branch, the branch is promoted immediately and normal generation is skipped until the cache no
+    /// longer has a substantial matching remainder. Anything else clears now and abandons in-flight
+    /// generation, so a result returning for the previous caret can't re-show a stale suggestion.
     func dismissStaleCompletion(typedCharacters typed: String?) {
         guard let shown = visibleCandidate?.text, !shown.isEmpty else { return }
-        if let typed, !typed.isEmpty, shown.hasPrefix(typed) {
-            if advanceTypeThrough(typedCharacters: typed) { return }
+        if let typed, !typed.isEmpty {
+            let cacheWasAvailable = promotionCache != nil
+            if promoteCachedCompletion(typedCharacters: typed) { return }
+            // Compatibility fallback for states created before a candidate-set cache exists.
+            if !cacheWasAvailable, shown.hasPrefix(typed), advanceTypeThrough(typedCharacters: typed) {
+                return
+            }
         }
         debounceTask?.cancel()
         generationTask?.cancel()
@@ -644,11 +764,42 @@ final class CompletionController {
         clearCompletion()
     }
 
+    private func promoteCachedCompletion(typedCharacters typed: String) -> Bool {
+        guard !typed.isEmpty,
+              let live = latestContext ?? anchorContext,
+              let cache = promotionCache
+        else { return false }
+        let optimistic = live.replacingBeforeCursor(live.beforeCursor + typed)
+
+        switch cache.decision(for: optimistic) {
+        case let .promote(promotion):
+            anchorText = promotion.anchorText
+            anchorContext = cache.anchorContext
+            latestContext = optimistic
+            let remainder = CompletionCandidate(text: promotion.remainingText, mode: .prose)
+            visibleCandidate = remainder
+            presenter.advanceAfterAccepting(head: typed, remainder: remainder)
+            predictionLog.append(
+                "PROMOTE rank=\(promotion.sourceRank) remaining=\"\(PredictionLog.escape(promotion.remainingText))\""
+            )
+            debounceTask?.cancel()
+            generationTask?.cancel()
+            warmupTask?.cancel()
+            return true
+
+        case .recompute(.noTypedDelta):
+            return false
+
+        case .recompute:
+            clearCompletion()
+            return false
+        }
+    }
+
     /// The user typed the next visible ghost characters. AX will eventually report the real field
     /// state, but until then acceptance must see the optimistic caret so a rapid Tab does not insert
-    /// characters the user already typed. This only mutates local UI/acceptance state; it deliberately
-    /// leaves debounce/generation tasks alone so inference and KV/prefill reuse follow the normal AX
-    /// snapshot path.
+    /// characters the user already typed. Used only as a compatibility fallback when no candidate-set
+    /// cache is available.
     private func advanceTypeThrough(typedCharacters typed: String) -> Bool {
         guard let live = latestContext ?? anchorContext,
               let anchorText,
@@ -716,6 +867,7 @@ final class CompletionController {
         )
 
         holdAnchor = true
+        promotionCache = nil
         // Cancel any in-flight generation so it can't clobber the held suggestion when it returns.
         debounceTask?.cancel()
         generationTask?.cancel()
