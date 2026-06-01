@@ -37,7 +37,7 @@ struct PrivacySettingsView: View {
                 }
                 Toggle(isOn: $settings.ocrEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Use on-screen text (OCR) as context")
+                        Text("Use on-screen text (OCR) as context (Beta)")
                         Text("Reads visible text from the focused window. Off by default; requires Screen Recording.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)

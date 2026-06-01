@@ -248,11 +248,6 @@ struct OnboardingView: View {
                 detail: "Includes clipboard text in the prompt.",
                 isOn: $settings.clipboardEnabled
             )
-            ToggleCard(
-                title: "Use on-screen text (OCR) as context",
-                detail: "Reads visible text from the focused window. Requires Screen Recording permission.",
-                isOn: $settings.ocrEnabled
-            )
         }
     }
 
