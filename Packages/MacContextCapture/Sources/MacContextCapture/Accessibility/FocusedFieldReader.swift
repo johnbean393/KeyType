@@ -38,9 +38,14 @@ public struct FocusedFieldSnapshot: Equatable {
 @MainActor
 public struct FocusedFieldReader {
     private let resolver: AXCaretGeometryResolver
+    private nonisolated let webAppClassifier: AppBundleWebAppClassifier
 
-    public nonisolated init(resolver: AXCaretGeometryResolver = AXCaretGeometryResolver()) {
+    public nonisolated init(
+        resolver: AXCaretGeometryResolver = AXCaretGeometryResolver(),
+        webAppClassifier: AppBundleWebAppClassifier = .shared
+    ) {
         self.resolver = resolver
+        self.webAppClassifier = webAppClassifier
     }
 
     /// Read the focused AX element into a snapshot. Returns nil if the element has no AX
@@ -93,7 +98,8 @@ public struct FocusedFieldReader {
             for: textElement,
             target: target,
             placeholder: placeholder,
-            labels: labels
+            labels: labels,
+            webAppClassifier: webAppClassifier
         )
 
         let context = TextFieldContext(
@@ -297,7 +303,8 @@ enum AppTargetResolver {
         for element: AXUIElement,
         target: AppTarget,
         placeholder: String?,
-        labels: [String]
+        labels: [String],
+        webAppClassifier: AppBundleWebAppClassifier = .shared
     ) -> TextFieldTraits {
         let role = AXCaretHelper.stringValue(for: kAXRoleAttribute as CFString, on: element) ?? ""
         let subrole = AXCaretHelper.stringValue(for: kAXSubroleAttribute as CFString, on: element) ?? ""
@@ -312,7 +319,8 @@ enum AppTargetResolver {
             isSecureTextEntry: isSecure,
             isPasswordField: fieldMetadataLooksPasswordLike(metadata),
             isPasswordManagerContext: passwordManagerBundleIDs.contains(target.bundleIdentifier),
-            isWebField: findAncestorWebArea(of: element) != nil,
+            isWebField: findAncestorWebArea(of: element) != nil
+                || webAppClassifier.isWebBacked(bundleIdentifier: target.bundleIdentifier),
             isTerminalLike: terminalBundleIDs.contains(target.bundleIdentifier)
         )
     }

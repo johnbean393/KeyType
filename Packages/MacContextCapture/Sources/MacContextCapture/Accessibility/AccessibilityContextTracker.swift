@@ -23,6 +23,7 @@ public final class AccessibilityContextTracker: NSObject {
 
     private nonisolated let reader: FocusedFieldReader
     private nonisolated let permissionChecker: AccessibilityPermissionChecker
+    private nonisolated let webAppClassifier: AppBundleWebAppClassifier
     private let systemElement = AXUIElementCreateSystemWide()
 
     private var listeners: [UUID: Listener] = [:]
@@ -47,10 +48,12 @@ public final class AccessibilityContextTracker: NSObject {
 
     public nonisolated init(
         reader: FocusedFieldReader = FocusedFieldReader(),
-        permissionChecker: AccessibilityPermissionChecker = AccessibilityPermissionChecker()
+        permissionChecker: AccessibilityPermissionChecker = AccessibilityPermissionChecker(),
+        webAppClassifier: AppBundleWebAppClassifier = .shared
     ) {
         self.reader = reader
         self.permissionChecker = permissionChecker
+        self.webAppClassifier = webAppClassifier
         super.init()
     }
 
@@ -66,7 +69,14 @@ public final class AccessibilityContextTracker: NSObject {
             name: NSWorkspace.didActivateApplicationNotification,
             object: nil
         )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidLaunchApp(_:)),
+            name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
 
+        webAppClassifier.primeRunningApplications()
         retargetObserver()
         installFallbackKeyTap()
         scheduleSafetyPoll()
@@ -118,6 +128,12 @@ public final class AccessibilityContextTracker: NSObject {
             self?.retargetObserver()
             self?.refreshSoon()
         }
+    }
+
+    @objc
+    private func workspaceDidLaunchApp(_ note: Notification) {
+        let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+        webAppClassifier.noteLaunchedApplication(app)
     }
 
     // MARK: - AX observer

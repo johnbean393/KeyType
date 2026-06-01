@@ -2516,3 +2516,25 @@ text. Both are now closed:
   mutate text, selection, caret, or document state. The Screenshot toolbar can temporarily take focus
   without making a stale completion acceptable; the normal AX pipeline resumes once the original field
   is seen again. Tests cover the reserved key-code/modifier contract and the acceptance-side wrapper.
+
+## ADR-064 — Cache Electron bundle detection outside the AX hot path
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: KeyType already handles web-shaped AX trees by walking from `AXWebArea` to the active
+  editable child and by using deeper Chromium caret-geometry fallbacks. Some Electron apps do not
+  reliably expose enough URL/domain context for a domain override, but their app bundle usually
+  contains stable Electron markers such as `Electron Framework.framework` or `.asar` resources. Doing
+  filesystem work during every AX snapshot would add latency to the keystroke path.
+- Decision: add `AppBundleWebAppClassifier`, a locked process-local cache keyed by bundle
+  identifier. At app launch KeyType primes it from `NSWorkspace.runningApplications`; the shared
+  `AccessibilityContextTracker` also primes defensively when it starts and scans newly launched apps
+  from `NSWorkspace.didLaunchApplicationNotification`. Each bundle id is scanned at most once per
+  process, using a bounded set of known Electron marker paths plus shallow checks of
+  `Contents/Frameworks` and `Contents/Resources`. Focused-field capture only performs a cheap cache
+  lookup and marks `TextFieldTraits.isWebField` when the focused app is known to be Electron-backed.
+- Consequences: Electron-backed apps can be identified as web fields even when AX ancestry/domain
+  extraction is incomplete, without putting bundle I/O on every AX read. The detector is intentionally
+  conservative and local to the launch session; if an app updates while KeyType is running, the new
+  bundle contents are picked up after the next KeyType launch. Tests cover Electron framework markers,
+  `.asar` resource markers, and native bundles without markers.

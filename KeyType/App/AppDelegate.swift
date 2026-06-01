@@ -135,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // dock icon; making the activation policy explicit guards against alternate launch paths.
         NSApp.setActivationPolicy(.accessory)
 
+        AppBundleWebAppClassifier.shared.primeRunningApplications()
         permissions.startMonitoring()
         syncContextCaptureWithPermission()
         startObservingPermissionChanges()
