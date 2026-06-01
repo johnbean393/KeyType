@@ -2466,3 +2466,31 @@ text. Both are now closed:
   remains authoritative for ordinary typing, but never overrules an explicit Tab-acceptance hold.
   Regression tests cover both a short remainder rejected by the cache floor and a long remainder
   rejected by cache context validation while still valid under the held anchor.
+
+## ADR-062 — Bounded reuse history for typo rollbacks
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: After ADR-060, a generated candidate set could be reused when the user typed into a
+  still-matching branch, but ordinary invalidation still flushed the previous winning completion. If
+  the user made a typo, deleted one or two characters, and returned the caret to a prior prefix, the
+  useful anchor was already gone and KeyType had to decode again. A time-based retention window was
+  rejected: old-enough-by-wall-clock is not the relevant safety boundary, and a fixed candidate count
+  is easier to reason about and bound.
+- Decision: keep a bounded `CompletionReuseHistory` of recent `CompletionPromotionCache` snapshots.
+  The history stores only filter-approved strings plus rank/log-prob metadata: no logits, token
+  branches, or KV state. It defaults to 150 total entries. Eviction removes the oldest, lowest-ranked
+  entries first, while protecting a 10% budget (15 entries at the default size) for the current append
+  bucket and for older rollback-recovery entries whenever that many entries exist. Ordinary
+  no-candidate/suppression/no-match or transient missing-caret/placement clears the visible
+  suggestion but keeps the history; hard resets (focus/policy/model changes, stop/shutdown, full
+  accept, or final word accept) clear it. Reuse is allowed for compatible same-target/same-suffix
+  contexts, and still recomputes when there is no match, only a 1- or 2-character remainder, active
+  selected text, suffix/trait change, or another non-append/non-rollback edit. `predictions.log` now
+  records `REUSE append`, `REUSE rollback`, misses, and evictions.
+- Consequences: typo rollback can recover previously generated completions without a model decode,
+  while memory stays bounded to a small string array rather than model state. The trade-off is that
+  reuse is intentionally lexical: it cannot rescore old candidates with fresh logits and will decode
+  again whenever the string signal is weak. Tests quantify both paths: the original branch-promotion
+  fixture avoids 5/6 recomputes versus 1/6 with top-only reuse, and the rollback fixture recovers 5/5
+  deleted-typo anchors versus 0/5 after the old flushed-cache behavior.

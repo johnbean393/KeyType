@@ -1,12 +1,11 @@
 import AutocompleteCore
 import Foundation
 
-/// Short-lived cache of the last generated candidate set.
+/// String-only snapshot of one generated candidate set.
 ///
 /// It lets the controller keep using a lower-ranked branch when the user types into it, without
-/// retaining model logits or KV branch state. The cache is valid only for pure append edits from the
-/// original anchor context; any caret move, deletion, suffix change, app/window change, active
-/// selection, no match, or too-short remainder falls back to normal generation.
+/// retaining model logits or KV branch state. `CompletionReuseHistory` keeps a bounded set of these
+/// snapshots so append and small rollback edits can reuse generated strings before decoding again.
 struct CompletionPromotionCache: Equatable {
     static let defaultMinimumRemainingCharacters = 3
 

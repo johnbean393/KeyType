@@ -119,9 +119,26 @@ final class CompletionAcceptanceController {
         // suggested characters, in which case the controller keeps it and lets the pipeline shrink it
         // in place. See ADR-037.
         completionController?.dismissStaleCompletion(
-            typedCharacters: typedText(keyCode: keyCode, flags: flags, event: event)
+            mutation: textMutation(keyCode: keyCode, flags: flags, event: event)
         )
         return Unmanaged.passUnretained(event)
+    }
+
+    private func textMutation(keyCode: Int64, flags: CGEventFlags, event: CGEvent) -> CompletionTextMutation {
+        if let text = typedText(keyCode: keyCode, flags: flags, event: event) {
+            return .inserted(text)
+        }
+        if flags.contains(.maskCommand) || flags.contains(.maskControl) || flags.contains(.maskAlternate) {
+            return .nonText
+        }
+        switch keyCode {
+        case 51:
+            return .deleteBackward
+        case 117:
+            return .deleteForward
+        default:
+            return .nonText
+        }
     }
 
     /// The plain text a key inserts, used to tell "the user is typing the suggestion" from a divergent

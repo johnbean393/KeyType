@@ -14,14 +14,20 @@ struct KeyTypeTests {
 
     private static func promotionCache(
         candidates: [String],
-        beforeCursor: String = "I will "
+        beforeCursor: String = "I will ",
+        minimumRemainingCharacters: Int = CompletionPromotionCache.defaultMinimumRemainingCharacters
     ) -> CompletionPromotionCache {
         CompletionPromotionCache(
             anchorContext: TextFieldContext(beforeCursor: beforeCursor, target: target),
             entries: candidates.enumerated().map { index, text in
                 CompletionPromotionCache.Entry(anchorText: text, sourceRank: index)
-            }
+            },
+            minimumRemainingCharacters: minimumRemainingCharacters
         )
+    }
+
+    private static func candidateTexts(prefix: String, count: Int) -> [String] {
+        (0..<count).map { "\(prefix) branch \($0) continuation" }
     }
 
     private static func liveContext(
@@ -260,4 +266,183 @@ struct KeyTypeTests {
         #expect(typedChoices.count - cacheReusable == 1)
     }
 
+    @Test func reuseHistoryUsesOneHundredFiftyEntriesByDefaultWithTenPercentKindBudgets() {
+        let history = CompletionReuseHistory()
+
+        #expect(history.maxEntries == 150)
+        #expect(history.minimumEntriesPerKind == 15)
+    }
+
+    @Test func reuseHistoryPromotesAppendBranchFromRecentSnapshot() {
+        var history = CompletionReuseHistory()
+        history.record(Self.promotionCache(candidates: [
+            "ship it today",
+            "review the patch",
+            "send the update"
+        ]))
+
+        let decision = history.decision(for: Self.liveContext(typed: "r"), preferredKind: .append)
+
+        guard case let .reuse(reuse) = decision else {
+            Issue.record("Expected append reuse, got \(decision)")
+            return
+        }
+        #expect(reuse.kind == .append)
+        #expect(reuse.sourceRank == 1)
+        #expect(reuse.anchorText == "eview the patch")
+        #expect(reuse.remainingText == "eview the patch")
+        #expect(reuse.anchorContext.beforeCursor == "I will r")
+    }
+
+    @Test func reuseHistoryRecoversRollbackAnchorAfterDeletingTypoStem() {
+        var history = CompletionReuseHistory()
+        history.record(
+            Self.promotionCache(
+                candidates: ["ew the patch"],
+                beforeCursor: "I will revi"
+            )
+        )
+
+        let liveAfterDelete = TextFieldContext(beforeCursor: "I will rev", target: Self.target)
+        let decision = history.decision(for: liveAfterDelete, preferredKind: .rollback)
+
+        guard case let .reuse(reuse) = decision else {
+            Issue.record("Expected rollback reuse, got \(decision)")
+            return
+        }
+        #expect(reuse.kind == .rollback)
+        #expect(reuse.anchorText == "iew the patch")
+        #expect(reuse.remainingText == "iew the patch")
+        #expect(reuse.anchorContext.beforeCursor == "I will rev")
+    }
+
+    @Test func reuseHistoryFallsBackToAppendAfterDeleteBackwardWhenRollbackMisses() {
+        var history = CompletionReuseHistory()
+        history.record(
+            Self.promotionCache(
+                candidates: ["encent is about to launch their T1"],
+                beforeCursor: "T"
+            )
+        )
+
+        let liveAfterDelete = TextFieldContext(
+            beforeCursor: "Tencent is about to launc",
+            target: Self.target
+        )
+        guard case .miss(kind: .rollback, reason: .noMatch) =
+                history.decision(for: liveAfterDelete, preferredKind: .rollback)
+        else {
+            Issue.record("Expected rollback alone to miss")
+            return
+        }
+
+        let decision = history.decisionAfterDeleteBackward(for: liveAfterDelete)
+
+        guard case let .reuse(reuse) = decision else {
+            Issue.record("Expected delete-backward append fallback reuse, got \(decision)")
+            return
+        }
+        #expect(reuse.kind == .append)
+        #expect(reuse.sourceRank == 0)
+        #expect(reuse.remainingText == "h their T1")
+        #expect(reuse.anchorContext.beforeCursor == "Tencent is about to launc")
+    }
+
+    @Test func reuseHistoryRecomputesRollbackWhenOnlyMatchesAreTooShort() {
+        var history = CompletionReuseHistory()
+        history.record(
+            Self.promotionCache(
+                candidates: ["k"],
+                beforeCursor: "I will ta"
+            )
+        )
+
+        let liveAfterDelete = TextFieldContext(beforeCursor: "I will t", target: Self.target)
+        let decision = history.decision(for: liveAfterDelete, preferredKind: .rollback)
+
+        guard case .miss(kind: .rollback, reason: .matchingBranchesTooShort) = decision else {
+            Issue.record("Expected short rollback miss, got \(decision)")
+            return
+        }
+    }
+
+    @Test func reuseHistoryQuantifiesRollbackAvoidedRegenerationCoverage() {
+        let branches = [
+            ("I will revi", "ew the patch"),
+            ("Please sen", "d the update"),
+            ("We can shi", "p it today"),
+            ("Let's documen", "t the decision"),
+            ("The model predi", "cts the suffix")
+        ]
+        var history = CompletionReuseHistory()
+        for (beforeCursor, completion) in branches {
+            history.record(Self.promotionCache(candidates: [completion], beforeCursor: beforeCursor))
+        }
+
+        let historyReusable = branches.filter { beforeCursor, _ in
+            let liveAfterDelete = TextFieldContext(
+                beforeCursor: String(beforeCursor.dropLast()),
+                target: Self.target
+            )
+            if case .reuse = history.decision(for: liveAfterDelete, preferredKind: .rollback) {
+                return true
+            }
+            return false
+        }.count
+        let flushedSingleCacheReusable = 0
+
+        #expect(flushedSingleCacheReusable == 0)
+        #expect(historyReusable == 5)
+        #expect(branches.count - flushedSingleCacheReusable == 5)
+        #expect(branches.count - historyReusable == 0)
+    }
+
+    @Test func reuseHistoryEvictsOldestEntriesAtCapacity() {
+        var history = CompletionReuseHistory(maxEntries: 150)
+        for index in 0..<40 {
+            history.record(
+                Self.promotionCache(
+                    candidates: Self.candidateTexts(prefix: "snapshot \(index)", count: 5),
+                    beforeCursor: "Prompt \(index) "
+                )
+            )
+        }
+
+        #expect(history.entryCount == 150)
+        #expect(history.appendEntryCount == 5)
+        #expect(history.rollbackEntryCount == 145)
+
+        let oldestLive = TextFieldContext(beforeCursor: "Prompt 0 ", target: Self.target)
+        guard case .miss(kind: _, reason: .noMatch) = history.decision(for: oldestLive, preferredKind: .rollback) else {
+            Issue.record("Expected oldest snapshot to be evicted")
+            return
+        }
+
+        let newestLive = TextFieldContext(beforeCursor: "Prompt 39 ", target: Self.target)
+        guard case .reuse = history.decision(for: newestLive, preferredKind: .rollback) else {
+            Issue.record("Expected newest snapshot to remain reusable")
+            return
+        }
+    }
+
+    @Test func reuseHistoryPreservesTenPercentBudgetForCurrentAndRollbackEntries() {
+        var history = CompletionReuseHistory(maxEntries: 150)
+        history.record(
+            Self.promotionCache(
+                candidates: Self.candidateTexts(prefix: "rollback", count: 20),
+                beforeCursor: "Older "
+            )
+        )
+        history.record(
+            Self.promotionCache(
+                candidates: Self.candidateTexts(prefix: "current", count: 140),
+                beforeCursor: "Current "
+            )
+        )
+
+        #expect(history.entryCount == 150)
+        #expect(history.minimumEntriesPerKind == 15)
+        #expect(history.rollbackEntryCount == 15)
+        #expect(history.appendEntryCount == 135)
+    }
 }

@@ -29,6 +29,7 @@
 		4B5450012FC9600000000038 /* ContextCaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000039 /* ContextCaptureController.swift */; };
 		4B5450012FC9600000000041 /* CompletionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000040 /* CompletionController.swift */; };
 		4B5450012FC96000000002A1 /* CompletionPromotionCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */; };
+		4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */; };
 		4B5450012FC9600000000043 /* CompletionAcceptanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */; };
 		4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000044 /* FieldFontResolver.swift */; };
 		4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000046 /* SystemWordRecognizer.swift */; };
@@ -100,6 +101,7 @@
 		4B5450012FC9600000000039 /* ContextCaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextCaptureController.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000040 /* CompletionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionController.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionPromotionCache.swift; sourceTree = "<group>"; };
+		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionAcceptanceController.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000044 /* FieldFontResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldFontResolver.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000046 /* SystemWordRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWordRecognizer.swift; sourceTree = "<group>"; };
@@ -278,6 +280,7 @@
 				4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */,
 				4B5450012FC9600000000040 /* CompletionController.swift */,
 				4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */,
+				4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */,
 				4B5450012FC9600000000044 /* FieldFontResolver.swift */,
 				4B5450012FC9600000000046 /* SystemWordRecognizer.swift */,
 			);
@@ -561,6 +564,7 @@
 				4B5450012FC96000000000B0 /* ScreenContextController.swift in Sources */,
 				4B5450012FC9600000000041 /* CompletionController.swift in Sources */,
 				4B5450012FC96000000002A1 /* CompletionPromotionCache.swift in Sources */,
+				4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */,
 				4B5450012FC9600000000043 /* CompletionAcceptanceController.swift in Sources */,
 				4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */,
 				4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */,

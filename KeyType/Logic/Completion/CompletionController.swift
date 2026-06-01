@@ -25,6 +25,13 @@ import TextInsertion
 import TokenProfiles
 import os
 
+enum CompletionTextMutation: Equatable {
+    case inserted(String)
+    case deleteBackward
+    case deleteForward
+    case nonText
+}
+
 @MainActor
 @Observable
 final class CompletionController {
@@ -84,9 +91,11 @@ final class CompletionController {
     /// generated for "…more " was inserted verbatim after the user had already typed "…more e").
     private var anchorText: String?
     private var anchorContext: TextFieldContext?
-    /// Reconciled, filter-approved candidate anchors from the most recent generation. Used to keep a
-    /// lower-ranked branch alive when the user types into it; cleared on every normal reset/recompute.
-    private var promotionCache: CompletionPromotionCache?
+    /// Reconciled, filter-approved candidate anchors from recent generations. Used to keep a
+    /// lower-ranked branch alive when the user types into it, and to recover prior winning anchors
+    /// after a small rollback such as deleting a typo. Bounded and string-only: no logits, KV state,
+    /// or model branch memory are retained.
+    private var reuseHistory = CompletionReuseHistory()
     /// The most recent focused-field context seen — the live caret the suggestion is reconciled to.
     private var latestContext: TextFieldContext?
     private var frozenSideContext: FrozenPromptSideContext?
@@ -201,7 +210,7 @@ final class CompletionController {
         let target = settings.selectedModelFilename ?? ModelContainer.defaultModelFilename
         guard target != activeModelFilename || loadState == .idle else { return }
         activeModelFilename = target
-        warmupTask?.cancel()
+        reset()
         lastGenerationLatencyMs = nil
         Task {
             if let engine { await engine.shutdown() }
@@ -255,7 +264,7 @@ final class CompletionController {
         guard let snapshot else { reset(); return }
         guard let caretRect = snapshot.caretRect, !caretRect.isEmpty else {
             if preserveHeldCompletion(for: snapshot.context) { return }
-            reset()
+            reset(keepingReuseHistory: true)
             return
         }
 
@@ -292,7 +301,7 @@ final class CompletionController {
 
         guard placementResolver.placement(for: context) != nil else {
             if preserveHeldCompletion(for: context, contextKey: key) { return }
-            reset()
+            reset(keepingReuseHistory: true)
             return
         }
 
@@ -305,7 +314,7 @@ final class CompletionController {
         // completion (rather than producing a fresh one after each word). Once the remainder is
         // exhausted or the user diverges, fall through to a fresh generation below.
         //
-        // This must run before promotion-cache reuse: the cache has a "remaining text must be at least
+        // This must run before reuse-history lookup: that path has a "remaining text must be at least
         // 3 characters" guard for speculative type-through, but word-by-word Tab acceptance must keep
         // valid short remainders such as "hi" or ".".
         if holdAnchor {
@@ -316,10 +325,11 @@ final class CompletionController {
         }
 
         // The context just changed (the dedup above let us through), so the on-screen suggestion is
-        // from the *previous* caret. Try to reuse the last generated candidate set: if the user typed
-        // into any still-compatible branch (including a lower-ranked one), promote it and skip this
-        // decode. Otherwise drop the stale ghost and let a fresh generation run below.
-        switch applyPromotionCacheIfUseful(for: context, style: style) {
+        // from the *previous* caret. Try to reuse a recently generated candidate set: if the user
+        // typed into any still-compatible branch (including a lower-ranked one), or rolled back to a
+        // prior anchor after deleting a typo, re-anchor it and skip this decode. Otherwise drop the
+        // stale ghost and let a fresh generation run below.
+        switch applyReuseHistoryIfUseful(for: context, style: style) {
         case .reused:
             return
         case .mustRecompute:
@@ -429,7 +439,12 @@ final class CompletionController {
             return
         }
 
-        promotionCache = makePromotionCache(from: candidates, request: request)
+        if let reuseSnapshot = makePromotionCache(from: candidates, request: request),
+           let eviction = reuseHistory.record(reuseSnapshot) {
+            predictionLog.append(
+                "REUSE evict removed=\(eviction.removedEntries) remaining=\(eviction.remainingEntries)"
+            )
+        }
         anchorText = anchored
         anchorContext = request.context
         telemetry.recordShown()
@@ -593,38 +608,39 @@ final class CompletionController {
         }
     }
 
-    private enum PromotionCacheApplication {
+    private enum ReuseHistoryApplication {
         case reused
         case mustRecompute
         case notApplicable
     }
 
     @discardableResult
-    private func applyPromotionCacheIfUseful(
+    private func applyReuseHistoryIfUseful(
         for live: TextFieldContext,
         style: ResolvedFieldStyle,
         updateLatestContext: Bool = false
-    ) -> PromotionCacheApplication {
-        guard let cache = promotionCache else { return .notApplicable }
+    ) -> ReuseHistoryApplication {
+        guard !reuseHistory.isEmpty else { return .notApplicable }
 
-        switch cache.decision(for: live) {
-        case let .promote(promotion):
-            anchorText = promotion.anchorText
-            anchorContext = cache.anchorContext
+        switch reuseHistory.decision(for: live) {
+        case let .reuse(reuse):
+            anchorText = reuse.anchorText
+            anchorContext = reuse.anchorContext
             if updateLatestContext { latestContext = live }
             guard renderSuggestion(for: live, style: style, clearOnFailure: false) else {
                 clearCompletion()
                 return .mustRecompute
             }
             predictionLog.append(
-                "PROMOTE rank=\(promotion.sourceRank) remaining=\"\(PredictionLog.escape(promotion.remainingText))\""
+                "REUSE \(reuse.kind.rawValue) snapshot=\(reuse.snapshotID) rank=\(reuse.sourceRank) remaining=\"\(PredictionLog.escape(reuse.remainingText))\""
             )
             return .reused
 
-        case .recompute(.noTypedDelta):
+        case .miss(_, .noTypedDelta):
             return .notApplicable
 
-        case .recompute:
+        case let .miss(kind, reason):
+            predictionLog.append("REUSE miss kind=\(kind.rawValue) reason=\(reason.rawValue)")
             clearCompletion()
             return .mustRecompute
         }
@@ -688,23 +704,25 @@ final class CompletionController {
         return true
     }
 
-    private func clearCompletion(clearPromotionCache: Bool = true) {
+    private func clearCompletion() {
         presenter.hide()
         visibleCandidate = nil
         anchorText = nil
         anchorContext = nil
-        if clearPromotionCache { promotionCache = nil }
         holdAnchor = false
     }
 
     /// Hide any ghost text and forget the last context, so the next snapshot is treated as new.
-    private func reset() {
+    private func reset(keepingReuseHistory: Bool = false) {
         debounceTask?.cancel()
         generationTask?.cancel()
         warmupTask?.cancel()
         lastContextKey = nil
         lastCaretRect = nil
         frozenSideContext = nil
+        if !keepingReuseHistory {
+            reuseHistory.removeAll()
+        }
         clearCompletion()
     }
 
@@ -743,55 +761,104 @@ final class CompletionController {
     /// suggestion lags behind by the debounce plus the app's notification latency, so without this the
     /// outdated ghost text visibly lingers for a beat after each key. See ADR-037.
     ///
-    /// `typed` is the plain text the key inserts, or `nil` for keys that don't insert plain text
-    /// (delete, arrows, return, escape, ⌘/⌃ shortcuts). When the user is typing into any cached
+    /// `mutation` describes the key's expected text effect. When the user is typing into any cached
     /// branch, the branch is promoted immediately and normal generation is skipped until the cache no
-    /// longer has a substantial matching remainder. Anything else clears now and abandons in-flight
-    /// generation, so a result returning for the previous caret can't re-show a stale suggestion.
-    func dismissStaleCompletion(typedCharacters typed: String?) {
+    /// longer has a substantial matching remainder. A plain backward delete can also recover an older
+    /// cached anchor after a typo rollback. Anything else clears now and abandons in-flight generation,
+    /// so a result returning for the previous caret can't re-show a stale suggestion.
+    func dismissStaleCompletion(mutation: CompletionTextMutation) {
         guard let shown = visibleCandidate?.text, !shown.isEmpty else { return }
-        if let typed, !typed.isEmpty {
-            let cacheWasAvailable = promotionCache != nil
-            if promoteCachedCompletion(typedCharacters: typed) { return }
+        switch mutation {
+        case let .inserted(typed) where !typed.isEmpty:
+            let historyWasAvailable = !reuseHistory.isEmpty
+            if reuseCachedCompletion(typedCharacters: typed) { return }
             // Compatibility fallback for states created before a candidate-set cache exists.
-            if !cacheWasAvailable, shown.hasPrefix(typed), advanceTypeThrough(typedCharacters: typed) {
+            if !historyWasAvailable, shown.hasPrefix(typed), advanceTypeThrough(typedCharacters: typed) {
                 return
             }
+
+        case .deleteBackward:
+            if recoverCachedCompletionAfterDeleteBackward() { return }
+
+        case .deleteForward, .nonText, .inserted:
+            break
         }
+
         debounceTask?.cancel()
         generationTask?.cancel()
         warmupTask?.cancel()
         clearCompletion()
     }
 
-    private func promoteCachedCompletion(typedCharacters typed: String) -> Bool {
+    /// Backwards-compatible wrapper for older tests/call sites that only classify inserted text.
+    func dismissStaleCompletion(typedCharacters typed: String?) {
+        dismissStaleCompletion(mutation: typed.map(CompletionTextMutation.inserted) ?? .nonText)
+    }
+
+    private func reuseCachedCompletion(typedCharacters typed: String) -> Bool {
         guard !typed.isEmpty,
-              let live = latestContext ?? anchorContext,
-              let cache = promotionCache
+              let live = latestContext ?? anchorContext
         else { return false }
         let optimistic = live.replacingBeforeCursor(live.beforeCursor + typed)
+        return reuseCachedCompletion(for: optimistic, kind: .append, immediateAcceptedHead: typed)
+    }
 
-        switch cache.decision(for: optimistic) {
-        case let .promote(promotion):
-            anchorText = promotion.anchorText
-            anchorContext = cache.anchorContext
+    private func recoverCachedCompletionAfterDeleteBackward() -> Bool {
+        guard let live = latestContext ?? anchorContext,
+              !live.beforeCursor.isEmpty,
+              (live.selection.selectedText ?? "").isEmpty
+        else { return false }
+        let optimistic = live.replacingBeforeCursor(String(live.beforeCursor.dropLast()))
+        guard !reuseHistory.isEmpty else { return false }
+        return applyCachedReuse(
+            reuseHistory.decisionAfterDeleteBackward(for: optimistic),
+            optimistic: optimistic,
+            immediateAcceptedHead: nil
+        )
+    }
+
+    private func reuseCachedCompletion(
+        for optimistic: TextFieldContext,
+        kind: CompletionReuseHistory.ReuseKind,
+        immediateAcceptedHead: String?
+    ) -> Bool {
+        guard !reuseHistory.isEmpty else { return false }
+        return applyCachedReuse(
+            reuseHistory.decision(for: optimistic, preferredKind: kind),
+            optimistic: optimistic,
+            immediateAcceptedHead: immediateAcceptedHead
+        )
+    }
+
+    private func applyCachedReuse(
+        _ decision: CompletionReuseHistory.Decision,
+        optimistic: TextFieldContext,
+        immediateAcceptedHead: String?
+    ) -> Bool {
+        switch decision {
+        case let .reuse(reuse):
+            anchorText = reuse.anchorText
+            anchorContext = reuse.anchorContext
             latestContext = optimistic
-            let remainder = CompletionCandidate(text: promotion.remainingText, mode: .prose)
+            let remainder = CompletionCandidate(text: reuse.remainingText, mode: .prose)
             visibleCandidate = remainder
-            presenter.advanceAfterAccepting(head: typed, remainder: remainder)
+            if let immediateAcceptedHead {
+                presenter.advanceAfterAccepting(head: immediateAcceptedHead, remainder: remainder)
+            }
             predictionLog.append(
-                "PROMOTE rank=\(promotion.sourceRank) remaining=\"\(PredictionLog.escape(promotion.remainingText))\""
+                "REUSE \(reuse.kind.rawValue) snapshot=\(reuse.snapshotID) rank=\(reuse.sourceRank) remaining=\"\(PredictionLog.escape(reuse.remainingText))\""
             )
             debounceTask?.cancel()
             generationTask?.cancel()
             warmupTask?.cancel()
+            holdAnchor = false
             return true
 
-        case .recompute(.noTypedDelta):
+        case .miss(_, .noTypedDelta):
             return false
 
-        case .recompute:
-            clearCompletion()
+        case let .miss(kind, reason):
+            predictionLog.append("REUSE miss kind=\(kind.rawValue) reason=\(reason.rawValue)")
             return false
         }
     }
@@ -867,7 +934,9 @@ final class CompletionController {
         )
 
         holdAnchor = true
-        promotionCache = nil
+        if rest.isEmpty {
+            reuseHistory.removeAll()
+        }
         // Cancel any in-flight generation so it can't clobber the held suggestion when it returns.
         debounceTask?.cancel()
         generationTask?.cancel()
@@ -912,6 +981,7 @@ final class CompletionController {
         if !keepingAnchor {
             // Drop the dedupe key so the post-insertion snapshot always regenerates a fresh suggestion.
             lastContextKey = nil
+            reuseHistory.removeAll()
             clearCompletion()
         }
         Task {
