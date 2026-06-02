@@ -90,6 +90,7 @@ row here.**
 | 068 | Skip native non-text focused controls before deep AX reads | context-capture |
 | 069 | Restore precise geometry for native multiline editors | context-capture/ui |
 | 070 | End-to-end latency telemetry + Statistics distribution chart | performance/ui |
+| 071 | Treat Chromium browsers as known web-backed targets | context-capture |
 
 ---
 
@@ -2685,3 +2686,20 @@ text. Both are now closed:
   through the right decoder when fields are added or renamed. Privacy contract: the export carries
   **no captured text, no per-app identifiers, no clipboard or OCR content** — only timing samples,
   aggregate counters, the suppression-reason histogram, and the device/engine context above.
+
+## ADR-071 — Treat Chromium browsers as known web-backed targets
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: ADR-064 made Electron apps opt into the web-backed AX capture path by scanning bundle
+  markers, which lets `FocusedFieldReader` search from a focused web container down to the editable
+  descendant and keeps full Chromium caret geometry enabled. Google Chrome is Chromium-backed but
+  not Electron-backed, so it can report focus on an `AXWebArea` without receiving the same
+  descendant-search treatment.
+- Decision: add a conservative known-browser bundle-id allowlist to `AppBundleWebAppClassifier` for
+  Chrome and common Chromium-family browsers. These bundle ids are treated as web-backed without
+  filesystem marker scanning.
+- Consequences: Chrome can use the same web-surface capture path as Electron apps when its AX tree
+  is web-shaped, including enhanced accessibility wakeup, editable descendant search, and full caret
+  geometry. Native apps still require either Electron markers or an explicit known browser bundle id,
+  so the native non-text early-exit protections from ADR-068 remain in place.

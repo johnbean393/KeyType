@@ -38,7 +38,6 @@ public final class GhostTextOverlayWindow {
     public func show(text: String, font: NSFont, placement: OverlayPlacement, textColor: NSColor? = nil) {
         guard !text.isEmpty else { hide(); return }
 
-        let placement = Self.displayPlacement(for: text, font: font, placement: placement)
         let layout = Self.layout(for: text, font: font, placement: placement)
         switch placement.presentation {
         case .capsule:
@@ -67,7 +66,7 @@ public final class GhostTextOverlayWindow {
         }
 
         window.setFrame(
-            layout.frame.offsetBy(dx: 0, dy: -CGFloat(placement.verticalOffset)),
+            layout.frame.offsetBy(dx: 0, dy: -CGFloat(placement.verticalOffset(Double(layout.lineHeight)))),
             display: true
         )
 
@@ -172,34 +171,7 @@ public final class GhostTextOverlayWindow {
     struct Layout: Equatable {
         var frame: CGRect
         var lines: [GhostTextLine]
-    }
-
-    static func displayPlacement(for text: String, font: NSFont, placement: OverlayPlacement) -> OverlayPlacement {
-        guard shouldPromoteTrailingWrapToCapsule(for: text, font: font, placement: placement) else {
-            return placement
-        }
-
-        var result = placement
-        result.presentation = .capsule
-        return result
-    }
-
-    static func shouldPromoteTrailingWrapToCapsule(
-        for text: String,
-        font: NSFont,
-        placement: OverlayPlacement
-    ) -> Bool {
-        guard placement.presentation == .inlineGhost,
-              placement.mode != .mirror,
-              !placement.isRightToLeft,
-              let field = placement.fieldRect,
-              !field.isEmpty,
-              let firstVisibleTokenWidth = firstVisibleTokenWidth(in: text, font: font) else {
-            return false
-        }
-
-        let remainingWidth = field.maxX - placement.cursorRect.maxX
-        return remainingWidth < firstVisibleTokenWidth
+        var lineHeight: CGFloat
     }
 
     static func layout(for text: String, font: NSFont, placement: OverlayPlacement) -> Layout {
@@ -231,7 +203,8 @@ public final class GhostTextOverlayWindow {
             }
             return Layout(
                 frame: CGRect(x: x, y: y, width: width, height: lineHeight),
-                lines: [GhostTextLine(text: text, reservedHeight: lineHeight)]
+                lines: [GhostTextLine(text: text, reservedHeight: lineHeight)],
+                lineHeight: lineHeight
             )
         }
 
@@ -251,7 +224,8 @@ public final class GhostTextOverlayWindow {
 
         return Layout(
             frame: CGRect(x: field.minX, y: y, width: fullLineWidth, height: height),
-            lines: lines
+            lines: lines,
+            lineHeight: lineHeight
         )
     }
 
@@ -281,7 +255,8 @@ public final class GhostTextOverlayWindow {
 
         return Layout(
             frame: CGRect(x: x, y: y, width: capsuleWidth, height: capsuleHeight),
-            lines: [GhostTextLine(text: text, reservedHeight: capsuleHeight)]
+            lines: [GhostTextLine(text: text, reservedHeight: capsuleHeight)],
+            lineHeight: lineHeight
         )
     }
 
@@ -357,15 +332,6 @@ public final class GhostTextOverlayWindow {
             tokens.append(String(text[start..<index]))
         }
         return tokens
-    }
-
-    private static func firstVisibleTokenWidth(in text: String, font: NSFont) -> CGFloat? {
-        for token in wrappingTokens(in: text) {
-            let visible = token.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !visible.isEmpty else { continue }
-            return measuredWidth(visible, font: font)
-        }
-        return nil
     }
 
     private static func measuredWidth(_ text: String, font: NSFont) -> CGFloat {

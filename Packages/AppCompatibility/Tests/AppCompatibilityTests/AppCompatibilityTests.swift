@@ -75,6 +75,77 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
+    func testSlackNativeUsesTextMirrorWithVerticalAlignmentFix() {
+        let target = AppTarget(bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack")
+        let context = TextFieldContext(beforeCursor: "Let's", target: target)
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertNil(policy.stringInjectionChunkSize)
+        XCTAssertEqual(policy.overlayPreference, .textMirror)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 20, accuracy: 0.001)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue the current Slack message only. Keep it short and conversational."
+        ])
+    }
+
+    func testSlackDomainKeepsWebSurfacePolicyWithoutNativeOffset() {
+        let target = AppTarget(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome",
+            domain: "app.slack.com"
+        )
+        let context = TextFieldContext(beforeCursor: "Let's", target: target)
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertNil(policy.stringInjectionChunkSize)
+        XCTAssertEqual(policy.overlayPreference, .textMirror)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue the current message only. Keep it short and conversational."
+        ])
+    }
+
+    func testDiscordNativeUsesTextMirrorWithVerticalAlignmentFix() {
+        let target = AppTarget(bundleIdentifier: "com.hnc.Discord", appName: "Discord")
+        let context = TextFieldContext(beforeCursor: "This", target: target)
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertEqual(policy.stringInjectionChunkSize, 8)
+        XCTAssertEqual(policy.overlayPreference, .textMirror)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 24, accuracy: 0.001)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue the current Discord message only. Keep it short and conversational."
+        ])
+    }
+
+    func testDiscordDomainKeepsWebSurfacePolicyWithoutNativeOffset() {
+        let target = AppTarget(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome",
+            domain: "discord.com"
+        )
+        let context = TextFieldContext(beforeCursor: "This", target: target)
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertEqual(policy.overlayPreference, .textMirror)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue the current message only. Keep it short and conversational."
+        ])
+    }
+
     func testPasswordManagerBundleIsSecureExcluded() {
         let target = AppTarget(bundleIdentifier: "com.1password.1password", appName: "1Password")
         let context = TextFieldContext(beforeCursor: "sec", target: target)

@@ -13,7 +13,7 @@ public struct TargetOverride: Equatable {
     public var stringInjectionChunkSize: Int?
     public var requiresBackspaceAfterPaste: Bool
     public var fontSizeAdjustmentFactor: Double
-    public var verticalAlignmentOffset: Double
+    public var verticalAlignmentOffset: VerticalAlignmentOffsetResolver
     public var overlayPreference: OverlayPreference?
     public var completionMode: CompletionMode?
     public var customInstructions: String?
@@ -35,7 +35,7 @@ public struct TargetOverride: Equatable {
         stringInjectionChunkSize: Int? = nil,
         requiresBackspaceAfterPaste: Bool = false,
         fontSizeAdjustmentFactor: Double = 1,
-        verticalAlignmentOffset: Double = 0,
+        verticalAlignmentOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         overlayPreference: OverlayPreference? = nil,
         completionMode: CompletionMode? = nil,
         customInstructions: String? = nil,
@@ -59,6 +59,28 @@ public struct TargetOverride: Equatable {
         self.customInstructions = customInstructions
         self.environmentContextDisabled = environmentContextDisabled
         self.secureFieldExclusion = secureFieldExclusion
+    }
+
+    public static func == (lhs: TargetOverride, rhs: TargetOverride) -> Bool {
+        lhs.bundleIdentifier == rhs.bundleIdentifier
+            && lhs.domain == rhs.domain
+            && lhs.completionsDisabled == rhs.completionsDisabled
+            && lhs.midLineCompletionsDisabled == rhs.midLineCompletionsDisabled
+            && lhs.tabShortcutsDisabled == rhs.tabShortcutsDisabled
+            && lhs.trainingDataCollectionDisabled == rhs.trainingDataCollectionDisabled
+            && lhs.requiresPasteAndMatchStyle == rhs.requiresPasteAndMatchStyle
+            && lhs.requiresNonBreakingSpaceWorkaround == rhs.requiresNonBreakingSpaceWorkaround
+            && lhs.stringInjectionChunkSize == rhs.stringInjectionChunkSize
+            && lhs.requiresBackspaceAfterPaste == rhs.requiresBackspaceAfterPaste
+            && lhs.fontSizeAdjustmentFactor == rhs.fontSizeAdjustmentFactor
+            && lhs.verticalAlignmentOffset(0) == rhs.verticalAlignmentOffset(0)
+            && lhs.verticalAlignmentOffset(12) == rhs.verticalAlignmentOffset(12)
+            && lhs.verticalAlignmentOffset(24) == rhs.verticalAlignmentOffset(24)
+            && lhs.overlayPreference == rhs.overlayPreference
+            && lhs.completionMode == rhs.completionMode
+            && lhs.customInstructions == rhs.customInstructions
+            && lhs.environmentContextDisabled == rhs.environmentContextDisabled
+            && lhs.secureFieldExclusion == rhs.secureFieldExclusion
     }
 
     public func matches(_ target: AppTarget) -> Bool {

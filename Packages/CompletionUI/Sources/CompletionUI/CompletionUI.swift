@@ -28,7 +28,7 @@ public struct OverlayPlacement: Equatable {
     public var mode: OverlayMode
     public var presentation: OverlayPresentation
     public var isRightToLeft: Bool
-    public var verticalOffset: Double
+    public var verticalOffset: VerticalAlignmentOffsetResolver
     public var fontSizeAdjustmentFactor: Double
 
     public init(
@@ -37,7 +37,7 @@ public struct OverlayPlacement: Equatable {
         mode: OverlayMode = .inline,
         presentation: OverlayPresentation = .inlineGhost,
         isRightToLeft: Bool = false,
-        verticalOffset: Double = 0,
+        verticalOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         fontSizeAdjustmentFactor: Double = 1
     ) {
         self.cursorRect = cursorRect
@@ -47,6 +47,18 @@ public struct OverlayPlacement: Equatable {
         self.isRightToLeft = isRightToLeft
         self.verticalOffset = verticalOffset
         self.fontSizeAdjustmentFactor = fontSizeAdjustmentFactor
+    }
+
+    public static func == (lhs: OverlayPlacement, rhs: OverlayPlacement) -> Bool {
+        lhs.cursorRect == rhs.cursorRect
+            && lhs.fieldRect == rhs.fieldRect
+            && lhs.mode == rhs.mode
+            && lhs.presentation == rhs.presentation
+            && lhs.isRightToLeft == rhs.isRightToLeft
+            && lhs.verticalOffset(0) == rhs.verticalOffset(0)
+            && lhs.verticalOffset(12) == rhs.verticalOffset(12)
+            && lhs.verticalOffset(24) == rhs.verticalOffset(24)
+            && lhs.fontSizeAdjustmentFactor == rhs.fontSizeAdjustmentFactor
     }
 }
 

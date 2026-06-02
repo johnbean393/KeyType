@@ -1,5 +1,7 @@
 import AutocompleteCore
 
+public typealias VerticalAlignmentOffsetResolver = (Double) -> Double
+
 public struct CompletionPolicy: Equatable {
     public var isCompletionEnabled: Bool
     public var allowsMidLineCompletion: Bool
@@ -10,7 +12,7 @@ public struct CompletionPolicy: Equatable {
     public var stringInjectionChunkSize: Int?
     public var insertionRequiresBackspaceAfterPaste: Bool
     public var fontSizeAdjustmentFactor: Double
-    public var verticalAlignmentOffset: Double
+    public var verticalAlignmentOffset: VerticalAlignmentOffsetResolver
     public var overlayPreference: OverlayPreference
     public var completionMode: CompletionMode
     public var customInstructions: [String]
@@ -29,7 +31,7 @@ public struct CompletionPolicy: Equatable {
         stringInjectionChunkSize: Int? = nil,
         insertionRequiresBackspaceAfterPaste: Bool = false,
         fontSizeAdjustmentFactor: Double = 1,
-        verticalAlignmentOffset: Double = 0,
+        verticalAlignmentOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         overlayPreference: OverlayPreference = .inline,
         completionMode: CompletionMode = .prose,
         customInstructions: [String] = [],
@@ -51,5 +53,25 @@ public struct CompletionPolicy: Equatable {
         self.customInstructions = customInstructions
         self.includesEnvironmentContext = includesEnvironmentContext
         self.excludesSecureField = excludesSecureField
+    }
+
+    public static func == (lhs: CompletionPolicy, rhs: CompletionPolicy) -> Bool {
+        lhs.isCompletionEnabled == rhs.isCompletionEnabled
+            && lhs.allowsMidLineCompletion == rhs.allowsMidLineCompletion
+            && lhs.allowsTabAcceptance == rhs.allowsTabAcceptance
+            && lhs.allowsTrainingDataCollection == rhs.allowsTrainingDataCollection
+            && lhs.insertionRequiresPasteAndMatchStyle == rhs.insertionRequiresPasteAndMatchStyle
+            && lhs.insertionRequiresNonBreakingSpace == rhs.insertionRequiresNonBreakingSpace
+            && lhs.stringInjectionChunkSize == rhs.stringInjectionChunkSize
+            && lhs.insertionRequiresBackspaceAfterPaste == rhs.insertionRequiresBackspaceAfterPaste
+            && lhs.fontSizeAdjustmentFactor == rhs.fontSizeAdjustmentFactor
+            && lhs.verticalAlignmentOffset(0) == rhs.verticalAlignmentOffset(0)
+            && lhs.verticalAlignmentOffset(12) == rhs.verticalAlignmentOffset(12)
+            && lhs.verticalAlignmentOffset(24) == rhs.verticalAlignmentOffset(24)
+            && lhs.overlayPreference == rhs.overlayPreference
+            && lhs.completionMode == rhs.completionMode
+            && lhs.customInstructions == rhs.customInstructions
+            && lhs.includesEnvironmentContext == rhs.includesEnvironmentContext
+            && lhs.excludesSecureField == rhs.excludesSecureField
     }
 }

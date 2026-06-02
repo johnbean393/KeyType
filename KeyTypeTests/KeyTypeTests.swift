@@ -49,6 +49,36 @@ struct KeyTypeTests {
         #expect(CompletionController.adaptiveDebounceNanoseconds(lastGenerationLatencyMs: nil) == 50_000_000)
     }
 
+    @Test func capsulePresentationIsUsedForVisibleCurrentLineSuffix() {
+        let context = TextFieldContext(
+            beforeCursor: "This is ",
+            afterCursor: "existing text",
+            target: Self.target
+        )
+
+        #expect(CompletionController.shouldUseCapsule(for: context))
+    }
+
+    @Test func capsulePresentationIsNotUsedAtEndOfLineForNewWordWrapping() {
+        let context = TextFieldContext(
+            beforeCursor: "This is a test ",
+            afterCursor: "",
+            target: Self.target
+        )
+
+        #expect(!CompletionController.shouldUseCapsule(for: context))
+    }
+
+    @Test func capsulePresentationIsNotUsedWhenSuffixStartsOnNextLine() {
+        let context = TextFieldContext(
+            beforeCursor: "This is a test ",
+            afterCursor: "\nnext paragraph",
+            target: Self.target
+        )
+
+        #expect(!CompletionController.shouldUseCapsule(for: context))
+    }
+
     @Test func typeThroughAdvanceConsumesTypedPrefixBeforeAXSnapshot() {
         let anchor = TextFieldContext(beforeCursor: "with a 20-core Media", target: Self.target)
         let advanced = CompletionController.typeThroughAdvance(

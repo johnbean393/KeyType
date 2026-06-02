@@ -53,7 +53,11 @@ public struct AppCompatibilityStore {
             policy.stringInjectionChunkSize = override.stringInjectionChunkSize ?? policy.stringInjectionChunkSize
             policy.insertionRequiresBackspaceAfterPaste = policy.insertionRequiresBackspaceAfterPaste || override.requiresBackspaceAfterPaste
             policy.fontSizeAdjustmentFactor *= override.fontSizeAdjustmentFactor
-            policy.verticalAlignmentOffset += override.verticalAlignmentOffset
+            let currentVerticalAlignmentOffset = policy.verticalAlignmentOffset
+            let overrideVerticalAlignmentOffset = override.verticalAlignmentOffset
+            policy.verticalAlignmentOffset = { lineHeight in
+                currentVerticalAlignmentOffset(lineHeight) + overrideVerticalAlignmentOffset(lineHeight)
+            }
             policy.overlayPreference = override.overlayPreference ?? policy.overlayPreference
             policy.completionMode = override.completionMode ?? policy.completionMode
 

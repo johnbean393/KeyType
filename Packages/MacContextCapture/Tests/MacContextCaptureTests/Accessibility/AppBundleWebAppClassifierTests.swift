@@ -2,6 +2,17 @@ import XCTest
 @testable import MacContextCapture
 
 final class AppBundleWebAppClassifierTests: XCTestCase {
+    func testChromeBundleIsKnownWebBacked() {
+        let classifier = AppBundleWebAppClassifier()
+
+        XCTAssertTrue(AppBundleWebAppClassifier.bundleIdentifierIsKnownWebBacked("com.google.Chrome"))
+        XCTAssertTrue(classifier.isWebBacked(bundleIdentifier: "com.google.Chrome"))
+    }
+
+    func testNativeBundleIdentifierIsNotKnownWebBacked() {
+        XCTAssertFalse(AppBundleWebAppClassifier.bundleIdentifierIsKnownWebBacked("com.apple.TextEdit"))
+    }
+
     func testDetectsElectronFrameworkMarker() throws {
         let bundleURL = try makeTemporaryAppBundle()
         let markerURL = bundleURL.appendingPathComponent("Contents/Frameworks/Electron Framework.framework")

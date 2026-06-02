@@ -74,6 +74,15 @@ final class TextInsertionTests: XCTestCase {
         XCTAssertTrue(plan.backspaceAfterPaste)
     }
 
+    func testPlannerUsesChunkedInjectionForNativeDiscord() {
+        let target = AppTarget(bundleIdentifier: "com.hnc.Discord", appName: "Discord")
+        let plan = InsertionPlanner()
+            .plan(candidate: CompletionCandidate(text: " world"), context: context(target: target))
+
+        XCTAssertEqual(plan.strategy, .chunkedStringInjection(size: 8))
+        XCTAssertFalse(plan.useNonBreakingSpaceWorkaround)
+    }
+
     // MARK: - Inserter dispatch
 
     func testPasteboardPasteSavesWritesPastesRestores() async throws {

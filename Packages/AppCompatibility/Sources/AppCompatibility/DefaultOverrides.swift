@@ -72,7 +72,7 @@ public extension AppCompatibilityStore {
             TargetOverride(
                 bundleIdentifier: "com.apple.Safari",
                 fontSizeAdjustmentFactor: 0.98,
-                verticalAlignmentOffset: 1
+                verticalAlignmentOffset: { _ in 1 }
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
@@ -80,7 +80,7 @@ public extension AppCompatibilityStore {
                 requiresPasteAndMatchStyle: true,
                 requiresBackspaceAfterPaste: true,
                 fontSizeAdjustmentFactor: 0.96,
-                verticalAlignmentOffset: 1,
+                verticalAlignmentOffset: { _ in 1 },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue only the Google Docs document text at the cursor. Avoid UI labels, menus, comments, and browser chrome."
             ),
@@ -89,14 +89,14 @@ public extension AppCompatibilityStore {
                 requiresPasteAndMatchStyle: true,
                 requiresBackspaceAfterPaste: true,
                 fontSizeAdjustmentFactor: 0.96,
-                verticalAlignmentOffset: 1,
+                verticalAlignmentOffset: { _ in 1 },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue only the Google Docs document text at the cursor. Avoid UI labels, menus, comments, and browser chrome."
             ),
             TargetOverride(
                 domain: "mail.google.com",
                 requiresPasteAndMatchStyle: true,
-                verticalAlignmentOffset: 1,
+                verticalAlignmentOffset: { _ in 1 },
                 customInstructions: "Continue the email being drafted. Keep the tone concise and context-appropriate."
             ),
             TargetOverride(
@@ -134,6 +134,7 @@ public extension AppCompatibilityStore {
             TargetOverride(
                 bundleIdentifier: "com.tinyspeck.slackmacgap",
                 requiresPasteAndMatchStyle: true,
+                verticalAlignmentOffset: { lineHeight in lineHeight },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Slack message only. Keep it short and conversational."
             ),
@@ -145,7 +146,8 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.hnc.Discord",
-                requiresPasteAndMatchStyle: true,
+                stringInjectionChunkSize: 8,
+                verticalAlignmentOffset: { lineHeight in lineHeight },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Discord message only. Keep it short and conversational."
             )

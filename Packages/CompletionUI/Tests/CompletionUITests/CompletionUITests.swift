@@ -30,7 +30,7 @@ final class CompletionUITests: XCTestCase {
 
     func testPlacementCarriesGeometryAndPolicy() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: [
-            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, verticalAlignmentOffset: 3)
+            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, verticalAlignmentOffset: { _ in 3 })
         ]))
         let rect = CGRect(x: 10, y: 20, width: 1, height: 16)
         let fieldRect = CGRect(x: 0, y: 20, width: 120, height: 40)
@@ -38,7 +38,7 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(placement?.cursorRect, rect)
         XCTAssertEqual(placement?.fieldRect, fieldRect)
         XCTAssertEqual(placement?.isRightToLeft, true)
-        XCTAssertEqual(placement?.verticalOffset, 3)
+        XCTAssertEqual(placement?.verticalOffset(18), 3)
     }
 
     func testPlacementKeepsEstimatedWebCaretInline() {
@@ -220,37 +220,31 @@ final class CompletionUITests: XCTestCase {
     }
 
     @MainActor
-    func testDisplayPlacementUsesCapsuleWhenInlineWouldStartWithBlankWrappedLine() {
+    func testTrailingEdgeInlineCompletionWrapsInsteadOfUsingCapsule() {
         let font = NSFont.systemFont(ofSize: 24)
         let placement = OverlayPlacement(
             cursorRect: CGRect(x: 1221, y: 512, width: 2, height: 37),
             fieldRect: CGRect(x: 524, y: 506, width: 704, height: 45)
         )
 
-        let display = GhostTextOverlayWindow.displayPlacement(
-            for: "Chinese.",
-            font: font,
-            placement: placement
-        )
+        let layout = GhostTextOverlayWindow.layout(for: "Chinese.", font: font, placement: placement)
 
-        XCTAssertEqual(display.presentation, .capsule)
+        XCTAssertEqual(layout.frame.minX, 524)
+        XCTAssertEqual(layout.frame.width, 704)
+        XCTAssertEqual(layout.lines.map(\.text), ["", "Chinese."])
     }
 
     @MainActor
-    func testDisplayPlacementKeepsInlineWhenFirstVisibleTokenFits() {
+    func testInlineCompletionKeepsSingleLineWhenFirstVisibleTokenFits() {
         let font = NSFont.systemFont(ofSize: 14)
         let placement = OverlayPlacement(
             cursorRect: CGRect(x: 200, y: 100, width: 2, height: 18),
             fieldRect: CGRect(x: 20, y: 80, width: 500, height: 44)
         )
 
-        let display = GhostTextOverlayWindow.displayPlacement(
-            for: " continuation",
-            font: font,
-            placement: placement
-        )
+        let layout = GhostTextOverlayWindow.layout(for: " continuation", font: font, placement: placement)
 
-        XCTAssertEqual(display.presentation, .inlineGhost)
+        XCTAssertEqual(layout.lines.map(\.text), [" continuation"])
     }
 
     // MARK: - Advance past an accepted word

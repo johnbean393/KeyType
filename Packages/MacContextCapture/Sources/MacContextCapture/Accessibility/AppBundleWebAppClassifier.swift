@@ -37,14 +37,17 @@ public final class AppBundleWebAppClassifier: @unchecked Sendable {
     }
 
     public func isWebBacked(bundleIdentifier: String) -> Bool {
+        if Self.bundleIdentifierIsKnownWebBacked(bundleIdentifier) {
+            return true
+        }
+
         lock.lock()
         defer { lock.unlock() }
         return webBackedBundleIdentifiers.contains(bundleIdentifier)
     }
 
     private func scanIfNeeded(_ application: NSRunningApplication) {
-        guard let bundleIdentifier = application.bundleIdentifier,
-              let bundleURL = application.bundleURL else {
+        guard let bundleIdentifier = application.bundleIdentifier else {
             return
         }
 
@@ -54,6 +57,17 @@ public final class AppBundleWebAppClassifier: @unchecked Sendable {
 
         guard shouldScan else { return }
 
+        if Self.bundleIdentifierIsKnownWebBacked(bundleIdentifier) {
+            lock.lock()
+            webBackedBundleIdentifiers.insert(bundleIdentifier)
+            lock.unlock()
+            return
+        }
+
+        guard let bundleURL = application.bundleURL else {
+            return
+        }
+
         let isWebBacked = Self.bundleContainsElectronMarkers(at: bundleURL)
         guard isWebBacked else { return }
 
@@ -61,6 +75,26 @@ public final class AppBundleWebAppClassifier: @unchecked Sendable {
         webBackedBundleIdentifiers.insert(bundleIdentifier)
         lock.unlock()
     }
+
+    static func bundleIdentifierIsKnownWebBacked(_ bundleIdentifier: String) -> Bool {
+        knownWebBackedBrowserBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    private static let knownWebBackedBrowserBundleIdentifiers: Set<String> = [
+        "com.google.Chrome",
+        "com.google.Chrome.beta",
+        "com.google.Chrome.dev",
+        "com.google.Chrome.canary",
+        "org.chromium.Chromium",
+        "com.microsoft.edgemac",
+        "com.microsoft.edgemac.Beta",
+        "com.microsoft.edgemac.Dev",
+        "com.microsoft.edgemac.Canary",
+        "com.brave.Browser",
+        "company.thebrowser.Browser",
+        "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera"
+    ]
 
     static func bundleContainsElectronMarkers(
         at bundleURL: URL,
