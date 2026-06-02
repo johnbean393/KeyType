@@ -36,6 +36,7 @@
 		4B5450012FC9600000000062 /* Personalization in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000061 /* Personalization */; };
 		4B5450012FC9600000000064 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000063 /* SettingsStore.swift */; };
 		4B5450012FC9600000000066 /* WritingHistoryRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */; };
+		4B5450012FC9600000000301 /* LatencyExportContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000300 /* LatencyExportContext.swift */; };
 		4B5450012FC9600000000068 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000067 /* SettingsView.swift */; };
 		4B5450012FC9600000000073 /* ModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000071 /* ModelManagement */; };
 		4B5450012FC9600000000074 /* ModelProfileGeneration in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000072 /* ModelProfileGeneration */; };
@@ -107,6 +108,7 @@
 		4B5450012FC9600000000054 /* PredictionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionLog.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000063 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingHistoryRecorder.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000300 /* LatencyExportContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencyExportContext.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000067 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000080 /* AcceptanceShortcut.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcceptanceShortcut.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000082 /* ModelSetupCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSetupCoordinator.swift; sourceTree = "<group>"; };
@@ -317,6 +319,7 @@
 			children = (
 				4B5450012FC9600000000054 /* PredictionLog.swift */,
 				4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */,
+				4B5450012FC9600000000300 /* LatencyExportContext.swift */,
 			);
 			path = Telemetry;
 			sourceTree = "<group>";
@@ -571,6 +574,7 @@
 				4B5450012FC9600000000055 /* PredictionLog.swift in Sources */,
 				4B5450012FC9600000000064 /* SettingsStore.swift in Sources */,
 				4B5450012FC9600000000066 /* WritingHistoryRecorder.swift in Sources */,
+				4B5450012FC9600000000301 /* LatencyExportContext.swift in Sources */,
 				4B5450012FC9600000000068 /* SettingsView.swift in Sources */,
 				4B5450012FC96000000000A0 /* GeneralSettingsView.swift in Sources */,
 				4B5450012FC96000000000A2 /* ModelSettingsView.swift in Sources */,

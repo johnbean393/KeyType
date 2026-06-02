@@ -89,6 +89,7 @@ row here.**
 | 067 | Use non-invasive caret geometry for native fields | context-capture |
 | 068 | Skip native non-text focused controls before deep AX reads | context-capture |
 | 069 | Restore precise geometry for native multiline editors | context-capture/ui |
+| 070 | End-to-end latency telemetry + Statistics distribution chart | performance/ui |
 
 ---
 
@@ -2640,3 +2641,47 @@ text. Both are now closed:
   Chromium-descendant walks for native controls. Single-line native fields may still use less precise
   placement, but they are the class that exhibited focus perturbation, and short inline suggestions
   there are less sensitive to wrapped-line geometry.
+
+## ADR-070 — End-to-end latency telemetry + Statistics distribution chart
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: The Settings → Statistics pane only reported the decoder's `engine.completions(...)`
+  elapsed time, which is the segment of latency `CompletionController` already feeds back into the
+  adaptive debounce. That number understates what the user actually experiences: it excludes the
+  main-actor prompt assembly, the intentional debounce wait, and the overlay paint, all of which add
+  visible delay between a keystroke and ghost text. The existing `CompletionLatencyTrace` already
+  measures the full path from AX snapshot to "shown" via `os_signpost`, but those events stayed in
+  Instruments and never reached the user-visible rollup.
+- Decision: extend `CompletionTelemetryStore` with a bounded reservoir of `CompletionLatencySample`
+  values — `totalMillis` plus four phases (prompt build, debounce wait, model generation, overlay
+  present) — and have `CompletionLatencyTrace.finish(outcome: "shown")` push one sample per
+  user-visible completion. The Statistics pane shows total p50/p95 + per-phase rows and renders a
+  Swift Charts bar histogram of the recent total samples so the long tail is visible alongside the
+  percentile numbers. Decoder-only `latencyMillisP50/P95` stays in the snapshot for `ThresholdTuner`
+  and the prediction log; it is no longer surfaced in Settings. Persisted state from older builds
+  decodes through a custom `init(from:)` that `decodeIfPresent`s the new field, so existing
+  acceptance / suppression counters survive the upgrade.
+- Consequences: the Statistics number now matches the latency the user actually feels and is broken
+  down enough to point at the slow phase on a given machine. Per-phase percentiles are computed
+  column-by-column, so a row answers "how slow is this stage at its tail?" rather than "what was
+  this stage on the worst end-to-end trace?". The reservoir reuses the existing 500-sample bound, so
+  the JSON file and per-snapshot sort cost stay flat over long sessions. Phase deltas are recorded
+  only for outcomes the user actually saw, so suppressed/cancelled work doesn't dilute the
+  histogram. Adding Swift Charts to a Settings pane is fine because the app target is macOS 14+ and
+  Charts is system-provided; no new SwiftPM dependency.
+
+  *Addendum (Export data):* the same Statistics pane now has an "Export data" button next to
+  "Refresh stats" that writes the full latency reservoir + hardware/OS/engine context as a single
+  versioned JSON file (`keytype-latency-YYYYMMDD-HHMMSSZ.json`). It is intended as a debugging /
+  optimisation channel: a user with a slow tail can save the file and send it to us, and we can
+  re-run the same `EndToEndLatencyStats` analysis offline and correlate the numbers against
+  `hw.model`, `machdep.cpu.brand_string`, OS version, memory, app build, GGUF filename, and the
+  completion-length preset. The export is built by `LatencyExporter` in `Personalization` so the
+  data model and the JSON shape stay co-located with the telemetry type that produced them; the app
+  target only owns the `sysctl`/`Bundle.main` collector that fills `LatencyExportDeviceInfo`. The
+  file is pretty-printed and key-sorted so the user can eyeball it before sharing, and the schema
+  carries a `schemaVersion` (`currentSchemaVersion = 1`) so a future analyzer can route old files
+  through the right decoder when fields are added or renamed. Privacy contract: the export carries
+  **no captured text, no per-app identifiers, no clipboard or OCR content** — only timing samples,
+  aggregate counters, the suppression-reason histogram, and the device/engine context above.

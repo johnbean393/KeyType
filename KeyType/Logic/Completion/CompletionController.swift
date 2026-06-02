@@ -32,6 +32,185 @@ enum CompletionTextMutation: Equatable {
     case nonText
 }
 
+private final class CompletionLatencyTrace: @unchecked Sendable {
+    private static let signpostLog = OSLog(
+        subsystem: "com.pattonium.KeyType",
+        category: "completion-latency"
+    )
+
+    /// Outcome string passed to `finish(outcome:)` when a completion was actually painted on screen.
+    /// Kept in one place so `present(...)` and the telemetry-write decision in `finish` can't drift.
+    static let shownOutcome = "shown"
+
+    private let id: OSSignpostID
+    private let startedAt: DispatchTime
+    private let telemetry: CompletionTelemetryStore
+    private let lock = NSLock()
+    private var didFinish = false
+    private var promptBuiltAt: DispatchTime?
+    private var debounceScheduledAt: DispatchTime?
+    private var debounceElapsedAt: DispatchTime?
+    private var generationBeganAt: DispatchTime?
+    private var generationEndedAt: DispatchTime?
+    private var presentBeganAt: DispatchTime?
+
+    init(context: TextFieldContext, telemetry: CompletionTelemetryStore) {
+        id = OSSignpostID(log: Self.signpostLog)
+        startedAt = DispatchTime.now()
+        self.telemetry = telemetry
+        os_signpost(
+            .begin,
+            log: Self.signpostLog,
+            name: "CompletionE2E",
+            signpostID: id,
+            "bundle=%{public}@ before_chars=%d after_chars=%d",
+            context.target.bundleIdentifier as NSString,
+            context.beforeCursor.count,
+            context.afterCursor.count
+        )
+        eventAXSnapshot()
+    }
+
+    func eventAXSnapshot() {
+        event("AXSnapshot")
+    }
+
+    func eventPromptBuilt(
+        estimatedTokens: Int,
+        sideContextReused: Bool,
+        requiredPrefixBytes: Int,
+        maxCompletionTokens: Int
+    ) {
+        guard canEmit else { return }
+        promptBuiltAt = DispatchTime.now()
+        os_signpost(
+            .event,
+            log: Self.signpostLog,
+            name: "PromptBuilt",
+            signpostID: id,
+            "estimated_tokens=%d side_reused=%d required_prefix_bytes=%d max_completion_tokens=%d",
+            estimatedTokens,
+            sideContextReused ? 1 : 0,
+            requiredPrefixBytes,
+            maxCompletionTokens
+        )
+    }
+
+    func eventWarmupScheduled() {
+        event("AnchorWarmupScheduled")
+    }
+
+    func eventDebounceScheduled(nanoseconds: UInt64) {
+        guard canEmit else { return }
+        debounceScheduledAt = DispatchTime.now()
+        os_signpost(
+            .event,
+            log: Self.signpostLog,
+            name: "DebounceScheduled",
+            signpostID: id,
+            "delay_ms=%.2f",
+            Double(nanoseconds) / 1_000_000.0
+        )
+    }
+
+    func eventDebounceElapsed() {
+        guard canEmit else { return }
+        debounceElapsedAt = DispatchTime.now()
+        event("DebounceElapsed")
+    }
+
+    func eventGenerationBegin() {
+        guard canEmit else { return }
+        generationBeganAt = DispatchTime.now()
+        event("GenerationBegin")
+    }
+
+    func eventGenerationEnd(elapsedMs: Double, candidateCount: Int) {
+        guard canEmit else { return }
+        generationEndedAt = DispatchTime.now()
+        os_signpost(
+            .event,
+            log: Self.signpostLog,
+            name: "GenerationEnd",
+            signpostID: id,
+            "elapsed_ms=%.2f candidate_count=%d",
+            elapsedMs,
+            candidateCount
+        )
+    }
+
+    func eventPresentBegin() {
+        guard canEmit else { return }
+        presentBeganAt = DispatchTime.now()
+        event("PresentBegin")
+    }
+
+    func finish(outcome: String) {
+        lock.lock()
+        guard !didFinish else {
+            lock.unlock()
+            return
+        }
+        didFinish = true
+        let promptBuiltAt = self.promptBuiltAt
+        let debounceScheduledAt = self.debounceScheduledAt
+        let debounceElapsedAt = self.debounceElapsedAt
+        let generationBeganAt = self.generationBeganAt
+        let generationEndedAt = self.generationEndedAt
+        let presentBeganAt = self.presentBeganAt
+        lock.unlock()
+
+        let finishedAt = DispatchTime.now()
+        let totalMillis = Self.millis(from: startedAt, to: finishedAt)
+        os_signpost(
+            .end,
+            log: Self.signpostLog,
+            name: "CompletionE2E",
+            signpostID: id,
+            "outcome=%{public}@ elapsed_ms=%.2f",
+            outcome as NSString,
+            totalMillis
+        )
+
+        // Only completions that were actually painted contribute to the visible-latency rollup. The
+        // suppressed / cancelled / superseded paths are tracked separately by `suppressionReasons`
+        // and aren't part of the user-perceived latency the Statistics pane reports.
+        guard outcome == Self.shownOutcome,
+              let promptBuiltAt,
+              let debounceScheduledAt,
+              let debounceElapsedAt,
+              let generationBeganAt,
+              let generationEndedAt,
+              let presentBeganAt
+        else { return }
+
+        let sample = CompletionLatencySample(
+            totalMillis: totalMillis,
+            promptBuildMillis: Self.millis(from: startedAt, to: promptBuiltAt),
+            debounceMillis: Self.millis(from: debounceScheduledAt, to: debounceElapsedAt),
+            generationMillis: Self.millis(from: generationBeganAt, to: generationEndedAt),
+            presentMillis: Self.millis(from: presentBeganAt, to: finishedAt)
+        )
+        telemetry.recordEndToEndSample(sample)
+    }
+
+    private var canEmit: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !didFinish
+    }
+
+    private func event(_ name: StaticString) {
+        guard canEmit else { return }
+        os_signpost(.event, log: Self.signpostLog, name: name, signpostID: id)
+    }
+
+    private static func millis(from start: DispatchTime, to end: DispatchTime) -> Double {
+        let delta = end.uptimeNanoseconds &- start.uptimeNanoseconds
+        return Double(delta) / 1_000_000.0
+    }
+}
+
 @MainActor
 @Observable
 final class CompletionController {
@@ -60,6 +239,7 @@ final class CompletionController {
     private var debounceTask: Task<Void, Never>?
     private var warmupTask: Task<Void, Never>?
     private var listenerToken: UUID?
+    private var activeLatencyTrace: CompletionLatencyTrace?
     /// Content signature of the last snapshot we acted on, so re-emitted snapshots whose text is
     /// unchanged (caret-geometry repolls) don't tear down and rebuild the overlay — that churn is
     /// what makes the ghost text flash.
@@ -321,6 +501,10 @@ final class CompletionController {
             return
         }
 
+        activeLatencyTrace?.finish(outcome: "superseded")
+        let latencyTrace = CompletionLatencyTrace(context: context, telemetry: telemetry)
+        activeLatencyTrace = latencyTrace
+
         // Resolve the field font and foreground color now, on the main actor, before suspending
         // into generation, so the ghost text matches the field's typeface and color.
         let style = FieldFontResolver.currentStyle()
@@ -335,6 +519,7 @@ final class CompletionController {
         // valid short remainders such as "hi" or ".".
         if holdAnchor {
             if renderSuggestion(for: context, style: style, clearOnFailure: false) {
+                finishLatencyTrace(latencyTrace, outcome: "held-anchor")
                 return
             }
             holdAnchor = false
@@ -347,6 +532,7 @@ final class CompletionController {
         // stale ghost and let a fresh generation run below.
         switch applyReuseHistoryIfUseful(for: context, style: style) {
         case .reused:
+            finishLatencyTrace(latencyTrace, outcome: "reuse-history")
             return
         case .mustRecompute:
             break
@@ -388,7 +574,14 @@ final class CompletionController {
             maxCompletionTokens: length.maxCompletionTokens + (healSlack > 0 ? 2 : 0),
             maxDisplayWidth: length.maxDisplayWidth + healSlack
         )
+        latencyTrace.eventPromptBuilt(
+            estimatedTokens: promptResult.estimatedTokenCount,
+            sideContextReused: sideContextReused,
+            requiredPrefixBytes: requiredPrefixBytes.count,
+            maxCompletionTokens: request.maxCompletionTokens
+        )
         if !sideContextReused || lastGenerationLatencyMs == nil {
+            latencyTrace.eventWarmupScheduled()
             startAnchorWarmup(engine: engine, request: request)
         }
 
@@ -398,25 +591,31 @@ final class CompletionController {
         let debounceNanoseconds = Self.adaptiveDebounceNanoseconds(
             lastGenerationLatencyMs: lastGenerationLatencyMs
         )
+        latencyTrace.eventDebounceScheduled(nanoseconds: debounceNanoseconds)
         generationTask?.cancel()
         debounceTask?.cancel()
         debounceTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: debounceNanoseconds)
             guard !Task.isCancelled, let self else { return }
+            latencyTrace.eventDebounceElapsed()
             self.generationTask = Task { [weak self] in
                 guard let self else { return }
                 do {
+                    latencyTrace.eventGenerationBegin()
                     let start = DispatchTime.now()
                     let candidates = try await engine.completions(for: request)
                     try Task.checkCancellation()
                     let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+                    latencyTrace.eventGenerationEnd(elapsedMs: elapsedMs, candidateCount: candidates.count)
                     self.lastGenerationLatencyMs = elapsedMs
                     self.telemetry.recordLatency(milliseconds: elapsedMs)
-                    self.present(candidates, request: request, style: style)
+                    self.present(candidates, request: request, style: style, latencyTrace: latencyTrace)
                 } catch is CancellationError {
                     // Superseded by a newer keystroke — leave the current ghost as-is.
+                    self.finishLatencyTrace(latencyTrace, outcome: "cancelled")
                 } catch {
                     self.log.error("Generation failed: \(error, privacy: .public)")
+                    self.finishLatencyTrace(latencyTrace, outcome: "generation-error")
                 }
             }
         }
@@ -425,8 +624,10 @@ final class CompletionController {
     private func present(
         _ candidates: [CompletionCandidate],
         request: CompletionRequest,
-        style: ResolvedFieldStyle
+        style: ResolvedFieldStyle,
+        latencyTrace: CompletionLatencyTrace?
     ) {
+        latencyTrace?.eventPresentBegin()
         let ctx = PredictionLog.contextTail(request.context.beforeCursor)
         let ranked = candidates.prefix(5)
             .map { "\"\(PredictionLog.escape($0.text))\"" }
@@ -436,6 +637,7 @@ final class CompletionController {
             telemetry.recordSuppressed(reason: "noCandidate")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" → SUPPRESS(noCandidate)")
             clearCompletion()
+            finishLatencyTrace(latencyTrace, outcome: "suppressed-no-candidate")
             return
         }
         if let reason = filter.suppressionReason(for: best, request: request) {
@@ -443,6 +645,7 @@ final class CompletionController {
             log.debug("Suppressed: \(String(describing: reason), privacy: .public)")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(\(reason))")
             clearCompletion()
+            finishLatencyTrace(latencyTrace, outcome: "suppressed-\(reason)")
             return
         }
 
@@ -452,6 +655,7 @@ final class CompletionController {
             telemetry.recordSuppressed(reason: "emptyAfterBoundary")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(emptyAfterBoundary)")
             clearCompletion()
+            finishLatencyTrace(latencyTrace, outcome: "suppressed-empty-after-boundary")
             return
         }
 
@@ -468,6 +672,7 @@ final class CompletionController {
         if !renderSuggestion(for: latestContext ?? request.context, style: style, clearOnFailure: false) {
             _ = renderSuggestion(for: request.context, style: style)
         }
+        finishLatencyTrace(latencyTrace, outcome: CompletionLatencyTrace.shownOutcome)
     }
 
     private func anchorText(
@@ -729,11 +934,24 @@ final class CompletionController {
         screenCaptureHold = nil
     }
 
+    private func finishLatencyTrace(_ trace: CompletionLatencyTrace?, outcome: String) {
+        trace?.finish(outcome: outcome)
+        if let trace, activeLatencyTrace === trace {
+            activeLatencyTrace = nil
+        }
+    }
+
+    private func finishActiveLatencyTrace(outcome: String) {
+        activeLatencyTrace?.finish(outcome: outcome)
+        activeLatencyTrace = nil
+    }
+
     /// Hide any ghost text and forget the last context, so the next snapshot is treated as new.
     private func reset(keepingReuseHistory: Bool = false) {
         debounceTask?.cancel()
         generationTask?.cancel()
         warmupTask?.cancel()
+        finishActiveLatencyTrace(outcome: "reset")
         lastContextKey = nil
         lastCaretRect = nil
         frozenSideContext = nil
@@ -824,6 +1042,7 @@ final class CompletionController {
         debounceTask?.cancel()
         generationTask?.cancel()
         warmupTask?.cancel()
+        finishActiveLatencyTrace(outcome: "screen-capture-hold")
     }
 
     /// Synchronously dismiss the on-screen suggestion when a just-pressed key makes it stale, *before*
@@ -858,6 +1077,7 @@ final class CompletionController {
         debounceTask?.cancel()
         generationTask?.cancel()
         warmupTask?.cancel()
+        finishActiveLatencyTrace(outcome: "stale-completion-dismissed")
         clearCompletion()
     }
 
@@ -922,6 +1142,7 @@ final class CompletionController {
             debounceTask?.cancel()
             generationTask?.cancel()
             warmupTask?.cancel()
+            finishActiveLatencyTrace(outcome: "cached-reuse")
             holdAnchor = false
             return true
 
@@ -1012,6 +1233,7 @@ final class CompletionController {
         debounceTask?.cancel()
         generationTask?.cancel()
         warmupTask?.cancel()
+        finishActiveLatencyTrace(outcome: "accepted-word")
         latestContext = context.replacingBeforeCursor(context.beforeCursor + head)
         let remainder = rest.isEmpty ? nil : CompletionCandidate(text: rest, mode: .prose)
         visibleCandidate = remainder
