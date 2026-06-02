@@ -85,7 +85,12 @@ public struct ScreenCaptureKitWindowTextCapturer: ScreenWindowTextCapturing {
     /// Longest side (in pixels) of the captured image before OCR. Caps Retina blow-up for speed.
     private let maxCaptureDimension: CGFloat
 
-    public init(maxCaptureDimension: CGFloat = 1600) {
+    public init(maxCaptureDimension: CGFloat = 1200) {
+        // ADR-076: 1200 is the longest-side cap before OCR. The previous default of 1600 was
+        // a holdover from `.accurate` Vision (which benefits from more pixels); `.fast` doesn't
+        // gain proportionally from extra resolution, so we shrink the captured image to cut both
+        // the screenshot encode cost and Vision's per-pixel work without hurting recognition of
+        // ordinary screen text. Apps that need a denser cap can pass it explicitly.
         self.maxCaptureDimension = maxCaptureDimension
     }
 

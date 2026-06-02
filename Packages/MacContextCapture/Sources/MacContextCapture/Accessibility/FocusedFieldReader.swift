@@ -35,10 +35,52 @@ public struct FocusedFieldSnapshot: Equatable {
     }
 }
 
+/// Memoizes the result of `FocusedFieldReader.textElement(for:preferDescendantTextElement:)`
+/// for a single focused-root identity (ADR-075). Profiling on a fanless M4 showed the BFS in
+/// `textElement(for:)` accounted for ~10% of main-thread time during typing — every
+/// `kAXValueChangedNotification` fired on every keystroke walked the AX tree again to find the
+/// same text descendant we had already resolved a moment earlier. With this cache the walk runs
+/// once per focus change instead of once per keystroke; on value/selection changes we go
+/// straight to `AXCaretHelper.stringValue` on the already-resolved element.
+///
+/// Reference type so the value-typed `FocusedFieldReader` can mutate it through a `let`
+/// property — the reader is held across refreshes by `AccessibilityContextTracker` so the
+/// cached element lives for the lifetime of the focus session.
+private final class FocusedFieldResolutionCache {
+    /// Outcome of a resolution attempt against a given root identity. `negative` is preserved
+    /// separately from "miss" so a focused root with no text descendant doesn't re-walk the
+    /// tree on every value tick (e.g. media keys firing AX notifications from a non-text
+    /// focused control).
+    enum Lookup {
+        case miss
+        case hit(AXUIElement)
+        case negative
+    }
+
+    private var rootIdentity: String?
+    private var resolvedTextElement: AXUIElement?
+
+    /// `kAXFocusedUIElementChanged` / `kAXFocusedWindowChanged` produce a different root
+    /// identity, so this never serves a stale element across focus boundaries — yet
+    /// `kAXValueChanged` / `kAXSelectedTextChanged` keep the same root, which is the case that
+    /// gets the win.
+    func lookup(rootIdentity identity: String) -> Lookup {
+        guard self.rootIdentity == identity else { return .miss }
+        if let cached = resolvedTextElement { return .hit(cached) }
+        return .negative
+    }
+
+    func store(rootIdentity identity: String, textElement: AXUIElement?) {
+        self.rootIdentity = identity
+        self.resolvedTextElement = textElement
+    }
+}
+
 @MainActor
 public struct FocusedFieldReader {
     private let resolver: AXCaretGeometryResolver
     private nonisolated let webAppClassifier: AppBundleWebAppClassifier
+    private nonisolated let resolutionCache = FocusedFieldResolutionCache()
 
     public nonisolated init(
         resolver: AXCaretGeometryResolver = AXCaretGeometryResolver(),
@@ -51,15 +93,32 @@ public struct FocusedFieldReader {
     /// Read the focused AX element into a snapshot. Returns nil if the element has no AX
     /// value (likely not a text-bearing field).
     public func snapshot(of element: AXUIElement) -> FocusedFieldSnapshot? {
-        let initialBundleIdentifier = AppTargetResolver.bundleIdentifier(for: element)
-        let isKnownWebBackedApp = webAppClassifier.isWebBacked(
-            bundleIdentifier: initialBundleIdentifier
-        )
-        guard let textElement = Self.textElement(
-            for: element,
-            preferDescendantTextElement: isKnownWebBackedApp
-        ) else {
+        // Fast path (ADR-075): if the focused root's identity matches the one we resolved a
+        // text descendant for previously, skip the AX tree walk in `textElement(for:)` and
+        // reuse the cached element. The expensive `AXCaretHelper.childElements` BFS is the
+        // dominant per-keystroke main-thread cost; same-root revisits during continuous typing
+        // were our 10% main-thread hotspot before this.
+        let rootIdentity = AXCaretHelper.elementIdentity(for: element)
+        let textElement: AXUIElement
+        switch resolutionCache.lookup(rootIdentity: rootIdentity) {
+        case .hit(let cached):
+            textElement = cached
+        case .negative:
             return nil
+        case .miss:
+            let initialBundleIdentifier = AppTargetResolver.bundleIdentifier(for: element)
+            let isKnownWebBackedApp = webAppClassifier.isWebBacked(
+                bundleIdentifier: initialBundleIdentifier
+            )
+            guard let resolved = Self.textElement(
+                for: element,
+                preferDescendantTextElement: isKnownWebBackedApp
+            ) else {
+                resolutionCache.store(rootIdentity: rootIdentity, textElement: nil)
+                return nil
+            }
+            resolutionCache.store(rootIdentity: rootIdentity, textElement: resolved)
+            textElement = resolved
         }
         let target = AppTargetResolver.resolveAppTarget(for: textElement)
 

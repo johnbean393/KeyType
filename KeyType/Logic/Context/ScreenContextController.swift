@@ -29,7 +29,11 @@ final class ScreenContextController {
 
     /// How often to re-OCR the focused window while it stays focused, so the context tracks slow
     /// on-screen changes (a scrolled doc, an updated panel) without a focus change to trigger it.
-    private let refreshInterval: TimeInterval = 4.0
+    /// 12 s instead of the previous 4 s — see ADR-076: even with `.fast` Vision the OCR pass is
+    /// not free, and the user-perceptible "screen changes" we want to react to (paragraph scroll,
+    /// updated panel) are on the order of seconds, not sub-second. The big trigger remains focus
+    /// change, which is still instant via `handle(snapshot:)`.
+    private let refreshInterval: TimeInterval = 12.0
 
     private(set) var isRunning = false
     private var listenerToken: UUID?

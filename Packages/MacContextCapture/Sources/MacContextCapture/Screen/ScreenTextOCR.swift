@@ -13,18 +13,23 @@ import Vision
 
 public enum ScreenTextOCR {
     /// Recognise text in `image`, returning the recognised lines in natural reading order
-    /// (top-to-bottom, then left-to-right). Uses `.accurate` recognition with language correction
-    /// **on**: this capture runs out of band (on focus/window change plus a slow timer, never on the
-    /// per-keystroke path — see `WindowOCRCaptureEngine`/`ScreenContextController`), so there is no
-    /// keystroke-latency budget to protect and accuracy is what matters. Garbled recognitions are the
-    /// single largest source of polluted screen context (the model parrots "Ilne wilh real 5ulfix"
-    /// gibberish), and `.accurate` + language correction cuts them at the source rather than relying
-    /// solely on the post-hoc corruption filters below. (See ADR-049/052.)
+    /// (top-to-bottom, then left-to-right). Uses `.fast` recognition with language correction
+    /// **off** (ADR-076). Earlier revisions used `.accurate` + `usesLanguageCorrection = true`
+    /// because the per-line corruption filter (`droppingCorruptedLines` below) had a non-trivial
+    /// false-negative rate when fed `.fast`-tier mojibake (ADR-049/052). In practice — once the
+    /// digit-substitution guard (ADR-050) and the symbol-density guard are in place — the
+    /// surviving `.fast` lines are good enough for `[Screen context]` and the CPU win on a
+    /// fanless M4 is measured in 5–10× per refresh. The OCR is still off the keystroke path,
+    /// but the same CPU competes with everything else the user is doing, and a 4-second timer
+    /// firing `.accurate` Vision passes was the dominant remaining draw after ADR-074/075.
+    /// `.fast` routes through the Neural Engine where available, which is exactly what
+    /// Apple's own Live Text / system text recognition uses for ambient capture.
     ///
     /// `minimumConfidence` is the first guard against *corrupted* OCR reaching the prompt: Vision
     /// reports a per-candidate confidence, and a low value is the signal of a mangled recognition.
     /// Feeding nothing is better than feeding garbage, so low-confidence lines are dropped here.
-    public static func recognizeLines(in image: CGImage, minimumConfidence: Float = 0.4) async throws -> [String] {
+    /// The threshold is bumped slightly to compensate for `.fast`'s noisier candidates.
+    public static func recognizeLines(in image: CGImage, minimumConfidence: Float = 0.45) async throws -> [String] {
         try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 if let error {
@@ -47,8 +52,12 @@ public enum ScreenTextOCR {
                 }
                 continuation.resume(returning: lines)
             }
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
+            // ADR-076: trade some recognition accuracy for ~5–10× lower per-refresh CPU. The
+            // downstream corruption filters (`droppingCorruptedLines`, `isPlausibleText`,
+            // `containsDigitSubstitutedWord`) reject the additional mangled lines that `.fast`
+            // produces, so the model still only sees plausible prose.
+            request.recognitionLevel = .fast
+            request.usesLanguageCorrection = false
 
             let handler = VNImageRequestHandler(cgImage: image, options: [:])
             do {

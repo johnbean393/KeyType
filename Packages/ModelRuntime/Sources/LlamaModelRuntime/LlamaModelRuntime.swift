@@ -93,7 +93,14 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         maxSequences: Int = 4,
         // Incremental beam decoding (ADR-046): keep branch KV resident across levels and decode only
         // the new token. On by default; the reseed path (ADR-043) remains as a per-call fallback.
-        enableIncrementalBeam: Bool = true
+        enableIncrementalBeam: Bool = true,
+        // Number of transformer layers to offload to the GPU via llama.cpp's Metal backend
+        // (ADR-074). Default 999 means "all layers"; llama.cpp clamps to the model's real layer
+        // count. Pass 0 to force CPU-only (e.g. tooling, deterministic tests). Without this,
+        // `llama_model_default_params()` defaults `n_gpu_layers` to 0 and every token is decoded
+        // on the CPU even though the Metal backend is linked — pinning the CPU and triggering
+        // thermal throttling on fanless Apple Silicon.
+        nGpuLayers: Int = 999
     ) throws {
         guard ModelContainer.modelExists(at: modelURL) else {
             throw LlamaRuntimeError.modelFileMissing(path: modelURL.path)
@@ -103,6 +110,12 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         var modelParams = llama_model_default_params()
         modelParams.use_mmap = true
         modelParams.use_mlock = false
+        // Offload all transformer layers to the Metal GPU (ADR-074). Without this, llama.cpp
+        // defaults `n_gpu_layers` to 0 and decodes every token on the CPU even though the Metal
+        // backend is linked — the high CPU usage / thermal throttling we saw was from inference
+        // running entirely on CPU cores. 999 means "all layers"; llama.cpp clamps to the model's
+        // real depth.
+        modelParams.n_gpu_layers = Int32(nGpuLayers)
 
         guard let loadedModel = llama_model_load_from_file(modelURL.path, modelParams) else {
             throw LlamaRuntimeError.modelLoadFailed
