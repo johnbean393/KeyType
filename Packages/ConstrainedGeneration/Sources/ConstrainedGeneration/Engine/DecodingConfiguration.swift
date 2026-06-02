@@ -53,7 +53,13 @@ public struct DecodingConfiguration: Equatable {
         topK: Int = 64,
         topP: Float = 0.95,
         temperature: Float = 0.8,
-        branchWidth: Int = 4,
+        // ADR-077: default 3 (was 4). Per ADR-012's `testBranchWidthSweep` (warm means
+        // 239 / 164 / 107 / 75 / … ms at widths 8/6/4/3/…) dropping a single branch trims
+        // ~25% off generation latency and a one-rank-narrower beam barely moves the
+        // top-1 quality on the catalog set. With rank-fallback in `CompletionController`
+        // we now consume the extra ranks the beam still emits, so giving up the 4th branch
+        // costs less than the latency it cost to keep producing it.
+        branchWidth: Int = 3,
         relativeCutoff: Float = 6,
         minBranchProbability: Float = 0.02,
         maxCandidates: Int = 5,

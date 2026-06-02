@@ -303,6 +303,29 @@ final class CompletionController {
     nonisolated static let fastDebounceNanoseconds: UInt64 = 35_000_000
     nonisolated static let moderateDebounceNanoseconds: UInt64 = 50_000_000
     nonisolated static let conservativeDebounceNanoseconds: UInt64 = 90_000_000
+
+    /// Collapses runs of two or more ASCII spaces to one, leaving every other character
+    /// (including the leading single space that the next-word separator in ADR-050 carries)
+    /// untouched. The model occasionally emits `"hello  world"`-style internal double spaces
+    /// in a completion candidate; this gate runs only on the bytes we're about to insert
+    /// — display anchors and ghost text are unchanged — so the user-visible "bigger space
+    /// than needed" after Tab / Shift+Tab cannot survive insertion. See ADR-079.
+    nonisolated static func collapseInternalDoubleSpaces(_ text: String) -> String {
+        guard text.contains("  ") else { return text }
+        var out = ""
+        out.reserveCapacity(text.count)
+        var lastWasSpace = false
+        for ch in text {
+            if ch == " " {
+                if !lastWasSpace { out.append(ch) }
+                lastWasSpace = true
+            } else {
+                out.append(ch)
+                lastWasSpace = false
+            }
+        }
+        return out
+    }
     private static let sideContextFreezeInterval: TimeInterval = 2.0
     private static let screenCaptureBundleIdentifiers: Set<String> = [
         "com.apple.screenshot.launcher"
@@ -598,7 +621,15 @@ final class CompletionController {
             try? await Task.sleep(nanoseconds: debounceNanoseconds)
             guard !Task.isCancelled, let self else { return }
             latencyTrace.eventDebounceElapsed()
-            self.generationTask = Task { [weak self] in
+            // ADR-078: generation deadline. Telemetry on the live app showed `generationMillis`
+            // tail outliers up to ~6 s (cold KV cache + long prompts + maximally divergent
+            // edits land all at once). Predictions that take longer than ~1.2 s to land are
+            // already stale by the time they would render — the user has typed several more
+            // characters since — so they should be abandoned rather than shown belatedly. We
+            // capture the generation Task and a sibling task cancels it after the budget; the
+            // existing `catch is CancellationError` arm already drops the result silently.
+            let generationDeadlineNanoseconds: UInt64 = 1_200_000_000
+            let generationTask = Task { [weak self] in
                 guard let self else { return }
                 do {
                     latencyTrace.eventGenerationBegin()
@@ -611,12 +642,18 @@ final class CompletionController {
                     self.telemetry.recordLatency(milliseconds: elapsedMs)
                     self.present(candidates, request: request, style: style, latencyTrace: latencyTrace)
                 } catch is CancellationError {
-                    // Superseded by a newer keystroke — leave the current ghost as-is.
+                    // Superseded by a newer keystroke, or hit the generation deadline above.
+                    // Either way, leave the current ghost as-is and drop this attempt silently.
                     self.finishLatencyTrace(latencyTrace, outcome: "cancelled")
                 } catch {
                     self.log.error("Generation failed: \(error, privacy: .public)")
                     self.finishLatencyTrace(latencyTrace, outcome: "generation-error")
                 }
+            }
+            self.generationTask = generationTask
+            Task {
+                try? await Task.sleep(nanoseconds: generationDeadlineNanoseconds)
+                generationTask.cancel()
             }
         }
     }
@@ -633,14 +670,31 @@ final class CompletionController {
             .map { "\"\(PredictionLog.escape($0.text))\"" }
             .joined(separator: " | ")
 
-        guard let best = candidates.first else {
+        guard let topRanked = candidates.first else {
             telemetry.recordSuppressed(reason: "noCandidate")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" → SUPPRESS(noCandidate)")
             clearCompletion()
             finishLatencyTrace(latencyTrace, outcome: "suppressed-no-candidate")
             return
         }
-        if let reason = filter.suppressionReason(for: best, request: request) {
+        // ADR-077: rank-fallback. The constrained decoder returns up to `maxCandidates`
+        // hypotheses ordered by cumulative log-probability; previously we accepted only
+        // `candidates.first` and any filter rejection suppressed the entire prediction —
+        // even when ranks 2..N passed every gate. Telemetry showed 41 of 77 suppressions
+        // were `insertionUnsafe` (the most common cause: the top candidate was pure
+        // punctuation or whitespace and the prose runner-up never got a turn). Now we
+        // walk the ranked list and pick the first candidate that survives the filter.
+        // Suppression is reported only if every candidate fails — and we report the top
+        // candidate's reason, preserving the existing telemetry shape.
+        let best: CompletionCandidate
+        if filter.suppressionReason(for: topRanked, request: request) == nil {
+            best = topRanked
+        } else if let runnerUp = candidates.dropFirst().first(where: {
+            filter.suppressionReason(for: $0, request: request) == nil
+        }) {
+            best = runnerUp
+        } else {
+            let reason = filter.suppressionReason(for: topRanked, request: request)!
             telemetry.recordSuppressed(reason: String(describing: reason))
             log.debug("Suppressed: \(String(describing: reason), privacy: .public)")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(\(reason))")
@@ -1280,7 +1334,15 @@ final class CompletionController {
     /// overlay are left intact so the induced snapshot re-renders the shrinking remainder instead.
     private func insert(text: String, context: TextFieldContext, keepingAnchor: Bool = false) {
         guard !text.isEmpty else { return }
-        let plan = inserter.planInsertion(candidate: CompletionCandidate(text: text), context: context)
+        // ADR-079: collapse internal multi-space runs (`"hello  world"` → `"hello world"`).
+        // The model occasionally emits double spaces inside a candidate, which produced the
+        // user-visible "bigger space than needed" after Tab / Shift+Tab insertion. A *single*
+        // leading space is the separator that ADR-050 says leads the next word, so we keep
+        // it; runs of two or more ASCII spaces anywhere in the string collapse to one. Other
+        // whitespace forms (tabs, NBSP) are not touched — apps that require NBSP get the
+        // existing per-policy substitution in `InsertionPlanner.plan(...)`.
+        let normalized = Self.collapseInternalDoubleSpaces(text)
+        let plan = inserter.planInsertion(candidate: CompletionCandidate(text: normalized), context: context)
         if !keepingAnchor {
             // Drop the dedupe key so the post-insertion snapshot always regenerates a fresh suggestion.
             lastContextKey = nil
