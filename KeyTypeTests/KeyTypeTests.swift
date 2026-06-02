@@ -6,6 +6,7 @@
 //
 
 import AutocompleteCore
+import AppKit
 import Testing
 @testable import KeyType
 
@@ -53,10 +54,55 @@ struct KeyTypeTests {
         let context = TextFieldContext(
             beforeCursor: "This is ",
             afterCursor: "existing text",
+            geometry: TextFieldGeometry(isAtEndOfLine: false),
             target: Self.target
         )
 
         #expect(CompletionController.shouldUseCapsule(for: context))
+    }
+
+    @Test func capsulePresentationTrustsEndOfLineGeometryOverStaleSuffix() {
+        let context = TextFieldContext(
+            beforeCursor: "Let's try",
+            afterCursor: "stale AX suffix",
+            geometry: TextFieldGeometry(isAtEndOfLine: true),
+            target: AppTarget(bundleIdentifier: "md.obsidian", appName: "Obsidian"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        #expect(!CompletionController.shouldUseCapsule(for: context))
+    }
+
+    @Test func obsidianIgnoresAXFontForOverlaySizing() {
+        let style = ResolvedFieldStyle(
+            font: NSFont.systemFont(ofSize: 48),
+            color: .labelColor
+        )
+        let context = TextFieldContext(
+            beforeCursor: "Notes are the core of Obsidian.",
+            target: AppTarget(bundleIdentifier: "md.obsidian", appName: "Obsidian"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let effective = CompletionController.effectiveOverlayStyle(style, for: context)
+
+        #expect(effective.font == nil)
+        #expect(effective.color == .labelColor)
+    }
+
+    @Test func nonObsidianKeepsResolvedAXFont() {
+        let font = NSFont.systemFont(ofSize: 18)
+        let style = ResolvedFieldStyle(font: font, color: .labelColor)
+        let context = TextFieldContext(
+            beforeCursor: "This is a test",
+            target: Self.target
+        )
+
+        let effective = CompletionController.effectiveOverlayStyle(style, for: context)
+
+        #expect(effective.font?.pointSize == font.pointSize)
+        #expect(effective.font?.familyName == font.familyName)
+        #expect(effective.color == .labelColor)
     }
 
     @Test func capsulePresentationIsNotUsedAtEndOfLineForNewWordWrapping() {

@@ -895,7 +895,8 @@ final class CompletionController {
         predictionLog.append(
             "PLACE mode=\(placement.mode) cursor=\(PredictionLog.rect(placement.cursorRect)) field=\(placement.fieldRect.map(PredictionLog.rect) ?? "nil")"
         )
-        presenter.show(candidate: candidate, placement: placement, font: style.font, textColor: style.color)
+        let effectiveStyle = Self.effectiveOverlayStyle(style, for: live)
+        presenter.show(candidate: candidate, placement: placement, font: effectiveStyle.font, textColor: effectiveStyle.color)
         return true
     }
 
@@ -1007,8 +1008,17 @@ final class CompletionController {
     /// line is empty/whitespace and the next character is a newline), inline ghost text appends
     /// cleanly with nothing to overlap, so we keep it.
     static func shouldUseCapsule(for context: TextFieldContext) -> Bool {
+        guard !context.geometry.isAtEndOfLine else { return false }
         let currentLineSuffix = context.afterCursor.prefix { !$0.isNewline }
         return currentLineSuffix.contains { !$0.isWhitespace }
+    }
+
+    static func effectiveOverlayStyle(
+        _ style: ResolvedFieldStyle,
+        for context: TextFieldContext
+    ) -> ResolvedFieldStyle {
+        guard context.target.bundleIdentifier == "md.obsidian" else { return style }
+        return ResolvedFieldStyle(font: nil, color: style.color)
     }
 
     /// Whether the caret has shifted enough to warrant re-pinning the overlay. A small epsilon

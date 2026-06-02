@@ -75,6 +75,27 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
+    func testObsidianUsesMarkdownEditorPolicy() {
+        let target = AppTarget(bundleIdentifier: "md.obsidian", appName: "Obsidian")
+        let context = TextFieldContext(
+            beforeCursor: "## Notes\nLet's",
+            target: target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertTrue(policy.allowsMidLineCompletion)
+        XCTAssertFalse(policy.includesEnvironmentContext)
+        XCTAssertEqual(policy.overlayPreference, .inline)
+        XCTAssertEqual(policy.completionMode, .prose)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue only the current Obsidian note at the cursor. Preserve Markdown style; avoid vault chrome, backlinks, and file-tree text."
+        ])
+    }
+
     func testSlackNativeUsesTextMirrorWithVerticalAlignmentFix() {
         let target = AppTarget(bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack")
         let context = TextFieldContext(beforeCursor: "Let's", target: target)

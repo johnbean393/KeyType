@@ -91,6 +91,7 @@ row here.**
 | 069 | Restore precise geometry for native multiline editors | context-capture/ui |
 | 070 | End-to-end latency telemetry + Statistics distribution chart | performance/ui |
 | 071 | Treat Chromium browsers as known web-backed targets | context-capture |
+| 072 | Stabilize Obsidian ghost-text rendering | app-compatibility/ui |
 
 ---
 
@@ -2703,3 +2704,24 @@ text. Both are now closed:
   is web-shaped, including enhanced accessibility wakeup, editable descendant search, and full caret
   geometry. Native apps still require either Electron markers or an explicit known browser bundle id,
   so the native non-text early-exit protections from ADR-068 remain in place.
+
+## ADR-072 — Stabilize Obsidian ghost-text rendering
+
+- Date: 2026-06-03
+- Status: accepted
+- Context: Obsidian's Electron editor can leave non-whitespace text in the AX after-cursor slice even
+  when the caret is visually at the end of the typed line. It also exposes mixed Markdown-rendered
+  attributed runs through AX, so the 1-character font probe can sample a heading or stale rich-text
+  run and make inline ghost text much larger than the paragraph being edited. In `predictions.log`,
+  reuse was not globally broken: hits appeared when the user typed into cached branches, while misses
+  mostly reflected branch divergence or context churn.
+- Decision: keep Obsidian as an explicit Markdown editor target (`md.obsidian`) with inline overlay
+  preference, environment-context suppression, and note-focused custom instructions. The capsule
+  decision trusts the resolved end-of-line geometry before inspecting `afterCursor`, so a visual
+  end-of-line append remains inline even if AX reports stale suffix text. For Obsidian only, the app
+  ignores the AX font and lets `InlineGhostTextPresenter` derive size from caret geometry, while
+  preserving the resolved foreground color.
+- Consequences: Obsidian note completions behave like editor-local continuations instead of chat or
+  browser chrome continuations, and inline ghost text no longer inherits heading-sized AX runs.
+  True mid-line completions still use the capsule when geometry says the caret is not at end of line.
+  Other rich editors keep their resolved AX font, so Notes/TextEdit-style matching is unchanged.

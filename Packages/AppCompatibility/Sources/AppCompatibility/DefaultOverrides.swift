@@ -132,6 +132,12 @@ public extension AppCompatibilityStore {
                 customInstructions: "Continue the current WeChat message only. Keep it short and conversational."
             ),
             TargetOverride(
+                bundleIdentifier: "md.obsidian",
+                overlayPreference: .inline,
+                customInstructions: "Continue only the current Obsidian note at the cursor. Preserve Markdown style; avoid vault chrome, backlinks, and file-tree text.",
+                environmentContextDisabled: true
+            ),
+            TargetOverride(
                 bundleIdentifier: "com.tinyspeck.slackmacgap",
                 requiresPasteAndMatchStyle: true,
                 verticalAlignmentOffset: { lineHeight in lineHeight },
@@ -147,7 +153,7 @@ public extension AppCompatibilityStore {
             TargetOverride(
                 bundleIdentifier: "com.hnc.Discord",
                 stringInjectionChunkSize: 8,
-                verticalAlignmentOffset: { lineHeight in lineHeight },
+                verticalAlignmentOffset: { lineHeight in lineHeight + 2 },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Discord message only. Keep it short and conversational."
             )
