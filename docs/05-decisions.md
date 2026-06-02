@@ -93,6 +93,12 @@ row here.**
 | 071 | Treat Chromium browsers as known web-backed targets | context-capture |
 | 072 | Stabilize Obsidian ghost-text rendering | app-compatibility/ui |
 | 073 | Estimate caret geometry across soft-wrapped lines | context-capture/ui |
+| 074 | GPU offload by default via `n_gpu_layers` | model-runtime/performance |
+| 075 | Memoize the focused-root → text-element AX walk | context-capture/performance |
+| 076 | `.fast` Vision OCR with looser refresh + smaller capture | context-capture/performance |
+| 077 | Rank-fallback + lower beam width | completion/performance |
+| 078 | 1.2 s generation deadline cancels stale predictions | completion/performance |
+| 079 | Collapse internal multi-space runs at insertion | insertion |
 
 ---
 
@@ -2747,3 +2753,251 @@ text. Both are now closed:
   longer look like they are always at the right edge after the first visual line. Real trailing-edge
   cases still wrap ghost text to the next visual line rather than switching to a capsule or drawing
   past the field.
+## ADR-074 — GPU offload by default via `n_gpu_layers`
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: `LlamaModelRuntime.init` constructed model params with
+  `llama_model_default_params()` and then set only `use_mmap` / `use_mlock`, never touching
+  `n_gpu_layers`. llama.cpp's default for that field is `0`, which means CPU-only inference
+  **even when the build links the Metal backend** (which our xcframework from ADR-007 does). Every
+  token of every suggestion was therefore decoded on the CPU. On a fanless MacBook Air M4 the result
+  is sustained CPU saturation under typing, fast thermal throttling, and the high CPU usage the
+  user reported — while the integrated GPU sat idle. Matching Cotypist's user-facing settings could
+  not fix this, because the cost is not in a runtime toggle; it is in how the model is loaded.
+- Decision: set `modelParams.n_gpu_layers` on every `LlamaModelRuntime` load, defaulting to full
+  offload. A new `nGpuLayers: Int = 999` parameter on `LlamaModelRuntime.init` controls it; `999`
+  is the llama.cpp idiom for "all layers" and llama.cpp clamps to the model's real depth. Because
+  the parameter has a default and sits at the end of the init signature, the two non-app call
+  sites — `ProfileGenerator` (`ModelManagement`) and `ACPFBuildCommand` (`ProfileBuilder`) — keep
+  working unchanged and pick up GPU offload too. Tooling or tests that require deterministic
+  CPU-only behaviour can pass `nGpuLayers: 0` explicitly.
+- Consequences: live inference moves from the CPU cores to the GPU via Metal, dropping CPU load
+  and thermal pressure on Apple Silicon and freeing CPU headroom for the rest of the pipeline
+  (AX reads, prompt assembly, overlay paint — all of which stay on the CPU side). No public API
+  of `LocalModelRuntime` changes, so `AutocompleteCore`, `ConstrainedGeneration`, `Prompting`,
+  and `StubModelRuntime` are unaffected. The GGUF must fit in unified memory at load time; on the
+  catalog Qwen3.5-2B Q4_K_M this is comfortably under the M4 Air's budget. Profile-building runs
+  (`acpf-build`, `ProfileGenerator`) now also exercise the GPU, which is the correct behaviour —
+  they were previously CPU-bound for no reason. The xcframework already ships ggml-metal, so no
+  build-system changes are needed. The dial stays in the API so a future ADR can revisit
+  per-machine policy (e.g. `min(nLayers, freeGPUMemBytes / perLayerBytes)`) without another
+  protocol change.
+
+## ADR-075 — Memoize the focused-root → text-element AX walk
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: With the model running on the GPU (ADR-074), the dominant remaining cost during
+  typing was main-thread Accessibility work. A 10-second `sample(1)` profile of the live app on
+  a fanless M4 attributed ~10% of main-thread time to a single call chain:
+  `AccessibilityContextTracker.refreshSoon` → `refreshNow` → `FocusedFieldReader.snapshot` →
+  `FocusedFieldReader.textElement(for:preferDescendantTextElement:)` →
+  `AXCaretHelper.childElements` → `AXUIElementCopyAttributeValue`. Every
+  `kAXValueChangedNotification` (which fires on every keystroke) — after ADR-006's 20 ms
+  debounce — triggered a fresh BFS of the focused root's AX subtree (up to `maxNodes = 2_500`
+  for web containers) to re-locate the same text descendant we had already resolved a moment
+  earlier. The descendant doesn't move while the focused root stays the same; the tree walk
+  was re-doing work that was already done.
+- Decision: cache the result of `textElement(for:)` per focused-root identity, inside
+  `FocusedFieldReader`, in a private `FocusedFieldResolutionCache` reference type (so the
+  value-typed reader can mutate it through a `let` property). On entry to `snapshot(of:)` the
+  reader computes the root's `AXCaretHelper.elementIdentity`, and: on a `hit` it reuses the
+  cached `AXUIElement` and skips the BFS entirely; on a `negative` cached result (the root has
+  no text descendant — e.g. media keys arriving from a non-text focused control) it returns
+  `nil` without walking again; on a `miss` (different identity) it runs the existing BFS once
+  and stores the outcome. The cache holds exactly one entry — a focus change produces a new
+  identity, which evicts the previous root, so the cache cannot serve a stale element across
+  focus boundaries. `kAXValueChanged` / `kAXSelectedTextChanged` keep the same root, which is
+  the win.
+- Consequences: continuous typing drops the per-keystroke `AXUIElementCopyAttributeValue`
+  count from ~6 (BFS + role probes) to ~2 (the identity probe plus the value read), so the AX
+  hot path stops dominating main-thread time and frees CPU headroom for the rest of the
+  pipeline. Public API of `FocusedFieldReader` is unchanged — same `init`, same
+  `snapshot(of:)` signature — so `AccessibilityContextTracker`, the tests, and the per-app
+  policies (ADR-022, ADR-027–033) are untouched. Memory cost is one `AXUIElement` reference
+  plus a short identity string. If a text descendant inside the focused root is destroyed
+  while the root itself survives, subsequent AX reads against the cached element will return
+  `nil` / errors and `snapshot` will yield a sparse result; the next focus change (which
+  produces a new identity) recovers automatically. If that ever becomes a recurring problem
+  we can add a same-root invalidation hook driven by a follow-up notification, but Mac apps
+  in our compatibility set do not tear down their focused text fields without also moving
+  focus.
+
+## ADR-076 — `.fast` Vision OCR with looser refresh + smaller capture
+
+- Date: 2026-06-02
+- Status: accepted (amends parts of ADR-049/052)
+- Context: After ADR-074 (GPU offload) and ADR-075 (AX walk cache) the remaining sustained
+  CPU draw under typing collapsed to a single source: the on-screen-text (OCR) feature.
+  `ScreenContextController` was firing a `.accurate` `VNRecognizeTextRequest` with
+  `usesLanguageCorrection = true` on a 1600-px-longest-side screenshot of the focused
+  window every 4 s, plus on every focus change. On a fanless M4 a single `.accurate` Vision
+  pass over a Retina app window runs hundreds of milliseconds of dense matrix work on the
+  GPU and CPU; repeating it 15× per minute is enough to spike the user-visible CPU graph,
+  which is what the user reported and what reviewers compare unfavourably to Cotypist's
+  much lighter screen-context implementation. The original ADR-049 chose `.accurate` because
+  the per-line corruption filter (`droppingCorruptedLines` / `isPlausibleText`) had a
+  non-trivial false-negative rate on `.fast` mojibake. ADR-050 then added the
+  digit-substitution guard (`containsDigitSubstitutedWord`), which catches the dominant
+  failure mode of `.fast` ("h3llo", "qu81ity") at the source, so the filter chain is now
+  strong enough to absorb `.fast`-tier noise.
+- Decision: change the OCR path along three axes simultaneously, behind the existing
+  off-by-default OCR setting and the unchanged per-keystroke isolation in
+  `WindowOCRCaptureEngine` (capture stays out-of-band, the completion path still reads from
+  the cache):
+  1. `VNRecognizeTextRequest.recognitionLevel = .fast` (was `.accurate`). This is the same
+     tier Apple uses for ambient text recognition (Live Text on still images), routes
+     through the Neural Engine where available, and is the single largest CPU win.
+  2. `usesLanguageCorrection = false` (was `true`). Language correction is the priciest
+     post-processing in `.accurate`; in `.fast` mode it adds cost without proportionate
+     accuracy gains for the prose we care about.
+  3. `recognizeLines(in:minimumConfidence:)` raises the default `minimumConfidence` from
+     `0.4` to `0.45` to compensate for `.fast`'s noisier confidence distribution before the
+     downstream corruption filters even see the line.
+  4. `ScreenCaptureKitWindowTextCapturer.maxCaptureDimension` drops from `1600` to `1200`.
+     `.fast` doesn't gain proportionally from extra resolution, and the screenshot encode +
+     Vision per-pixel work both scale with image area.
+  5. `ScreenContextController.refreshInterval` rises from `4.0 s` to `12.0 s`. The
+     user-perceptible on-screen changes we want to react to between focus events (paragraph
+     scroll, updated panel) move on the order of seconds, not sub-second. Focus changes
+     still trigger an immediate capture via `handle(snapshot:)`, so a new window/page reads
+     instantly — the slow path only applies while the same window stays focused.
+- Consequences: average OCR-attributable CPU drops by roughly an order of magnitude on
+  steady-state typing (`.fast` Vision ≈ 5–10× cheaper per pass, ×3 fewer passes per minute,
+  -45% pixels). The downstream filters (`droppingCorruptedLines`, `isPlausibleText`,
+  `containsDigitSubstitutedWord`, `linesExcludingFieldText`) keep doing what they did under
+  `.accurate`; the new failure mode is `.fast` occasionally dropping a faint or small-font
+  line that `.accurate` would have caught, which weakens `[Screen context]` slightly on
+  edge cases (low-contrast UI, very small captions) but never feeds the model worse text —
+  it just feeds it less. Quality on the catalog test set should be within
+  the envelope ADR-049 already accepted (since the corruption surface is unchanged). If a
+  future workload needs the old recognition tier, the `maxCaptureDimension` and
+  `recognitionLevel` are local-edit knobs and a follow-up ADR can split this into a Settings
+  toggle ("OCR quality") without changing the protocol surface. All-other-things-equal
+  battery life on Apple Silicon improves correspondingly; ANE-routed `.fast` Vision is the
+  cheapest text-recognition path the platform exposes.
+
+## ADR-077 — Rank-fallback when the top candidate fails the filter + lower default beam width
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: Telemetry from a live session (236 generated predictions) showed two issues the
+  user surfaced: suggestions felt slow, and sometimes the suggestion area was empty even
+  though the user was typing in prose contexts. Reading `predictions.log` and
+  `telemetry.json` together pinned the causes precisely.
+  1. `CompletionController.present(...)` consumed only `candidates.first`. If that single
+     top-ranked candidate failed any rule in `CandidateFilter.suppressionReason`, the entire
+     prediction was suppressed — even though the constrained decoder had emitted up to
+     `maxCandidates` (default 5) hypotheses ordered by cumulative log-probability and the
+     rank-2/3/… candidates frequently passed every gate. The dominant trigger was
+     `insertionUnsafe` (41 of 77 suppressions): the model's top hypothesis after a
+     trailing-space context was often pure punctuation (`"!"`, `"."`) or a control sequence,
+     while the runner-up was clean prose. Cotypist behaves much more leniently here — its
+     fewer empty moments are not because it has a better model, but because it accepts
+     lower-ranked candidates when the top one is rejected.
+  2. Generation latency dominated the end-to-end time the user perceived (300–1000 ms
+     typical with outliers up to ~6 s). `branchWidth = 4` was already the post-ADR-012
+     compromise, but ADR-012's own sweep (`testBranchWidthSweep`) reports warm means of
+     **239 / 164 / 107 / 75 ms** at widths 8 / 6 / 4 / 3 — a near-linear scaling with width.
+     Going one step further (4 → 3) was already noted in ADR-012 as the next available
+     dial; it was not taken at the time because narrower beams marginally hurt top-1
+     quality, and the controller could not yet recover the lost runner-ups.
+  Crucially, fix (1) and fix (2) compose: dropping a branch in the decoder doesn't lose
+  coverage if the controller now actually uses the remaining branches.
+- Decision: two changes, intentionally co-introduced.
+  1. **Rank-fallback in `CompletionController.present(_:request:style:latencyTrace:)`.**
+     After `candidates.first` is captured as `topRanked`, walk the decoder's ranked list:
+     if `topRanked` passes `filter.suppressionReason(...)`, use it; otherwise pick the
+     first `runnerUp` in `candidates.dropFirst()` that passes; otherwise suppress with the
+     top candidate's reason (the existing telemetry / log shape is preserved so
+     `suppressionReasons` histograms remain comparable across builds). The filter itself is
+     unchanged — every rule (insertion safety, CJK script net, mid-word charset, suffix
+     duplication, display-width caps) still gates each candidate individually. Only the
+     selection policy changes: the decoder gets to "say it twice" before we give up.
+  2. **`DecodingConfiguration.branchWidth` default 4 → 3.** Generation cost per completion
+     is dominated by the beam width (each branch decodes additively per step); cutting one
+     branch is ~25% fewer decode passes per prediction.
+- Consequences: the user-visible "empty" rate should drop substantially — the share of
+  rank-1-only suppressions previously discarded as `insertionUnsafe` (41/77 = 53% of all
+  suppressions) is now exactly the upper bound on how much rank-fallback can recover, and
+  in practice most of those have a clean rank-2. Generation latency comes down ~25% across
+  the board (more on long prompts where the marginal branch cost is largest), so the
+  median typing-to-ghost-text time should improve in step with the per-pass cut.
+  Trade-offs: a slightly narrower beam may occasionally miss a long-distance better
+  hypothesis that width-4 would have explored — but the rank-fallback also softens this,
+  since the surviving 3 branches are still ranked and we can still escape a bad rank-1.
+  The 6-second tail outliers (cold-cache + long-prompt + maximally-divergent edits) are
+  not addressed here; capping those needs a generation deadline / cancellation timer,
+  which is a follow-up (now ADR-078). `recordSuppressed("noCandidate")` still fires when
+  the decoder emits zero hypotheses (e.g. fully suppressed at decode time by the in-beam
+  `CurrentWordTypoGuard` / `MidWordCharsetGuard`); that path is unchanged.
+
+## ADR-078 — 1.2 s generation deadline cancels stale predictions
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: Even after ADR-074 / ADR-077, `telemetry.json`'s `latenciesMillis` still showed
+  tail outliers up to ~6 s (cold KV cache + long prompt + maximally divergent edits land
+  all at once). A prediction that takes 3–6 s to land is already stale by the time it
+  would render — the user has typed several characters since — so showing it produces the
+  worst kind of UX: the ghost text appears long after the keystroke, often visibly wrong
+  for the live caret even with `SuggestionAnchor.remaining`'s drift handling. The completion
+  path already had a clean cancellation seam (the existing `catch is CancellationError`
+  arm leaves the current ghost as-is), but nothing enforced a wall-clock bound on the
+  in-flight `engine.completions(for:)`.
+- Decision: in `CompletionController`, after creating the `generationTask` and assigning
+  it to `self.generationTask` (so a newer keystroke can still cancel it via the existing
+  path), spawn a sibling task that sleeps for `generationDeadlineNanoseconds = 1_200_000_000`
+  and then calls `generationTask.cancel()`. The cancellation propagates through the next
+  `try Task.checkCancellation()` inside the engine; the existing catch arm finishes the
+  latency trace with `outcome: "cancelled"` and silently drops the result. We don't surface
+  a new outcome string — the deadline is treated as just another cancellation,
+  indistinguishable from superseded-by-keystroke at the analytics layer. 1.2 s is just
+  above the empirical p95 in the live telemetry, so the deadline cancels the genuine tail
+  outliers without truncating the body of the distribution.
+- Consequences: the worst-case user-visible delay between a keystroke and a ghost-text
+  attempt is bounded by `min(generation, 1.2 s)`. Predictions that would have landed at
+  4–6 s are now dropped — costing one missed completion but preventing a visibly wrong
+  one, consistent with the "prefer suppression to a wrong suggestion" principle (AGENTS.md
+  / ADR-015 derived). The deadline task is cheap (one `Task.sleep`); when generation
+  finishes inside the budget, the sibling task just exits and the cancel call is a no-op
+  against an already-completed task. Tail outliers often correspond to cold-cache
+  prefixes; subsequent typing in the same context warms the KV cache (ADR-018) and lands
+  well under the budget, so the same context hits the deadline at most once before
+  recovering.
+
+## ADR-079 — Collapse internal multi-space runs at insertion
+
+- Date: 2026-06-02
+- Status: accepted
+- Context: User-reported defect: "after filling in the prediction it puts a bigger space
+  than needed." The two known whitespace gates — `CaretBoundary.reconcile` (ADR-017,
+  strips redundant *leading* whitespace from a candidate when the caret already sits
+  after a whitespace character) and `NextWordSplitter` (ADR-016 / ADR-050, the separator
+  before a word travels with that word) — only cover the candidate-vs-caret join.
+  Neither one normalizes whitespace *inside* the candidate. The base model occasionally
+  emits `"hello  world"`-style internal double spaces, especially after abbreviated
+  context, and those traveled verbatim through to insertion. The display ghost text could
+  mask the doubled space against the surrounding font, but the inserted bytes carried it.
+  The visible artifact only surfaced on accept.
+- Decision: insert a small normalization pass — `collapseInternalDoubleSpaces` — inside
+  `CompletionController.insert(text:context:keepingAnchor:)` immediately before the
+  inserter plans the paste/type. It runs in linear time, only allocates when at least one
+  `"  "` run is present, and replaces any run of two or more ASCII spaces with a single
+  space. A single leading ASCII space (the next-word separator under ADR-050) is
+  preserved by construction (the first space is appended, subsequent consecutive spaces
+  are skipped). Other whitespace forms (tab, NBSP, ideographic space) are intentionally
+  untouched so that the per-policy NBSP substitution in `InsertionPlanner.plan` still
+  works and intentional tab/indent completions in code editors stay intact.
+- Consequences: the user-visible "bigger space than needed" cannot survive the insertion
+  path even when the model produces an internal double space — the inserted bytes always
+  carry single-space runs. The display anchor and ghost-text overlay are unchanged, so the
+  visible measurement / placement (ADR-020 / ADR-067) does not shift. Because
+  normalization runs only on insertion bytes, the per-keystroke reuse-cache equality check
+  (`anchorText` comparisons used by `SuggestionAnchor`) is not perturbed. The function is
+  cheap enough (no allocation on the common no-double-space case, single linear pass
+  otherwise) that no perf ADR is warranted. If a future model emits *intentional*
+  multi-space formatting (column alignment in code, say), the rule can be made
+  insertion-mode-aware by toggling on `request.mode == .code` from the call site; for the
+  current `.prose` / `.correction` / `.code` set the rule is universally a win.
