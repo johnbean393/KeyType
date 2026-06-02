@@ -55,7 +55,7 @@ final class CompletionController {
     private let predictionLog = PredictionLog()
     private let log = Logger(subsystem: "com.pattonium.KeyType", category: "completion")
 
-    private var engine: ConstrainedGenerationEngine?
+    private var engine: (any CompletionEngine)?
     private var generationTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
     private var warmupTask: Task<Void, Never>?
@@ -194,13 +194,16 @@ final class CompletionController {
         let adjustments = ThresholdTuner.adjustments(for: telemetry.snapshot())
         let modelFilename = settings.selectedModelFilename ?? ModelContainer.defaultModelFilename
         activeModelFilename = modelFilename
+        let useRemote = settings.useRemoteModel
         Task {
             do {
-                let engine = try await Self.buildEngine(
-                    compatibilityStore: compatibilityStore,
-                    modelFilename: modelFilename,
-                    adjustments: adjustments
-                )
+                let engine = useRemote
+                    ? try await Self.buildRemoteEngine(settings: settings)
+                    : try await Self.buildEngine(
+                        compatibilityStore: compatibilityStore,
+                        modelFilename: modelFilename,
+                        adjustments: adjustments
+                    )
                 self.engine = engine
                 self.loadState = .ready
                 self.startStartupWarmup(engine: engine)
@@ -219,7 +222,7 @@ final class CompletionController {
     /// concurrent engine builds.
     func reloadModel() {
         let target = settings.selectedModelFilename ?? ModelContainer.defaultModelFilename
-        guard target != activeModelFilename || loadState == .idle else { return }
+        guard target != activeModelFilename || loadState == .idle || settings.useRemoteModel else { return }
         activeModelFilename = target
         reset()
         lastGenerationLatencyMs = nil
@@ -588,7 +591,7 @@ final class CompletionController {
         ].joined(separator: "\u{1E}")
     }
 
-    private func startStartupWarmup(engine: ConstrainedGenerationEngine) {
+    private func startStartupWarmup(engine: some CompletionEngine) {
         warmupTask?.cancel()
         let context = TextFieldContext(
             beforeCursor: "The",
@@ -606,11 +609,11 @@ final class CompletionController {
         startWarmup(engine: engine, request: request)
     }
 
-    private func startAnchorWarmup(engine: ConstrainedGenerationEngine, request: CompletionRequest) {
+    private func startAnchorWarmup(engine: some CompletionEngine, request: CompletionRequest) {
         startWarmup(engine: engine, request: request)
     }
 
-    private func startWarmup(engine: ConstrainedGenerationEngine, request: CompletionRequest) {
+    private func startWarmup(engine: some CompletionEngine, request: CompletionRequest) {
         warmupTask?.cancel()
         warmupTask = Task { [weak self] in
             do {
@@ -1122,13 +1125,25 @@ final class CompletionController {
         )
     }
 
+    /// Builds a remote (OpenAI-compatible API) completion engine. Runs off the main actor.
+    /// Throws when no API model is configured or selected.
+    nonisolated private static func buildRemoteEngine(settings: SettingsStore) async throws -> any CompletionEngine {
+        guard let config = settings.activeAPIModel else {
+            throw CompletionLoadError.noAPIModelConfigured
+        }
+        return OpenAICompletionEngine(config: config)
+    }
+
     enum CompletionLoadError: Error, CustomStringConvertible {
         case modelMissing(String)
+        case noAPIModelConfigured
 
         var description: String {
             switch self {
             case let .modelMissing(name):
                 return "Model file '\(name)' not found in Application Support/KeyType/Models"
+            case .noAPIModelConfigured:
+                return "No API model configured. Add one in Settings → Model → API Models."
             }
         }
     }

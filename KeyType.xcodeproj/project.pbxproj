@@ -65,6 +65,9 @@
 		4B5450012FC9600000000211 /* UpdaterController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000210 /* UpdaterController.swift */; };
 		4B5450012FC96000000002A1 /* CompletionPromotionCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */; };
 		4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */; };
+		75F3D0E14FE25E72A70ABE6F /* CompletionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7DF99FA6A1590F9F6DCCCC /* CompletionEngine.swift */; };
+		C4DB432C358A5C10A94F913C /* ConstrainedGenerationEngine+CompletionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B96271C1F67E55DE85643EDC /* ConstrainedGenerationEngine+CompletionEngine.swift */; };
+		0827BB0DCC8150A7B3067375 /* OpenAICompletionEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A1C058846F956E48C29306C /* OpenAICompletionEngine.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -133,6 +136,9 @@
 		4B5450012FC9600000000220 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionPromotionCache.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
+		2A7DF99FA6A1590F9F6DCCCC /* CompletionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionEngine.swift; sourceTree = "<group>"; };
+		B96271C1F67E55DE85643EDC /* ConstrainedGenerationEngine+CompletionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConstrainedGenerationEngine+CompletionEngine.swift; sourceTree = "<group>"; };
+		6A1C058846F956E48C29306C /* OpenAICompletionEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAICompletionEngine.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -276,6 +282,9 @@
 		4B5450012FC9600000000100 /* Completion */ = {
 			isa = PBXGroup;
 			children = (
+				6A1C058846F956E48C29306C /* OpenAICompletionEngine.swift */,
+				B96271C1F67E55DE85643EDC /* ConstrainedGenerationEngine+CompletionEngine.swift */,
+				2A7DF99FA6A1590F9F6DCCCC /* CompletionEngine.swift */,
 				4B5450012FC9600000000080 /* AcceptanceShortcut.swift */,
 				4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */,
 				4B5450012FC9600000000040 /* CompletionController.swift */,
@@ -593,6 +602,9 @@
 				4B5450012FC96000000000C9 /* PermissionOverlayWindowController.swift in Sources */,
 				4B5450012FC96000000000CB /* PermissionGuidanceController.swift in Sources */,
 				4B5450012FC96000000000CD /* ScreenFrameReader.swift in Sources */,
+				75F3D0E14FE25E72A70ABE6F /* CompletionEngine.swift in Sources */,
+				C4DB432C358A5C10A94F913C /* ConstrainedGenerationEngine+CompletionEngine.swift in Sources */,
+				0827BB0DCC8150A7B3067375 /* OpenAICompletionEngine.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -3,7 +3,8 @@
 //  KeyType
 //
 //  The "Model" Settings pane: the active model picker, the catalog of downloadable/installed models
-//  with their live setup state, and "import your own GGUF". Split out of SettingsView so each sidebar
+//  with their live setup state, "import your own GGUF", and configuration for remote OpenAI-compatible
+//  API models as an alternative to local GGUF inference. Split out of SettingsView so each sidebar
 //  category lives in its own file. See ADR-021.
 //
 
@@ -22,66 +23,213 @@ struct ModelSettingsView: View {
     let importModel: () -> Void
 
     @State private var availableModels: [String] = []
+    @State private var showAddAPIModel = false
+    /// Ephemeral editing state for the "add API model" sheet.
+    @State private var editDisplayName = ""
+    @State private var editEndpoint = ""
+    @State private var editAPIKey = ""
+    @State private var editModelName = ""
 
     var body: some View {
         Form {
-            Section("Model") {
-                Picker("Completion model", selection: $settings.selectedModelFilename) {
-                    Text("Default (\(ModelContainer.defaultModelFilename))").tag(String?.none)
-                    ForEach(availableModels, id: \.self) { name in
-                        Text(name).tag(String?.some(name))
-                    }
+            // ── Engine type toggle ────────────────────────────────────────
+            Section {
+                Picker("Engine", selection: $settings.useRemoteModel) {
+                    Text("Local (GGUF)").tag(false)
+                    Text("Remote API").tag(true)
                 }
-                // Honor the "takes effect immediately" promise: a new selection flushes the resident
-                // model + KV cache and reloads from the chosen GGUF without a relaunch (see ADR-021).
-                .onChange(of: settings.selectedModelFilename) { reloadModel() }
+                .pickerStyle(.radioGroup)
+                .onChange(of: settings.useRemoteModel) { reloadModel() }
+            } footer: {
+                Text(settings.useRemoteModel
+                    ? "Offload inference to an external server — saves Mac GPU/RAM resources."
+                    : "Run models directly on your Mac using llama.cpp."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
 
-            Section("Available models") {
-                ForEach(modelSetup.catalog) { model in
-                    SettingsModelRow(
-                        model: model,
-                        state: modelSetup.state(for: model),
-                        isInstalled: modelSetup.downloads.isInstalled(filename: model.filename),
-                        onSetup: { modelSetup.beginSetup(for: model) },
-                        onCancel: { modelSetup.cancel(model) },
-                        onPause: { modelSetup.pause(model) },
-                        onResume: { modelSetup.resume(model) },
-                        onDelete: {
-                            modelSetup.downloads.deleteModel(filename: model.filename)
-                            modelSetup.refresh()
-                            availableModels = Self.loadModels()
+            if settings.useRemoteModel {
+                remoteModelSection
+            } else {
+                localModelSection
+            }
+        }
+        .formStyle(.grouped)
+        .sheet(isPresented: $showAddAPIModel) {
+            addAPIModelSheet
+        }
+        .task { availableModels = Self.loadModels() }
+        .onChange(of: modelSetupSignature) { availableModels = Self.loadModels() }
+        .onChange(of: modelSetup.importState) { availableModels = Self.loadModels() }
+    }
+
+    // MARK: - Local model section (existing)
+
+    @ViewBuilder
+    private var localModelSection: some View {
+        Section("Model") {
+            Picker("Completion model", selection: $settings.selectedModelFilename) {
+                Text("Default (\(ModelContainer.defaultModelFilename))").tag(String?.none)
+                ForEach(availableModels, id: \.self) { name in
+                    Text(name).tag(String?.some(name))
+                }
+            }
+            .onChange(of: settings.selectedModelFilename) { reloadModel() }
+        }
+
+        Section("Available models") {
+            ForEach(modelSetup.catalog) { model in
+                SettingsModelRow(
+                    model: model,
+                    state: modelSetup.state(for: model),
+                    isInstalled: modelSetup.downloads.isInstalled(filename: model.filename),
+                    onSetup: { modelSetup.beginSetup(for: model) },
+                    onCancel: { modelSetup.cancel(model) },
+                    onPause: { modelSetup.pause(model) },
+                    onResume: { modelSetup.resume(model) },
+                    onDelete: {
+                        modelSetup.downloads.deleteModel(filename: model.filename)
+                        modelSetup.refresh()
+                        availableModels = Self.loadModels()
+                    }
+                )
+            }
+        }
+
+        Section {
+            Button("Import a GGUF…", action: importModel)
+                .disabled(isImporting)
+            importStatusLine
+        } header: {
+            Text("Use your own base model")
+        } footer: {
+            Text("KeyType is tuned for the models above; other models may produce unexpected or low-quality completions.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Remote API model section
+
+    @ViewBuilder
+    private var remoteModelSection: some View {
+        if settings.apiModels.isEmpty {
+            Section {
+                Button("Add API Model…") { presentAddSheet() }
+            } footer: {
+                Text("Add an OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, or any cloud API).")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Section("API Models") {
+                ForEach(settings.apiModels) { model in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.displayName).font(.body)
+                            Text(model.endpoint)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                            Text("Model: \(model.modelName)")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
-                    )
+                        Spacer()
+                        if model.id == settings.selectedAPIModelID {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .onDelete { indexSet in
+                    let toRemove = indexSet.map { settings.apiModels[$0].id }
+                    settings.apiModels.remove(atOffsets: indexSet)
+                    if settings.selectedAPIModelID.map({ toRemove.contains($0) }) == true {
+                        settings.selectedAPIModelID = settings.apiModels.first?.id
+                        reloadModel()
+                    }
                 }
             }
 
             Section {
-                Button("Import a GGUF…", action: importModel)
-                    .disabled(isImporting)
-                importStatusLine
+                Picker("Active model", selection: $settings.selectedAPIModelID) {
+                    ForEach(settings.apiModels) { model in
+                        Text(model.displayName).tag(Optional(model.id))
+                    }
+                }
+                .onChange(of: settings.selectedAPIModelID) { reloadModel() }
             } header: {
-                Text("Use your own base model")
-            } footer: {
-                Text("KeyType is tuned for the models above; other models may produce unexpected or low-quality completions.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                Text("Selection")
+            }
+
+            Section {
+                Button("Add API Model…") { presentAddSheet() }
             }
         }
-        .formStyle(.grouped)
-        .task { availableModels = Self.loadModels() }
-        // A download/profile finishing changes a model's setup state but not `availableModels`,
-        // which is loaded from disk. Reading every model's state here establishes the observation
-        // dependency, so this fires (and re-reads the installed GGUFs) the moment one lands —
-        // making freshly downloaded models selectable without a restart.
-        .onChange(of: modelSetupSignature) { availableModels = Self.loadModels() }
-        // An import lands a brand-new file in the Models directory that isn't in the catalog, so it
-        // won't move `modelSetupSignature`. Re-read the installed GGUFs when the import state settles
-        // so the freshly imported model appears in (and can be shown selected by) the picker.
-        .onChange(of: modelSetup.importState) { availableModels = Self.loadModels() }
     }
 
-    /// Changes whenever any catalog model's combined setup state changes, so the picker stays in sync.
+    // MARK: - Add API model sheet
+
+    private var addAPIModelSheet: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section("Add API Model") {
+                    TextField("Display name", text: $editDisplayName)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("API endpoint", text: $editEndpoint)
+                        .textFieldStyle(.roundedBorder)
+                        .help("e.g. http://localhost:1234/v1")
+                    TextField("Model name", text: $editModelName)
+                        .textFieldStyle(.roundedBorder)
+                        .help("e.g. qwen2.5-7b-instruct, gpt-4o-mini")
+                    SecureField("API key (optional)", text: $editAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Button("Cancel", role: .cancel) {
+                    showAddAPIModel = false
+                }
+                Spacer()
+                Button("Add") {
+                    let config = APIModelConfig(
+                        displayName: editDisplayName,
+                        endpoint: editEndpoint,
+                        apiKey: editAPIKey,
+                        modelName: editModelName
+                    )
+                    settings.apiModels.append(config)
+                    settings.selectedAPIModelID = config.id
+                    resetEditFields()
+                    showAddAPIModel = false
+                    reloadModel()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(editDisplayName.isEmpty || editEndpoint.isEmpty || editModelName.isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 480)
+    }
+
+    private func presentAddSheet() {
+        resetEditFields()
+        showAddAPIModel = true
+    }
+
+    private func resetEditFields() {
+        editDisplayName = ""
+        editEndpoint = ""
+        editAPIKey = ""
+        editModelName = ""
+    }
+
+    // MARK: - Shared helpers
+
     private var modelSetupSignature: String {
         modelSetup.catalog
             .map { "\($0.filename):\(String(describing: modelSetup.state(for: $0)))" }

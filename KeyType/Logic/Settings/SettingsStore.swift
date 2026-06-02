@@ -64,6 +64,11 @@ final class SettingsStore {
         static let acceptFullKeyCode = "KeyType.settings.acceptFullKeyCode"
         static let acceptFullModifiers = "KeyType.settings.acceptFullModifiers"
         static let acceptFullLabel = "KeyType.settings.acceptFullLabel"
+
+        // API model settings
+        static let useRemoteModel = "KeyType.settings.useRemoteModel"
+        static let apiModels = "KeyType.settings.apiModels"
+        static let selectedAPIModelID = "KeyType.settings.selectedAPIModelID"
     }
 
     private let defaults: UserDefaults
@@ -97,6 +102,34 @@ final class SettingsStore {
         didSet { defaults.set(Array(perAppDisabled).sorted(), forKey: Key.perAppDisabled) }
     }
 
+    // MARK: - API (remote) model settings
+
+    /// When true, use a remote OpenAI-compatible API instead of the local GGUF model.
+    /// Requires at least one configured API model to be selected.
+    var useRemoteModel: Bool {
+        didSet { defaults.set(useRemoteModel, forKey: Key.useRemoteModel) }
+    }
+
+    /// Configured remote API endpoints.
+    var apiModels: [APIModelConfig] {
+        didSet {
+            if let data = try? JSONEncoder().encode(apiModels) {
+                defaults.set(data, forKey: Key.apiModels)
+            }
+        }
+    }
+
+    /// The ID of the currently selected API model, or nil.
+    var selectedAPIModelID: UUID? {
+        didSet { defaults.set(selectedAPIModelID?.uuidString, forKey: Key.selectedAPIModelID) }
+    }
+
+    /// Returns the currently selected API model config, or nil.
+    var activeAPIModel: APIModelConfig? {
+        guard let id = selectedAPIModelID else { return nil }
+        return apiModels.first { $0.id == id }
+    }
+
     /// Hotkey that accepts the next word of the visible suggestion. Defaults to Tab.
     var acceptWordShortcut: AcceptanceShortcut {
         didSet { persist(acceptWordShortcut, keyCode: Key.acceptWordKeyCode, modifiers: Key.acceptWordModifiers, label: Key.acceptWordLabel) }
@@ -116,6 +149,17 @@ final class SettingsStore {
             .flatMap(CompletionLength.init(rawValue:)) ?? .medium
         self.selectedModelFilename = defaults.string(forKey: Key.selectedModelFilename)
         self.perAppDisabled = Set(defaults.stringArray(forKey: Key.perAppDisabled) ?? [])
+        self.useRemoteModel = defaults.bool(forKey: Key.useRemoteModel)
+        self.apiModels = {
+            guard let data = defaults.data(forKey: Key.apiModels),
+                  let decoded = try? JSONDecoder().decode([APIModelConfig].self, from: data)
+            else { return [] }
+            return decoded
+        }()
+        self.selectedAPIModelID = {
+            guard let s = defaults.string(forKey: Key.selectedAPIModelID) else { return nil }
+            return UUID(uuidString: s)
+        }()
         self.acceptWordShortcut = Self.loadShortcut(
             defaults: defaults,
             keyCodeKey: Key.acceptWordKeyCode,
