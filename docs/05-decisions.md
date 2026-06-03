@@ -93,6 +93,7 @@ row here.**
 | 071 | Treat Chromium browsers as known web-backed targets | context-capture |
 | 072 | Stabilize Obsidian ghost-text rendering | app-compatibility/ui |
 | 073 | Estimate caret geometry across soft-wrapped lines | context-capture/ui |
+| 074 | Offline completion benchmark evaluates final visible suggestions | evaluation |
 
 ---
 
@@ -2747,3 +2748,29 @@ text. Both are now closed:
   longer look like they are always at the right edge after the first visual line. Real trailing-edge
   cases still wrap ghost text to the next visual line rather than switching to a capsule or drawing
   past the field.
+
+## ADR-074 — Offline completion benchmark evaluates final visible suggestions
+
+- Date: 2026-06-03
+- Status: accepted
+- Context: KeyType needs an offline way to compare GGUF models on completion quality versus latency,
+  but raw model continuations are not the product surface. The app deliberately suppresses many
+  plausible-looking generations through app policy, token healing, FIM suffix handling, candidate
+  filtering, and caret-boundary reconciliation. A benchmark that scores raw text would reward models
+  for output users never see and would miss wrong visible ghost text.
+- Decision: add `Packages/CompletionBenchmark` as a separate SwiftPM package with a reusable schema,
+  dataset compiler, production-style evaluator, scorer, report writer, and `keytype-benchmark` CLI.
+  Cases are JSONL and carry source metadata plus per-context source tags (`real`, `synthetic`,
+  `mixed`, `none`) so local/private human-written datasets can be distinguished from synthetic app
+  metadata. The committed fixture is only a small public smoke suite; larger calibration data belongs
+  in gitignored `Benchmarks/Private/` paths. The runner loads GGUF models through
+  `LlamaModelRuntime`, validates the ACPF profile against the live tokenizer, builds prompts with the
+  tokenizer-backed `PromptBuilder`, uses `ConstrainedGenerationEngine` with FIM enabled, applies
+  `DefaultCandidateFilter`, and scores the final shown text or suppression reason. Latency reporting
+  is release-build-only by default.
+- Consequences: Model comparisons now use the same conservative product policy KeyType ships:
+  suppression earns partial credit on positive rows and wrong shown suggestions are strongly
+  penalized. Policy/secure-field rows can be evaluated without decoding while still recording the
+  specific suppression reason. The new package adds another SwiftPM entry point and an
+  `ArgumentParser` dependency already used elsewhere in the repo, but it keeps benchmark wiring out
+  of the menu-bar app target and leaves the existing runtime modules decoupled.

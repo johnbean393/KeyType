@@ -506,6 +506,7 @@
 				4B5450012FC9600000000202 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */,
 				4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */,
+				B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/CompletionBenchmark" */,
 				4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */,
 				4B5450012FC9600000000024 /* XCLocalSwiftPackageReference "Packages/ConstrainedGeneration" */,
 				4B5450012FC9600000000020 /* XCLocalSwiftPackageReference "Packages/MacContextCapture" */,
@@ -971,6 +972,10 @@
 		4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/CompletionUI;
+		};
+		B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/CompletionBenchmark" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CompletionBenchmark;
 		};
 		4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */ = {
 			isa = XCLocalSwiftPackageReference;

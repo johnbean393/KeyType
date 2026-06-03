@@ -38,3 +38,10 @@ Packages/ModelRuntime/Vendor/
 # Model weights (stay in ~/Library/Application Support/KeyType/Models, never in the repo)
 *.gguf
 Models/
+
+# Completion benchmark local/private data and generated reports
+Benchmarks/Private/
+Benchmarks/Results/
+Benchmarks/Datasets/private/
+Benchmarks/Datasets/local/
+Packages/CompletionBenchmark/Sources/CompletionBenchmark/Datasets/private/

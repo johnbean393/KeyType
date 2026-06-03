@@ -1,0 +1,302 @@
+import ArgumentParser
+import CompletionBenchmark
+import Foundation
+import LlamaModelRuntime
+import ModelManagement
+import ModelRuntime
+import TokenProfiles
+
+@main
+struct KeyTypeBenchmarkCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "keytype-benchmark",
+        abstract: "Evaluate KeyType completion quality and latency against GGUF models.",
+        discussion: """
+            Latency numbers are meaningful only in release builds. Use:
+
+              swift run -c release --package-path Packages/CompletionBenchmark keytype-benchmark run --suite smoke
+            """,
+        subcommands: [
+            Run.self,
+            Compile.self,
+            Validate.self
+        ],
+        defaultSubcommand: Run.self
+    )
+}
+
+extension BenchmarkSuite: ExpressibleByArgument {}
+extension BenchmarkSplit: ExpressibleByArgument {}
+extension CompilerCaseType: ExpressibleByArgument {}
+
+struct Run: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "run",
+        abstract: "Run a named benchmark suite against one or more GGUF models."
+    )
+
+    @Option(name: .long, help: "Suite to run: smoke, core, hard, policy, human-calibration, latency.")
+    var suite: BenchmarkSuite = .smoke
+
+    @Option(name: .customLong("cases"), help: "JSONL case file. Can be passed more than once.")
+    var casePaths: [String] = []
+
+    @Option(name: .customLong("model"), help: "GGUF model path. Can be passed more than once. Defaults to KeyType's default model path.")
+    var modelPaths: [String] = []
+
+    @Option(name: .long, help: "ACPF profile path for all models. If omitted, the profile is resolved from the model family.")
+    var profile: String?
+
+    @Option(name: .long, help: "Directory containing <family>.acpf.bin profiles. Defaults to KeyType's model container.")
+    var profileDirectory: String?
+
+    @Option(name: .long, help: "Output directory. Defaults to Benchmarks/Results/<suite>-<timestamp>.")
+    var output: String?
+
+    @Option(name: .long, help: "Only run rows in this split.")
+    var split: BenchmarkSplit?
+
+    @Option(name: .long, help: "Default max completion tokens for rows without limits.")
+    var maxCompletionTokens: Int = 4
+
+    @Option(name: .long, help: "Default max display width for rows without limits.")
+    var maxDisplayWidth: Int = 80
+
+    @Option(name: .long, help: "Llama context length.")
+    var contextLength: Int = 4096
+
+    @Flag(name: .long, help: "Skip missing model/profile inputs instead of failing.")
+    var skipMissing: Bool = false
+
+    @Flag(name: .long, help: "Allow a debug build run. Do not use its latency numbers for decisions.")
+    var allowDebugLatency: Bool = false
+
+    func run() async throws {
+        #if DEBUG
+        guard allowDebugLatency else {
+            throw ValidationError("Run with `swift run -c release --package-path Packages/CompletionBenchmark keytype-benchmark run ...` for latency. Pass --allow-debug-latency only for plumbing checks.")
+        }
+        #endif
+
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let caseURLs = try BenchmarkSuiteResolver.resolveCaseURLs(
+            suite: suite,
+            explicitCasePaths: casePaths,
+            workingDirectory: cwd
+        )
+        guard !caseURLs.isEmpty else {
+            throw ValidationError("No dataset found for suite '\(suite.rawValue)'. Add Benchmarks/Datasets/\(suite.rawValue).jsonl, Benchmarks/Private/\(suite.rawValue).jsonl, or pass --cases.")
+        }
+
+        var cases = try caseURLs.flatMap { try BenchmarkJSONL.loadCases(from: $0) }
+        cases = cases.filter { $0.suites.contains(suite) }
+        if let split {
+            cases = cases.filter { $0.split == split }
+        }
+        guard !cases.isEmpty else {
+            throw ValidationError("Loaded dataset files, but no rows matched suite '\(suite.rawValue)'\(split.map { " and split '\($0.rawValue)'" } ?? "").")
+        }
+
+        let models = try resolveModelURLs(cwd: cwd)
+        var allRows: [BenchmarkRowResult] = []
+
+        for modelURL in models {
+            if !ModelContainer.modelExists(at: modelURL) {
+                if skipMissing {
+                    print("Skipping missing model: \(modelURL.path)")
+                    continue
+                }
+                throw ValidationError("Model file is missing or empty: \(modelURL.path)")
+            }
+
+            let runtime = try LlamaModelRuntime(modelURL: modelURL, contextLength: contextLength)
+            let family = ModelFamilyResolver.family(
+                forFilename: modelURL.lastPathComponent,
+                vocabSize: runtime.metadata.vocabularySize
+            )
+            let profileURL = try resolveProfileURL(family: family, cwd: cwd)
+            guard FileManager.default.fileExists(atPath: profileURL.path) else {
+                await runtime.shutdown()
+                if skipMissing {
+                    print("Skipping \(modelURL.lastPathComponent); profile missing: \(profileURL.path)")
+                    continue
+                }
+                throw ValidationError("ACPF profile missing for \(modelURL.lastPathComponent): \(profileURL.path)")
+            }
+
+            let acpf = try MmapAutocompleteProfile.open(
+                at: profileURL,
+                tokenizerVocabSize: runtime.metadata.vocabularySize,
+                tokenizerBytes: { try runtime.tokenizer.rawBytes(for: $0) },
+                expectedModelFamily: family
+            )
+            let info = BenchmarkModelInfo(
+                identifier: modelURL.deletingPathExtension().lastPathComponent,
+                filename: modelURL.lastPathComponent,
+                path: modelURL.path,
+                family: family,
+                quantization: BenchmarkModelInfoFactory.quantization(from: modelURL.lastPathComponent)
+            )
+            let evaluator = ProductionCompletionEvaluator(
+                runtime: runtime,
+                profile: acpf,
+                modelInfo: info,
+                defaultMaxCompletionTokens: maxCompletionTokens,
+                defaultMaxDisplayWidth: maxDisplayWidth
+            )
+
+            do {
+                for benchmarkCase in cases {
+                    allRows.append(try await evaluator.evaluate(benchmarkCase))
+                }
+                await evaluator.shutdown()
+            } catch {
+                await evaluator.shutdown()
+                throw error
+            }
+        }
+
+        guard !allRows.isEmpty else {
+            if skipMissing {
+                print("No rows evaluated; every requested model/profile was missing or skipped.")
+                return
+            }
+            throw ValidationError("No rows were evaluated. Check --model inputs or remove --skip-missing.")
+        }
+
+        let aggregates = BenchmarkAggregator.aggregateByModel(rows: allRows, cases: cases, suite: suite)
+        let out = outputURL(cwd: cwd)
+        let manifest = try BenchmarkReportWriter.write(
+            rows: allRows,
+            aggregates: aggregates,
+            suite: suite,
+            outputDirectory: out
+        )
+        print("Rows: \(manifest.rowResultsPath)")
+        print("Aggregate JSON: \(manifest.aggregateJSONPath)")
+        print("Aggregate CSV: \(manifest.aggregateCSVPath)")
+    }
+
+    private func resolveModelURLs(cwd: URL) throws -> [URL] {
+        if modelPaths.isEmpty {
+            return [try ModelContainer.modelURL()]
+        }
+        return modelPaths.map {
+            URL(fileURLWithPath: $0.expandingTilde(), relativeTo: cwd).standardizedFileURL
+        }
+    }
+
+    private func resolveProfileURL(family: String, cwd: URL) throws -> URL {
+        if let profile {
+            return URL(fileURLWithPath: profile.expandingTilde(), relativeTo: cwd).standardizedFileURL
+        }
+        if let profileDirectory {
+            return URL(fileURLWithPath: profileDirectory.expandingTilde(), relativeTo: cwd)
+                .standardizedFileURL
+                .appendingPathComponent(ModelContainer.profileFilename(family: family))
+        }
+        return try ModelContainer.profileURL(family: family)
+    }
+
+    private func outputURL(cwd: URL) -> URL {
+        if let output {
+            return URL(fileURLWithPath: output.expandingTilde(), relativeTo: cwd).standardizedFileURL
+        }
+        let stamp = ISO8601DateFormatter()
+            .string(from: Date())
+            .replacingOccurrences(of: ":", with: "")
+        return cwd
+            .appendingPathComponent("Benchmarks", isDirectory: true)
+            .appendingPathComponent("Results", isDirectory: true)
+            .appendingPathComponent("\(suite.rawValue)-\(stamp)", isDirectory: true)
+    }
+}
+
+struct Compile: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "compile",
+        abstract: "Compile human-written source documents into benchmark JSONL cases."
+    )
+
+    @Option(name: .long, help: "Source JSONL file or directory of .txt/.md/.swift files.")
+    var sources: String
+
+    @Option(name: .long, help: "Output JSONL case file.")
+    var output: String
+
+    @Option(name: .long, help: "Suite tag to stamp on compiled rows.")
+    var suite: BenchmarkSuite = .core
+
+    @Option(name: .long, help: "Split to stamp on compiled rows. Split at source document/source group level.")
+    var split: BenchmarkSplit = .eval
+
+    @Option(name: .long, help: "Case type to generate. Can be passed more than once.")
+    var caseTypes: [CompilerCaseType] = []
+
+    @Flag(name: .long, inversion: .prefixedNo, help: "Include handcrafted policy/secure suppression cases.")
+    var includePolicyCases: Bool = true
+
+    func run() throws {
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let sourceURL = URL(fileURLWithPath: sources.expandingTilde(), relativeTo: cwd).standardizedFileURL
+        let outputURL = URL(fileURLWithPath: output.expandingTilde(), relativeTo: cwd).standardizedFileURL
+
+        let loadedDocs: [BenchmarkSourceDocument]
+        if sourceURL.pathExtension.lowercased() == "jsonl" {
+            loadedDocs = try BenchmarkJSONL.loadSourceDocuments(from: sourceURL)
+        } else {
+            loadedDocs = try BenchmarkDatasetCompiler.sourceDocuments(fromTextFilesAt: sourceURL, suite: suite, split: split)
+        }
+        let docs = loadedDocs.map { doc in
+            var copy = doc
+            copy.suites = [suite]
+            copy.split = split
+            return copy
+        }
+        let config = BenchmarkDatasetCompilerConfiguration(
+            defaultCaseTypes: caseTypes.isEmpty ? BenchmarkDatasetCompilerConfiguration().defaultCaseTypes : caseTypes,
+            includePolicyCases: includePolicyCases
+        )
+        let cases = BenchmarkDatasetCompiler.compile(documents: docs, configuration: config)
+        try BenchmarkJSONL.writeCases(cases, to: outputURL)
+        print("Wrote \(cases.count) cases to \(outputURL.path)")
+    }
+}
+
+struct Validate: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "validate",
+        abstract: "Load and validate benchmark case JSONL without running a model."
+    )
+
+    @Option(name: .long, help: "Suite to validate.")
+    var suite: BenchmarkSuite = .smoke
+
+    @Option(name: .customLong("cases"), help: "JSONL case file. Can be passed more than once.")
+    var casePaths: [String] = []
+
+    func run() throws {
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
+        let urls = try BenchmarkSuiteResolver.resolveCaseURLs(
+            suite: suite,
+            explicitCasePaths: casePaths,
+            workingDirectory: cwd
+        )
+        guard !urls.isEmpty else {
+            throw ValidationError("No dataset found for suite '\(suite.rawValue)'.")
+        }
+        let cases = try urls.flatMap { try BenchmarkJSONL.loadCases(from: $0) }
+            .filter { $0.suites.contains(suite) }
+        guard !cases.isEmpty else {
+            throw ValidationError("Dataset loaded but no rows matched suite '\(suite.rawValue)'.")
+        }
+        let sourceGroups = Set(cases.map(\.sourceGroup)).count
+        print("Validated \(cases.count) cases across \(sourceGroups) source groups for suite \(suite.rawValue).")
+    }
+}
+
+private extension String {
+    func expandingTilde() -> String {
+        (self as NSString).expandingTildeInPath
+    }
+}
