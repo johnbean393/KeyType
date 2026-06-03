@@ -69,7 +69,7 @@ struct SettingsView: View {
                 makeLatencyExport: { LatencyExportContext.makeExportData(telemetry: telemetry, settings: settings) }
             )
         case .developer:
-            DeveloperSettingsView(contextCapture: contextCapture, permissions: permissions)
+            DeveloperSettingsView(settings: settings, contextCapture: contextCapture, permissions: permissions)
         case .setup:
             SetupSettingsView(runSetupAgain: runSetupAgain)
         }

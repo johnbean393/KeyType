@@ -10,6 +10,7 @@
 import SwiftUI
 
 struct DeveloperSettingsView: View {
+    @Bindable var settings: SettingsStore
     @Bindable var contextCapture: ContextCaptureController
     let permissions: PermissionsManager
 
@@ -25,6 +26,15 @@ struct DeveloperSettingsView: View {
                     }
                 }
                 .disabled(!permissions.accessibility.isGranted)
+
+                Toggle(isOn: $settings.fullPromptLoggingEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Log full prompts and completions")
+                        Text("Writes shareable JSONL to ~/Library/Application Support/KeyType/Logs/\(FullPromptLog.fileName) and keeps the newest \(FullPromptLog.maxRows) rows.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
                 Text("Diagnostics")
             } footer: {

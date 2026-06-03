@@ -55,6 +55,7 @@ final class SettingsStore {
         static let historyEnabled = "KeyType.settings.historyEnabled"
         static let clipboardEnabled = "KeyType.settings.clipboardEnabled"
         static let ocrEnabled = "KeyType.settings.ocrEnabled"
+        static let fullPromptLoggingEnabled = "KeyType.settings.fullPromptLoggingEnabled"
         static let completionLength = "KeyType.settings.completionLength"
         static let selectedModelFilename = "KeyType.settings.selectedModelFilename"
         static let perAppDisabled = "KeyType.settings.perAppDisabledBundleIDs"
@@ -81,6 +82,11 @@ final class SettingsStore {
     /// Opt-in: include on-screen / OCR context in the prompt. OFF by default.
     var ocrEnabled: Bool {
         didSet { defaults.set(ocrEnabled, forKey: Key.ocrEnabled) }
+    }
+
+    /// Developer opt-in: write full prompts and candidate details to a shareable local log.
+    var fullPromptLoggingEnabled: Bool {
+        didSet { defaults.set(fullPromptLoggingEnabled, forKey: Key.fullPromptLoggingEnabled) }
     }
 
     var completionLength: CompletionLength {
@@ -112,6 +118,7 @@ final class SettingsStore {
         self.historyEnabled = defaults.bool(forKey: Key.historyEnabled)
         self.clipboardEnabled = defaults.bool(forKey: Key.clipboardEnabled)
         self.ocrEnabled = defaults.bool(forKey: Key.ocrEnabled)
+        self.fullPromptLoggingEnabled = defaults.bool(forKey: Key.fullPromptLoggingEnabled)
         self.completionLength = (defaults.string(forKey: Key.completionLength))
             .flatMap(CompletionLength.init(rawValue:)) ?? .medium
         self.selectedModelFilename = defaults.string(forKey: Key.selectedModelFilename)

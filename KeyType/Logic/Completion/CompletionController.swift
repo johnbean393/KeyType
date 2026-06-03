@@ -232,6 +232,7 @@ final class CompletionController {
     private let inserter: PasteboardCompletionInserter
     private let filter: DefaultCandidateFilter
     private let predictionLog = PredictionLog()
+    private let fullPromptLog = FullPromptLog()
     private let log = Logger(subsystem: "com.pattonium.KeyType", category: "completion")
 
     private var engine: ConstrainedGenerationEngine?
@@ -240,6 +241,8 @@ final class CompletionController {
     private var warmupTask: Task<Void, Never>?
     private var listenerToken: UUID?
     private var activeLatencyTrace: CompletionLatencyTrace?
+    private var fullPromptDebugByKey: [String: FullPromptDebugInfo] = [:]
+    private var fullPromptDebugOrder: [String] = []
     /// Content signature of the last snapshot we acted on, so re-emitted snapshots whose text is
     /// unchanged (caret-geometry repolls) don't tear down and rebuild the overlay — that churn is
     /// what makes the ghost text flash.
@@ -574,6 +577,17 @@ final class CompletionController {
             maxCompletionTokens: length.maxCompletionTokens + (healSlack > 0 ? 2 : 0),
             maxDisplayWidth: length.maxDisplayWidth + healSlack
         )
+        rememberFullPromptDebug(
+            for: request,
+            promptResult: promptResult,
+            promptContext: promptContext,
+            tokenHealing: heal.map { FullPromptTokenHealing(head: $0.head, heal: $0.heal) },
+            sideContext: sideContext,
+            sideContextReused: sideContextReused,
+            policy: policy,
+            completionLength: length,
+            healSlack: healSlack
+        )
         latencyTrace.eventPromptBuilt(
             estimatedTokens: promptResult.estimatedTokenCount,
             sideContextReused: sideContextReused,
@@ -636,6 +650,13 @@ final class CompletionController {
         guard let best = candidates.first else {
             telemetry.recordSuppressed(reason: "noCandidate")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" → SUPPRESS(noCandidate)")
+            appendFullPromptLog(
+                request: request,
+                candidates: candidates,
+                outcome: "suppressed",
+                shownText: nil,
+                suppressionReason: "noCandidate"
+            )
             clearCompletion()
             finishLatencyTrace(latencyTrace, outcome: "suppressed-no-candidate")
             return
@@ -644,6 +665,13 @@ final class CompletionController {
             telemetry.recordSuppressed(reason: String(describing: reason))
             log.debug("Suppressed: \(String(describing: reason), privacy: .public)")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(\(reason))")
+            appendFullPromptLog(
+                request: request,
+                candidates: candidates,
+                outcome: "suppressed",
+                shownText: nil,
+                suppressionReason: String(describing: reason)
+            )
             clearCompletion()
             finishLatencyTrace(latencyTrace, outcome: "suppressed-\(reason)")
             return
@@ -654,6 +682,13 @@ final class CompletionController {
         guard let anchored = anchorText(for: best, request: request, applyingFilter: false) else {
             telemetry.recordSuppressed(reason: "emptyAfterBoundary")
             predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SUPPRESS(emptyAfterBoundary)")
+            appendFullPromptLog(
+                request: request,
+                candidates: candidates,
+                outcome: "suppressed",
+                shownText: nil,
+                suppressionReason: "emptyAfterBoundary"
+            )
             clearCompletion()
             finishLatencyTrace(latencyTrace, outcome: "suppressed-empty-after-boundary")
             return
@@ -669,10 +704,102 @@ final class CompletionController {
         anchorContext = request.context
         telemetry.recordShown()
         predictionLog.append("PREDICT ctx=\"\(ctx)\" [\(ranked)] → SHOWN \"\(PredictionLog.escape(anchored))\"")
+        appendFullPromptLog(
+            request: request,
+            candidates: candidates,
+            outcome: "shown",
+            shownText: anchored,
+            suppressionReason: nil
+        )
         if !renderSuggestion(for: latestContext ?? request.context, style: style, clearOnFailure: false) {
             _ = renderSuggestion(for: request.context, style: style)
         }
         finishLatencyTrace(latencyTrace, outcome: CompletionLatencyTrace.shownOutcome)
+    }
+
+    private func appendFullPromptLog(
+        request: CompletionRequest,
+        candidates: [CompletionCandidate],
+        outcome: String,
+        shownText: String?,
+        suppressionReason: String?
+    ) {
+        guard settings.fullPromptLoggingEnabled else { return }
+        let candidateDiagnostics = candidates.enumerated().map { index, candidate in
+            let reason = filter.suppressionReason(for: candidate, request: request)
+            return FullPromptCandidateDiagnostic(
+                rank: index,
+                text: candidate.text,
+                passesFilter: reason == nil,
+                suppressionReason: reason.map { String(describing: $0) }
+            )
+        }
+        fullPromptLog.append(
+            request: request,
+            candidates: candidates,
+            outcome: outcome,
+            shownText: shownText,
+            suppressionReason: suppressionReason,
+            generationLatencyMs: lastGenerationLatencyMs,
+            candidateDiagnostics: candidateDiagnostics,
+            debugInfo: takeFullPromptDebug(for: request)
+        )
+    }
+
+    private func rememberFullPromptDebug(
+        for request: CompletionRequest,
+        promptResult: PromptBuildResult,
+        promptContext: TextFieldContext,
+        tokenHealing: FullPromptTokenHealing?,
+        sideContext: FrozenPromptSideContext,
+        sideContextReused: Bool,
+        policy: CompletionPolicy,
+        completionLength: CompletionLength,
+        healSlack: Int
+    ) {
+        guard settings.fullPromptLoggingEnabled else { return }
+        let key = Self.fullPromptDebugKey(for: request)
+        let debug = FullPromptDebugInfo(
+            promptEstimatedTokenCount: promptResult.estimatedTokenCount,
+            promptSections: promptResult.sections.map(FullPromptSectionSnapshot.init),
+            promptContext: FullPromptContext(promptContext),
+            tokenHealing: tokenHealing,
+            sideContext: FullPromptSideContextSnapshot(
+                reused: sideContextReused,
+                historyEnabled: sideContext.historyEnabled,
+                clipboardEnabled: sideContext.clipboardEnabled,
+                ocrEnabled: sideContext.ocrEnabled,
+                previousUserInputs: sideContext.previousUserInputs,
+                pasteboardText: sideContext.pasteboardText,
+                screenText: sideContext.screenText
+            ),
+            settings: FullPromptSettingsSnapshot(
+                completionLength: completionLength.rawValue,
+                fullPromptLoggingEnabled: settings.fullPromptLoggingEnabled,
+                perAppDisabledBundleIdentifiers: Array(settings.perAppDisabled).sorted()
+            ),
+            policy: FullPromptPolicySnapshot(policy),
+            requestBudget: FullPromptRequestBudgetSnapshot(
+                baseMaxCompletionTokens: completionLength.maxCompletionTokens,
+                actualMaxCompletionTokens: request.maxCompletionTokens,
+                baseMaxDisplayWidth: completionLength.maxDisplayWidth,
+                actualMaxDisplayWidth: request.maxDisplayWidth,
+                healSlackCharacters: healSlack,
+                requiredPrefixByteCount: request.requiredPrefixBytes.count
+            )
+        )
+        fullPromptDebugByKey[key] = debug
+        fullPromptDebugOrder.append(key)
+        if fullPromptDebugOrder.count > 16 {
+            let removed = fullPromptDebugOrder.removeFirst()
+            fullPromptDebugByKey.removeValue(forKey: removed)
+        }
+    }
+
+    private func takeFullPromptDebug(for request: CompletionRequest) -> FullPromptDebugInfo? {
+        let key = Self.fullPromptDebugKey(for: request)
+        fullPromptDebugOrder.removeAll { $0 == key }
+        return fullPromptDebugByKey.removeValue(forKey: key)
     }
 
     private func anchorText(
@@ -1001,19 +1128,29 @@ final class CompletionController {
         context.beforeCursor + "\u{1}" + context.afterCursor + "\u{1}" + context.target.bundleIdentifier
     }
 
+    private static func fullPromptDebugKey(for request: CompletionRequest) -> String {
+        [
+            request.prompt,
+            contextKey(for: request.context),
+            request.requiredPrefixBytes.map { String($0) }.joined(separator: ","),
+            String(request.maxCompletionTokens),
+            String(request.maxDisplayWidth)
+        ].joined(separator: "\u{2}")
+    }
+
     /// Whether the completion should render as a capsule below the caret rather than inline ghost
     /// text. True only when there is visible (non-whitespace) suffix text remaining on the *current*
     /// line — that's the case where inline ghost text would overlap the user's existing text. If the
     /// caret is at the end of the line, the document, or the end of a paragraph (the remainder of the
     /// line is empty/whitespace and the next character is a newline), inline ghost text appends
     /// cleanly with nothing to overlap, so we keep it.
-    static func shouldUseCapsule(for context: TextFieldContext) -> Bool {
+    nonisolated static func shouldUseCapsule(for context: TextFieldContext) -> Bool {
         guard !context.geometry.isAtEndOfLine else { return false }
         let currentLineSuffix = context.afterCursor.prefix { !$0.isNewline }
         return currentLineSuffix.contains { !$0.isWhitespace }
     }
 
-    static func effectiveOverlayStyle(
+    nonisolated static func effectiveOverlayStyle(
         _ style: ResolvedFieldStyle,
         for context: TextFieldContext
     ) -> ResolvedFieldStyle {

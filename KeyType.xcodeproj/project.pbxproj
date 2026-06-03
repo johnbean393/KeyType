@@ -33,6 +33,7 @@
 		4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000046 /* SystemWordRecognizer.swift */; };
 		4B5450012FC9600000000051 /* LlamaModelRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000050 /* LlamaModelRuntime */; };
 		4B5450012FC9600000000055 /* PredictionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000054 /* PredictionLog.swift */; };
+		4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000310 /* FullPromptLog.swift */; };
 		4B5450012FC9600000000062 /* Personalization in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000061 /* Personalization */; };
 		4B5450012FC9600000000064 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000063 /* SettingsStore.swift */; };
 		4B5450012FC9600000000066 /* WritingHistoryRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */; };
@@ -106,6 +107,7 @@
 		4B5450012FC9600000000046 /* SystemWordRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWordRecognizer.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000049 /* KeyType.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeyType.entitlements; sourceTree = "<group>"; };
 		4B5450012FC9600000000054 /* PredictionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionLog.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000310 /* FullPromptLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullPromptLog.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000063 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingHistoryRecorder.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000067 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -327,6 +329,7 @@
 		4B5450012FC9600000000104 /* Telemetry */ = {
 			isa = PBXGroup;
 			children = (
+				4B5450012FC9600000000310 /* FullPromptLog.swift */,
 				4B5450012FC9600000000054 /* PredictionLog.swift */,
 				4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */,
 				4B5450012FC9600000000300 /* LatencyExportContext.swift */,
@@ -622,6 +625,7 @@
 				4B5450012FC9600000000043 /* CompletionAcceptanceController.swift in Sources */,
 				4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */,
 				4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */,
+				4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */,
 				4B5450012FC9600000000055 /* PredictionLog.swift in Sources */,
 				4B5450012FC9600000000064 /* SettingsStore.swift in Sources */,
 				4B5450012FC9600000000066 /* WritingHistoryRecorder.swift in Sources */,
