@@ -1,4 +1,4 @@
-import CompletionBenchmark
+import KeyTypeBench
 import XCTest
 
 final class DatasetCompilerTests: XCTestCase {

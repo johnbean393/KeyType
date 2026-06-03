@@ -135,6 +135,15 @@
 		4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionPromotionCache.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000300 /* LatencyExportContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencyExportContext.swift; sourceTree = "<group>"; };
+		B1C0BEF22FCB000000000001 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		B1C0BEF32FCB000000000001 /* core.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = core.jsonl; sourceTree = "<group>"; };
+		B1C0BEF42FCB000000000001 /* edge.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = edge.jsonl; sourceTree = "<group>"; };
+		B1C0BEF52FCB000000000001 /* policy.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = policy.jsonl; sourceTree = "<group>"; };
+		B1C0BEF62FCB000000000001 /* latency.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = latency.jsonl; sourceTree = "<group>"; };
+		B1C0BEF72FCB000000000001 /* smoke.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = smoke.jsonl; sourceTree = "<group>"; };
+		B1C0BEF82FCB000000000001 /* public-source-documents.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = "public-source-documents.jsonl"; sourceTree = "<group>"; };
+		B1C0BEF92FCB000000000001 /* summary.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = summary.json; sourceTree = "<group>"; };
+		B1C0BEFA2FCB000000000001 /* generate_datasets.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = generate_datasets.py; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				20DD9A7E2FC95AB900BE1F8C /* KeyType */,
+				B1C0BEF02FCB000000000001 /* KeyTypeBench-20260603 */,
 				20DD9A842FC95ABB00BE1F8C /* KeyTypeTests */,
 				20DD9A882FC95ABD00BE1F8C /* KeyTypeUITests */,
 				20DD9A4F2FC95AA900BE1F8C /* Products */,
@@ -392,6 +402,46 @@
 			path = Updates;
 			sourceTree = "<group>";
 		};
+		B1C0BEF02FCB000000000001 /* KeyTypeBench-20260603 */ = {
+			isa = PBXGroup;
+			children = (
+				B1C0BEF12FCB000000000001 /* Datasets */,
+				B1C0BEFC2FCB000000000001 /* Sources */,
+				B1C0BEFB2FCB000000000001 /* Scripts */,
+				B1C0BEF22FCB000000000001 /* README.md */,
+			);
+			path = KeyTypeBench-20260603;
+			sourceTree = "<group>";
+		};
+		B1C0BEF12FCB000000000001 /* Datasets */ = {
+			isa = PBXGroup;
+			children = (
+				B1C0BEF32FCB000000000001 /* core.jsonl */,
+				B1C0BEF42FCB000000000001 /* edge.jsonl */,
+				B1C0BEF52FCB000000000001 /* policy.jsonl */,
+				B1C0BEF62FCB000000000001 /* latency.jsonl */,
+				B1C0BEF72FCB000000000001 /* smoke.jsonl */,
+			);
+			path = Datasets;
+			sourceTree = "<group>";
+		};
+		B1C0BEFB2FCB000000000001 /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				B1C0BEFA2FCB000000000001 /* generate_datasets.py */,
+			);
+			path = Scripts;
+			sourceTree = "<group>";
+		};
+		B1C0BEFC2FCB000000000001 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				B1C0BEF82FCB000000000001 /* public-source-documents.jsonl */,
+				B1C0BEF92FCB000000000001 /* summary.json */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -506,7 +556,7 @@
 				4B5450012FC9600000000202 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				4B5450012FC9600000000027 /* XCLocalSwiftPackageReference "Packages/AppCompatibility" */,
 				4B5450012FC9600000000010 /* XCLocalSwiftPackageReference "Packages/AutocompleteCore" */,
-				B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/CompletionBenchmark" */,
+				B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/KeyTypeBench" */,
 				4B5450012FC9600000000025 /* XCLocalSwiftPackageReference "Packages/CompletionUI" */,
 				4B5450012FC9600000000024 /* XCLocalSwiftPackageReference "Packages/ConstrainedGeneration" */,
 				4B5450012FC9600000000020 /* XCLocalSwiftPackageReference "Packages/MacContextCapture" */,
@@ -973,9 +1023,9 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/CompletionUI;
 		};
-		B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/CompletionBenchmark" */ = {
+		B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/KeyTypeBench" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/CompletionBenchmark;
+			relativePath = Packages/KeyTypeBench;
 		};
 		4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */ = {
 			isa = XCLocalSwiftPackageReference;

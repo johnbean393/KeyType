@@ -149,7 +149,7 @@ public final class ProductionCompletionEvaluator {
         await engine.shutdown()
     }
 
-    public func evaluate(_ benchmarkCase: CompletionBenchmarkCase) async throws -> BenchmarkRowResult {
+    public func evaluate(_ benchmarkCase: KeyTypeBenchCase) async throws -> BenchmarkRowResult {
         let totalStart = DispatchTime.now()
         let context = benchmarkCase.context.coreContext()
 

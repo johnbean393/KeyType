@@ -1,6 +1,6 @@
 # KeyType — Project Overview
 
-> **Read this first.** This document and its siblings (`01`–`08`) are the authoritative
+> **Read this first.** This document and its siblings (`01`–`09`) are the authoritative
 > brief for any human or AI agent working on KeyType. Treat them as the source of truth.
 > The app is **built and shipping**; this packet now supports maintenance and iteration
 > rather than initial construction. When you make a meaningful decision, append it to
@@ -111,16 +111,15 @@ For the current set of open improvement themes (vs. the completed build mileston
 ## Document index
 
 
-| Doc                       | Contents                                                       |
-| ------------------------- | -------------------------------------------------------------- |
-| `00-overview.md`          | This file: what/why, clean-room rules, layout, what's shipped  |
-| `01-architecture.md`      | Module graph, responsibilities, data flow, observability       |
-| `02-prompting.md`         | Prompt sections, budgeting, base-vs-chat, FIM, example prompt  |
-| `03-token-profiles.md`    | ACPF binary format, builder, runtime contract, tests           |
-| `04-roadmap.md`           | Completed-milestone archive + the live improvement backlog     |
-| `05-decisions.md`         | Append-only decision log (ADR-style), with an index            |
-| `06-quality-playbook.md`  | Triaging bad/missing completions from `predictions.log`        |
-| `07-performance.md`       | Latency budget, release-build rule, profiling methodology      |
-| `08-app-compatibility.md` | How to add a new per-app / per-domain override                 |
-
-
+| Doc                         | Contents                                                       |
+| --------------------------- | -------------------------------------------------------------- |
+| `00-overview.md`            | This file: what/why, clean-room rules, layout, what's shipped  |
+| `01-architecture.md`        | Module graph, responsibilities, data flow, observability       |
+| `02-prompting.md`           | Prompt sections, budgeting, base-vs-chat, FIM, example prompt  |
+| `03-token-profiles.md`      | ACPF binary format, builder, runtime contract, tests           |
+| `04-roadmap.md`             | Completed-milestone archive + the live improvement backlog     |
+| `05-decisions.md`           | Append-only decision log (ADR-style), with an index            |
+| `06-quality-playbook.md`    | Triaging bad/missing completions from `predictions.log`        |
+| `07-performance.md`         | Latency budget, release-build rule, profiling methodology      |
+| `08-app-compatibility.md`   | How to add a new per-app / per-domain override                 |
+| `09-benchmark-datasets.md`  | Public benchmark dataset sources, generation, and validation  |

@@ -94,6 +94,9 @@ row here.**
 | 072 | Stabilize Obsidian ghost-text rendering | app-compatibility/ui |
 | 073 | Estimate caret geometry across soft-wrapped lines | context-capture/ui |
 | 074 | Offline completion benchmark evaluates final visible suggestions | evaluation |
+| 075 | Name reusable benchmark harness separately from dated benchmark artifacts | evaluation |
+| 076 | Rename misleading hard benchmark suite to edge | evaluation |
+| 077 | Separate benchmark utility score from wrong-show risk | evaluation |
 
 ---
 
@@ -2774,3 +2777,59 @@ text. Both are now closed:
   specific suppression reason. The new package adds another SwiftPM entry point and an
   `ArgumentParser` dependency already used elsewhere in the repo, but it keeps benchmark wiring out
   of the menu-bar app target and leaves the existing runtime modules decoupled.
+
+## ADR-075 — Name reusable benchmark harness separately from dated benchmark artifacts
+
+- Date: 2026-06-03
+- Status: accepted
+- Context: The completion benchmark now has two separate identities: a reusable SwiftPM harness and
+  a dated dataset/results snapshot used for the current model comparison work. Keeping both under a
+  generic `Benchmarks`/`CompletionBenchmark` name made it unclear which parts are stable tooling and
+  which parts are snapshot artifacts.
+- Decision: rename the reusable SwiftPM package, library module, and CLI product to `KeyTypeBench`.
+  Rename the public dataset/source/result artifact root to `KeyTypeBench-20260603`, while leaving
+  private/generated result paths under that dated root. The JSON schema remains source-compatible,
+  but the public case type now follows the package name as `KeyTypeBenchCase`.
+- Consequences: Future benchmark snapshots can use dated artifact roots without renaming the
+  reusable harness again. Xcode shows the dated dataset/source group separately from the reusable
+  package, and command examples now use `swift run --package-path Packages/KeyTypeBench KeyTypeBench`.
+
+## ADR-076 — Rename misleading hard benchmark suite to edge
+
+- Date: 2026-06-03
+- Status: accepted
+- Context: The suite previously named `hard` mixed genuinely difficult behaviors, such as FIM and
+  duplication traps, with mid-word completions and policy/app suppressions that score comparatively
+  well. Its aggregate score could therefore be better than `core`, making the name misleading when
+  interpreted as "hardest overall distribution."
+- Decision: rename the suite to `edge`. The suite remains focused on edge-case behaviors:
+  mid-word, FIM, after-cursor duplication, abbreviations/lists, code, and app-specific suppression
+  traps.
+- Consequences: Aggregate reports and graphs are easier to interpret: `edge` describes the behavior
+  class being exercised without implying it must score lower than `core`. Historical generated
+  result directories now use `edge-eval`, and CLI validation uses `--suite edge`.
+
+## ADR-077 — Separate benchmark utility score from wrong-show risk
+
+- Date: 2026-06-03
+- Status: accepted
+- Context: The first benchmark scoring rule assigned `-1.0` to `wrongShown`, `1.0` to correct
+  inserts/suppressions, and `0.3` to suppression on positive rows. That strongly encoded KeyType's
+  "prefer suppression to a wrong suggestion" principle, but it made the blended `qualityScore`
+  hard to interpret: a model with useful suggestions and many bad suggestions could score below a
+  model that simply suppresses everything. In the actual UX, a wrong ghost-text suggestion is a
+  visible trust/risk event, but the offline benchmark does not observe whether the user ignored it,
+  accepted it by mistake, or lost confidence over time.
+- Decision: keep `wrongShown` as a first-class outcome and keep reporting `wrongShowRate`,
+  `precisionWhenShown`, outcome counts, and per-tag wrong-show rates, but remove the negative
+  contribution from `qualityScore`. The current utility contribution table is:
+  `correctInsert = 1.0`, `correctSuppression = 1.0`,
+  `acceptableSuppressionOnPositive = 0.3`, `wrongShown = 0.0`, and
+  `incorrectSuppression = 0.0`. Aggregate quality is derived from the outcome enum rather than from
+  stored row `scoreContribution` values, so old row files can be re-aggregated under the current
+  scoring rule.
+- Consequences: `qualityScore` is now a non-negative utility score, not a hidden trust penalty. Model
+  comparison should first require acceptable `wrongShowRate`, `precisionWhenShown`, and
+  `suppressionAccuracy`, then compare quality, coverage, and latency among models that pass those
+  guardrails. This avoids rewarding noisy models while also avoiding an arbitrary scalar penalty for
+  every incorrect ghost-text suggestion.

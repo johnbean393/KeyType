@@ -40,8 +40,8 @@ Packages/ModelRuntime/Vendor/
 Models/
 
 # Completion benchmark local/private data and generated reports
-Benchmarks/Private/
-Benchmarks/Results/
-Benchmarks/Datasets/private/
-Benchmarks/Datasets/local/
-Packages/CompletionBenchmark/Sources/CompletionBenchmark/Datasets/private/
+KeyTypeBench-20260603/Private/
+KeyTypeBench-20260603/Results/
+KeyTypeBench-20260603/Datasets/private/
+KeyTypeBench-20260603/Datasets/local/
+Packages/KeyTypeBench/Sources/KeyTypeBench/Datasets/private/

@@ -11,6 +11,17 @@ public struct BenchmarkRowScore: Equatable {
 }
 
 public enum BenchmarkScorer {
+    public static func contribution(for outcome: BenchmarkCompletionOutcome) -> Double {
+        switch outcome {
+        case .correctInsert, .correctSuppression:
+            return 1.0
+        case .acceptableSuppressionOnPositive:
+            return 0.3
+        case .incorrectSuppression, .wrongShown:
+            return 0.0
+        }
+    }
+
     public static func score(
         expected: BenchmarkExpected,
         shownText: String?,
@@ -20,29 +31,83 @@ public enum BenchmarkScorer {
         case .insert:
             if let shownText {
                 return isAcceptable(shownText, expected: expected)
-                    ? BenchmarkRowScore(outcome: .correctInsert, contribution: 1.0)
-                    : BenchmarkRowScore(outcome: .wrongShown, contribution: -2.0)
+                    ? rowScore(.correctInsert)
+                    : rowScore(.wrongShown)
             }
-            return BenchmarkRowScore(outcome: .acceptableSuppressionOnPositive, contribution: 0.3)
+            return rowScore(.acceptableSuppressionOnPositive)
         case .suppress:
             if shownText != nil {
-                return BenchmarkRowScore(outcome: .wrongShown, contribution: -2.0)
+                return rowScore(.wrongShown)
             }
             if expected.allowedReasons.isEmpty {
-                return BenchmarkRowScore(outcome: .correctSuppression, contribution: 1.0)
+                return rowScore(.correctSuppression)
             }
             if let suppressionReason, expected.allowedReasons.contains(suppressionReason) {
-                return BenchmarkRowScore(outcome: .correctSuppression, contribution: 1.0)
+                return rowScore(.correctSuppression)
             }
-            return BenchmarkRowScore(outcome: .incorrectSuppression, contribution: 0.0)
+            return rowScore(.incorrectSuppression)
         }
+    }
+
+    private static func rowScore(_ outcome: BenchmarkCompletionOutcome) -> BenchmarkRowScore {
+        BenchmarkRowScore(outcome: outcome, contribution: contribution(for: outcome))
     }
 
     private static func isAcceptable(_ shownText: String, expected: BenchmarkExpected) -> Bool {
         let shown = canonical(shownText)
         return expected.acceptableShownTexts.contains { acceptable in
             let target = canonical(acceptable)
-            return shown == target || (!target.isEmpty && shown.hasPrefix(target))
+            return shown == target
+                || (!target.isEmpty && shown.hasPrefix(target))
+                || isAcceptableShorterPrefix(shown, of: target)
+        }
+    }
+
+    private static func isAcceptableShorterPrefix(_ shown: String, of target: String) -> Bool {
+        guard !shown.isEmpty, shown.count < target.count, target.hasPrefix(shown) else {
+            return false
+        }
+        guard let boundary = target.index(target.startIndex, offsetBy: shown.count, limitedBy: target.endIndex),
+              boundary > target.startIndex,
+              boundary < target.endIndex else {
+            return false
+        }
+
+        let previous = target[target.index(before: boundary)]
+        let next = target[boundary]
+        guard isBoundary(previous: previous, next: next) else {
+            return false
+        }
+        return endsAfterWordLikeToken(shown)
+    }
+
+    private static func isBoundary(previous: Character, next: Character) -> Bool {
+        previous.isWhitespace || next.isWhitespace || isWordLike(previous) != isWordLike(next)
+    }
+
+    private static func endsAfterWordLikeToken(_ text: String) -> Bool {
+        var index = text.endIndex
+        while index > text.startIndex {
+            let previousIndex = text.index(before: index)
+            let character = text[previousIndex]
+            if character.isWhitespace || isTerminalPunctuation(character) {
+                index = previousIndex
+                continue
+            }
+            return isWordLike(character)
+        }
+        return false
+    }
+
+    private static func isTerminalPunctuation(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { scalar in
+            CharacterSet(charactersIn: ".,;:!?)]}\"'").contains(scalar)
+        }
+    }
+
+    private static func isWordLike(_ character: Character) -> Bool {
+        character.unicodeScalars.allSatisfy { scalar in
+            CharacterSet.alphanumerics.contains(scalar) || scalar == "_"
         }
     }
 
@@ -150,7 +215,7 @@ public struct AggregateBreakdown: Codable, Equatable {
 public enum BenchmarkAggregator {
     public static func aggregate(
         rows: [BenchmarkRowResult],
-        cases: [CompletionBenchmarkCase],
+        cases: [KeyTypeBenchCase],
         suite: BenchmarkSuite
     ) -> AggregateBenchmarkResult? {
         guard let first = rows.first else { return nil }
@@ -160,7 +225,7 @@ public enum BenchmarkAggregator {
 
     public static func aggregateByModel(
         rows: [BenchmarkRowResult],
-        cases: [CompletionBenchmarkCase],
+        cases: [KeyTypeBenchCase],
         suite: BenchmarkSuite
     ) -> [AggregateBenchmarkResult] {
         let grouped = Dictionary(grouping: rows) { $0.modelIdentifier }
@@ -171,7 +236,7 @@ public enum BenchmarkAggregator {
 
     private static func aggregateRows(
         _ rows: [BenchmarkRowResult],
-        casesByID: [String: CompletionBenchmarkCase],
+        casesByID: [String: KeyTypeBenchCase],
         suite: BenchmarkSuite,
         first: BenchmarkRowResult
     ) -> AggregateBenchmarkResult {
@@ -183,7 +248,7 @@ public enum BenchmarkAggregator {
         let wrongShown = rows.filter { $0.outcome == .wrongShown }
         let positiveSuppression = rows.filter { $0.outcome == .acceptableSuppressionOnPositive }
         let generated = rows.filter(\.generationAttempted)
-        let totalScore = rows.reduce(0) { $0 + $1.scoreContribution }
+        let totalScore = rows.reduce(0) { $0 + BenchmarkScorer.contribution(for: $1.outcome) }
         let reasonHistogram = Dictionary(
             grouping: rows.compactMap(\.suppressionReason),
             by: { $0 }
@@ -227,13 +292,13 @@ public enum BenchmarkAggregator {
 
     private static func breakdown(
         rows: [BenchmarkRowResult],
-        casesByID: [String: CompletionBenchmarkCase]
+        casesByID: [String: KeyTypeBenchCase]
     ) -> AggregateBreakdown {
         let positive = rows.filter { casesByID[$0.caseID]?.expected.kind == .insert }
         let shown = rows.filter { $0.shownText != nil }
         let correct = rows.filter { $0.outcome == .correctInsert }
         let wrong = rows.filter { $0.outcome == .wrongShown }
-        let score = rows.reduce(0) { $0 + $1.scoreContribution }
+        let score = rows.reduce(0) { $0 + BenchmarkScorer.contribution(for: $1.outcome) }
         return AggregateBreakdown(
             rowCount: rows.count,
             precisionWhenShown: ratio(correct.count, shown.count),

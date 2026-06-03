@@ -1,4 +1,4 @@
-import CompletionBenchmark
+import KeyTypeBench
 import XCTest
 
 final class BenchmarkSchemaTests: XCTestCase {
@@ -17,7 +17,7 @@ final class BenchmarkSchemaTests: XCTestCase {
         {"id":"x","sourceGroup":"g","contextSources":{"fieldText":"real"},"context":{"beforeCursor":"hello","target":{"bundleIdentifier":"com.apple.TextEdit","appName":"TextEdit"}},"expected":{"kind":"insert","modelTarget":" world"}}
         """
         let data = Data(json.utf8)
-        let decoded = try JSONDecoder().decode(CompletionBenchmarkCase.self, from: data)
+        let decoded = try JSONDecoder().decode(KeyTypeBenchCase.self, from: data)
 
         XCTAssertEqual(decoded.split, .eval)
         XCTAssertEqual(decoded.context.afterCursor, "")

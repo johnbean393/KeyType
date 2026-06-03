@@ -1,0 +1,113 @@
+{
+  "datasets": {
+    "core": {
+      "caseTags": {
+        "append": 210,
+        "browser": 70,
+        "code": 71,
+        "duplication-trap": 35,
+        "email": 130,
+        "fim": 35,
+        "messaging": 105,
+        "mid-word": 70,
+        "terminal": 1
+      },
+      "expectedKinds": {
+        "insert": 665,
+        "suppress": 35
+      },
+      "rowCount": 700,
+      "splits": {
+        "dev": 81,
+        "eval": 547,
+        "holdout": 72
+      }
+    },
+    "edge": {
+      "caseTags": {
+        "abbreviation": 30,
+        "app-specific": 30,
+        "code": 38,
+        "duplication-trap": 60,
+        "email": 54,
+        "fim": 75,
+        "mid-word": 75,
+        "terminal": 31
+      },
+      "expectedKinds": {
+        "insert": 210,
+        "suppress": 90
+      },
+      "rowCount": 300,
+      "splits": {
+        "dev": 43,
+        "eval": 214,
+        "holdout": 43
+      }
+    },
+    "latency": {
+      "caseTags": {
+        "append": 100,
+        "code": 1,
+        "email": 23,
+        "latency-long": 33,
+        "latency-medium": 33,
+        "latency-short": 34
+      },
+      "expectedKinds": {
+        "insert": 100
+      },
+      "rowCount": 100,
+      "splits": {
+        "dev": 15,
+        "eval": 70,
+        "holdout": 15
+      }
+    },
+    "policy": {
+      "caseTags": {
+        "browser": 16,
+        "secure-field": 40,
+        "terminal": 32
+      },
+      "expectedKinds": {
+        "suppress": 72
+      },
+      "rowCount": 72,
+      "splits": {
+        "eval": 72
+      }
+    },
+    "smoke": {
+      "caseTags": {
+        "abbreviation": 6,
+        "append": 18,
+        "secure-field": 12
+      },
+      "expectedKinds": {
+        "insert": 24,
+        "suppress": 12
+      },
+      "rowCount": 36,
+      "splits": {
+        "eval": 36
+      }
+    }
+  },
+  "sourceBuckets": {
+    "ai-chat": 72,
+    "browser-web-form": 224,
+    "code-comments": 168,
+    "email": 168,
+    "messaging-chat": 168,
+    "notes-docs": 288,
+    "terminal": 45
+  },
+  "sourceDocumentCount": 1133,
+  "sourceGroupCount": 70,
+  "splits": {
+    "dev": 131,
+    "eval": 868,
+    "holdout": 134
+  }
+}

@@ -79,8 +79,9 @@ the filter is deliberately the last, documented line of defense.
 
 From `02-prompting.md`: acceptance rate (accepted/shown), suppression rate (high is fine, that's the
 point), per-completion latency (`07-performance.md`), duplicate-after-cursor errors (~0), and
-assistant-reply leakage (~0). The Settings stats panel surfaces live acceptance/latency from the
-local `CompletionTelemetryStore` (ADR-023).
+assistant-reply leakage (~0). The offline benchmark suites and their source curation process are
+documented in `09-benchmark-datasets.md`. The Settings stats panel surfaces live acceptance/latency
+from the local `CompletionTelemetryStore` (ADR-023).
 
 ## 6. Log it
 

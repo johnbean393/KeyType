@@ -4,7 +4,7 @@ import Foundation
 public enum BenchmarkSuite: String, Codable, CaseIterable, Equatable {
     case smoke
     case core
-    case hard
+    case edge
     case policy
     case humanCalibration = "human-calibration"
     case latency
@@ -304,7 +304,7 @@ public struct BenchmarkLimits: Codable, Equatable {
     }
 }
 
-public struct CompletionBenchmarkCase: Codable, Equatable {
+public struct KeyTypeBenchCase: Codable, Equatable {
     public var id: String
     public var split: BenchmarkSplit
     public var sourceGroup: String

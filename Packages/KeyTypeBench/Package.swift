@@ -3,11 +3,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "CompletionBenchmark",
+    name: "KeyTypeBench",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "CompletionBenchmark", targets: ["CompletionBenchmark"]),
-        .executable(name: "keytype-benchmark", targets: ["keytype-benchmark"])
+        .library(name: "KeyTypeBenchCore", targets: ["KeyTypeBench"]),
+        .executable(name: "KeyTypeBench", targets: ["KeyTypeBenchCLI"])
     ],
     dependencies: [
         .package(path: "../AppCompatibility"),
@@ -21,7 +21,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "CompletionBenchmark",
+            name: "KeyTypeBench",
             dependencies: [
                 .product(name: "AppCompatibility", package: "AppCompatibility"),
                 .product(name: "AutocompleteCore", package: "AutocompleteCore"),
@@ -35,9 +35,9 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "keytype-benchmark",
+            name: "KeyTypeBenchCLI",
             dependencies: [
-                "CompletionBenchmark",
+                "KeyTypeBench",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
                 .product(name: "LlamaModelRuntime", package: "ModelRuntime"),
                 .product(name: "ModelManagement", package: "ModelManagement"),
@@ -46,9 +46,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "CompletionBenchmarkTests",
+            name: "KeyTypeBenchTests",
             dependencies: [
-                "CompletionBenchmark",
+                "KeyTypeBench",
                 .product(name: "AutocompleteCore", package: "AutocompleteCore"),
                 .product(name: "ModelRuntime", package: "ModelRuntime")
             ]

@@ -21,11 +21,11 @@ public enum BenchmarkJSONLError: Error, CustomStringConvertible {
 }
 
 public enum BenchmarkJSONL {
-    public static func loadCases(from url: URL) throws -> [CompletionBenchmarkCase] {
-        try load(CompletionBenchmarkCase.self, from: url)
+    public static func loadCases(from url: URL) throws -> [KeyTypeBenchCase] {
+        try load(KeyTypeBenchCase.self, from: url)
     }
 
-    public static func writeCases(_ cases: [CompletionBenchmarkCase], to url: URL) throws {
+    public static func writeCases(_ cases: [KeyTypeBenchCase], to url: URL) throws {
         try write(cases, to: url)
     }
 
@@ -101,7 +101,7 @@ public enum BenchmarkDatasetResources {
         switch suite {
         case .smoke:
             return try smokeSuiteURL()
-        case .core, .hard, .policy, .humanCalibration, .latency:
+        case .core, .edge, .policy, .humanCalibration, .latency:
             return nil
         }
     }
@@ -117,23 +117,25 @@ public enum BenchmarkSuiteResolver {
             return explicitCasePaths.map { URL(fileURLWithPath: $0.expandingTilde(), relativeTo: workingDirectory).standardizedFileURL }
         }
 
-        var urls: [URL] = []
-        if let bundled = try BenchmarkDatasetResources.bundledURL(for: suite) {
-            urls.append(bundled)
-        }
-
         let localCandidates = [
             workingDirectory
-                .appendingPathComponent("Benchmarks", isDirectory: true)
+                .appendingPathComponent("KeyTypeBench-20260603", isDirectory: true)
                 .appendingPathComponent("Datasets", isDirectory: true)
                 .appendingPathComponent("\(suite.rawValue).jsonl"),
             workingDirectory
-                .appendingPathComponent("Benchmarks", isDirectory: true)
+                .appendingPathComponent("KeyTypeBench-20260603", isDirectory: true)
                 .appendingPathComponent("Private", isDirectory: true)
                 .appendingPathComponent("\(suite.rawValue).jsonl")
         ]
-        urls.append(contentsOf: localCandidates.filter { FileManager.default.fileExists(atPath: $0.path) })
-        return urls
+        let localURLs = localCandidates.filter { FileManager.default.fileExists(atPath: $0.path) }
+        if !localURLs.isEmpty {
+            return localURLs
+        }
+
+        if let bundled = try BenchmarkDatasetResources.bundledURL(for: suite) {
+            return [bundled]
+        }
+        return []
     }
 }
 

@@ -1,5 +1,5 @@
 import ArgumentParser
-import CompletionBenchmark
+import KeyTypeBench
 import Foundation
 import LlamaModelRuntime
 import ModelManagement
@@ -7,14 +7,14 @@ import ModelRuntime
 import TokenProfiles
 
 @main
-struct KeyTypeBenchmarkCommand: AsyncParsableCommand {
+struct KeyTypeBenchCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "keytype-benchmark",
+        commandName: "KeyTypeBench",
         abstract: "Evaluate KeyType completion quality and latency against GGUF models.",
         discussion: """
             Latency numbers are meaningful only in release builds. Use:
 
-              swift run -c release --package-path Packages/CompletionBenchmark keytype-benchmark run --suite smoke
+              swift run -c release --package-path Packages/KeyTypeBench KeyTypeBench run --suite smoke
             """,
         subcommands: [
             Run.self,
@@ -35,7 +35,7 @@ struct Run: AsyncParsableCommand {
         abstract: "Run a named benchmark suite against one or more GGUF models."
     )
 
-    @Option(name: .long, help: "Suite to run: smoke, core, hard, policy, human-calibration, latency.")
+    @Option(name: .long, help: "Suite to run: smoke, core, edge, policy, human-calibration, latency.")
     var suite: BenchmarkSuite = .smoke
 
     @Option(name: .customLong("cases"), help: "JSONL case file. Can be passed more than once.")
@@ -50,7 +50,7 @@ struct Run: AsyncParsableCommand {
     @Option(name: .long, help: "Directory containing <family>.acpf.bin profiles. Defaults to KeyType's model container.")
     var profileDirectory: String?
 
-    @Option(name: .long, help: "Output directory. Defaults to Benchmarks/Results/<suite>-<timestamp>.")
+    @Option(name: .long, help: "Output directory. Defaults to KeyTypeBench-20260603/Results/<suite>-<timestamp>.")
     var output: String?
 
     @Option(name: .long, help: "Only run rows in this split.")
@@ -74,7 +74,7 @@ struct Run: AsyncParsableCommand {
     func run() async throws {
         #if DEBUG
         guard allowDebugLatency else {
-            throw ValidationError("Run with `swift run -c release --package-path Packages/CompletionBenchmark keytype-benchmark run ...` for latency. Pass --allow-debug-latency only for plumbing checks.")
+            throw ValidationError("Run with `swift run -c release --package-path Packages/KeyTypeBench KeyTypeBench run ...` for latency. Pass --allow-debug-latency only for plumbing checks.")
         }
         #endif
 
@@ -85,7 +85,7 @@ struct Run: AsyncParsableCommand {
             workingDirectory: cwd
         )
         guard !caseURLs.isEmpty else {
-            throw ValidationError("No dataset found for suite '\(suite.rawValue)'. Add Benchmarks/Datasets/\(suite.rawValue).jsonl, Benchmarks/Private/\(suite.rawValue).jsonl, or pass --cases.")
+            throw ValidationError("No dataset found for suite '\(suite.rawValue)'. Add KeyTypeBench-20260603/Datasets/\(suite.rawValue).jsonl, KeyTypeBench-20260603/Private/\(suite.rawValue).jsonl, or pass --cases.")
         }
 
         var cases = try caseURLs.flatMap { try BenchmarkJSONL.loadCases(from: $0) }
@@ -206,7 +206,7 @@ struct Run: AsyncParsableCommand {
             .string(from: Date())
             .replacingOccurrences(of: ":", with: "")
         return cwd
-            .appendingPathComponent("Benchmarks", isDirectory: true)
+            .appendingPathComponent("KeyTypeBench-20260603", isDirectory: true)
             .appendingPathComponent("Results", isDirectory: true)
             .appendingPathComponent("\(suite.rawValue)-\(stamp)", isDirectory: true)
     }
@@ -251,6 +251,7 @@ struct Compile: ParsableCommand {
             var copy = doc
             copy.suites = [suite]
             copy.split = split
+            copy.source.path = normalizedSourcePath(copy.source.path, cwd: cwd)
             return copy
         }
         let config = BenchmarkDatasetCompilerConfiguration(
@@ -260,6 +261,19 @@ struct Compile: ParsableCommand {
         let cases = BenchmarkDatasetCompiler.compile(documents: docs, configuration: config)
         try BenchmarkJSONL.writeCases(cases, to: outputURL)
         print("Wrote \(cases.count) cases to \(outputURL.path)")
+    }
+
+    private func normalizedSourcePath(_ path: String?, cwd: URL) -> String? {
+        guard let path else { return nil }
+        let cwdPath = cwd.standardizedFileURL.path
+        let absolute = URL(fileURLWithPath: path.expandingTilde()).standardizedFileURL.path
+        if absolute == cwdPath {
+            return "."
+        }
+        if absolute.hasPrefix(cwdPath + "/") {
+            return String(absolute.dropFirst(cwdPath.count + 1))
+        }
+        return path
     }
 }
 

@@ -136,8 +136,8 @@ public enum BenchmarkDatasetCompiler {
     public static func compile(
         documents: [BenchmarkSourceDocument],
         configuration: BenchmarkDatasetCompilerConfiguration = BenchmarkDatasetCompilerConfiguration()
-    ) -> [CompletionBenchmarkCase] {
-        var cases: [CompletionBenchmarkCase] = []
+    ) -> [KeyTypeBenchCase] {
+        var cases: [KeyTypeBenchCase] = []
         for document in documents {
             let types = document.caseTypes.isEmpty ? configuration.defaultCaseTypes : document.caseTypes
             for type in types {
@@ -195,7 +195,7 @@ public enum BenchmarkDatasetCompiler {
         type: CompilerCaseType,
         document: BenchmarkSourceDocument,
         maxTargetCharacters: Int
-    ) -> CompletionBenchmarkCase? {
+    ) -> KeyTypeBenchCase? {
         switch type {
         case .appPolicySuppression, .secureFieldSuppression:
             return nil
@@ -244,7 +244,7 @@ public enum BenchmarkDatasetCompiler {
             modelTarget: slice.target,
             shownAcceptable: [slice.target.trimmingCharacters(in: .whitespacesAndNewlines)].filter { !$0.isEmpty }
         )
-        return CompletionBenchmarkCase(
+        return KeyTypeBenchCase(
             id: id,
             split: document.split,
             sourceGroup: document.sourceGroup,
@@ -320,9 +320,9 @@ public enum BenchmarkDatasetCompiler {
         return Slice(before: before, target: target, after: after)
     }
 
-    private static func policySuppressionCases(split: BenchmarkSplit) -> [CompletionBenchmarkCase] {
+    private static func policySuppressionCases(split: BenchmarkSplit) -> [KeyTypeBenchCase] {
         [
-            CompletionBenchmarkCase(
+            KeyTypeBenchCase(
                 id: "policy-terminal-tab-001",
                 split: split,
                 sourceGroup: "policy-handcrafted-001",
@@ -343,7 +343,7 @@ public enum BenchmarkDatasetCompiler {
                 ),
                 expected: BenchmarkExpected(kind: .suppress, allowedReasons: ["tabShortcutsDisabled"])
             ),
-            CompletionBenchmarkCase(
+            KeyTypeBenchCase(
                 id: "secure-field-001",
                 split: split,
                 sourceGroup: "policy-handcrafted-001",
@@ -510,11 +510,11 @@ public enum BenchmarkDatasetCompiler {
         case .endOfLineAppend:
             return ["append"]
         case .midWordCompletion:
-            return ["mid-word", "hard"]
+            return ["mid-word", "edge"]
         case .fillInMiddle:
-            return ["fim", "mid-line", "hard"]
+            return ["fim", "mid-line", "edge"]
         case .duplicationTrap:
-            return ["duplication-trap", "after-cursor", "hard"]
+            return ["duplication-trap", "after-cursor", "edge"]
         case .codeIdentifierOrComment:
             return ["code", "comment"]
         case .messagingChat:
