@@ -78,4 +78,4 @@ KeyType/
 
 ## License
 
-MIT — see `[LICENSE](LICENSE)`.
+MIT — see [LICENSE](https://github.com/johnbean393/KeyType/blob/main/LICENSE).

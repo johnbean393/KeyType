@@ -12,13 +12,13 @@ maintenance playbooks (quality, performance, app compatibility). Log non-obvious
 
 ## Product principles (non-negotiable)
 - Narrow the problem: predict a *short* continuation at the cursor, then discard anything not
-  immediately insertable. Default `maxCompletionTokens` = 4.
+  immediately insertable.
 - **Prefer suppression to a wrong suggestion** — showing nothing beats a bad completion.
 - Base-model continuation: the prompt ends exactly at the cursor (not chat/instruct).
 - On-device & private: clipboard, screen/OCR, and writing history are local and opt-in.
 
 ## Architecture
-- Target: macOS 15+, Swift. Logic lives in local SwiftPM packages under `Packages/`.
+- Target: macOS 14+, Swift. Logic lives in local SwiftPM packages under `Packages/`.
   **Extend the existing module graph; do not rewrite it.** Cross-module types go in
   `AutocompleteCore` (keep it free of AppKit/llama deps).
 - Keep concrete wiring in the app target (`KeyTypeModuleGraph.swift`); keep packages decoupled.
