@@ -303,9 +303,9 @@ final class CompletionController {
         }
     }
 
-    nonisolated static let fastDebounceNanoseconds: UInt64 = 35_000_000
-    nonisolated static let moderateDebounceNanoseconds: UInt64 = 50_000_000
-    nonisolated static let conservativeDebounceNanoseconds: UInt64 = 90_000_000
+    nonisolated static let fastDebounceNanoseconds: UInt64 = 15_000_000
+    nonisolated static let moderateDebounceNanoseconds: UInt64 = 25_000_000
+    nonisolated static let conservativeDebounceNanoseconds: UInt64 = 55_000_000
     private static let sideContextFreezeInterval: TimeInterval = 2.0
     private static let screenCaptureBundleIdentifiers: Set<String> = [
         "com.apple.screenshot.launcher"

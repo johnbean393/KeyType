@@ -98,6 +98,7 @@ row here.**
 | 076 | Rename misleading hard benchmark suite to edge | evaluation |
 | 077 | Separate benchmark utility score from wrong-show risk | evaluation |
 | 078 | Batch FIM suffix-rerank probes by shared join prefix | performance |
+| 079 | Tighten adaptive debounce tiers after release latency cuts | performance |
 
 ---
 
@@ -2853,3 +2854,18 @@ text. Both are now closed:
 - Consequences: Mid-line reranking preserves candidate order semantics while avoiding repeated
   shared-prefix prefills. The optimization depends only on token identity, not text slicing, so BPE
   merges across `prefix + middle` boundaries remain exact.
+
+## ADR-079 — Tighten adaptive debounce tiers after release latency cuts
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Production telemetry showed the intentional debounce wait at p50 ~53 ms and p95 ~96 ms.
+  Current release benchmarks put the default medium-token generation path around p50 ~55 ms and p95
+  ~64 ms, so the debounce had become a visible share of end-to-end latency. `MacContextCapture`
+  already coalesces AX bursts before `CompletionController` sees a snapshot, and generation remains
+  cancellable on every new context.
+- Decision: reduce adaptive debounce tiers from 35/50/90 ms to 15/25/55 ms for fast/moderate/slow
+  recent generation. Leave the latency thresholds that choose a tier unchanged, so slow decode paths
+  still get a longer coalescing window while responsive paths stop waiting behind an old budget.
+- Consequences: Suggestion content and filtering are unchanged; the tradeoff is more speculative
+  generation work during fast typing bursts, with cancellation protecting against stale presentation.
