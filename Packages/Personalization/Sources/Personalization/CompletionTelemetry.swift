@@ -137,6 +137,37 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
     }
 }
 
+public struct CompletionTelemetrySnapshotFile: Identifiable, Equatable {
+    public var id: String { filename }
+    public var url: URL
+    public var filename: String
+    public var createdAt: Date?
+    public var snapshot: TelemetrySnapshot
+
+    public init(
+        url: URL,
+        filename: String,
+        createdAt: Date?,
+        snapshot: TelemetrySnapshot
+    ) {
+        self.url = url
+        self.filename = filename
+        self.createdAt = createdAt
+        self.snapshot = snapshot
+    }
+}
+
+public enum CompletionTelemetrySnapshotError: Error, LocalizedError, Equatable {
+    case persistentStoreUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .persistentStoreUnavailable:
+            return "Telemetry snapshots are unavailable because the telemetry store has no file URL."
+        }
+    }
+}
+
 /// Local-only telemetry for completion acceptance, suppression, and latency.
 ///
 /// Aggregates are persisted as plain JSON in Application Support (they are non-PII counters and a
@@ -169,6 +200,17 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
             endToEndSamples = try container.decodeIfPresent([CompletionLatencySample].self, forKey: .endToEndSamples) ?? []
         }
     }
+
+    private static let snapshotFilenamePrefix = "keytype-latency-"
+    private static let snapshotFilenameSuffix = ".json"
+    private static let telemetryStateKeys: Set<String> = [
+        "generatedCount",
+        "shownCount",
+        "suppressedCount",
+        "acceptedCount",
+        "suppressionReasons",
+        "latenciesMillis"
+    ]
 
     private let url: URL?
     private let lock = NSLock()
@@ -258,17 +300,62 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
     public func snapshot() -> TelemetrySnapshot {
         lock.lock()
         defer { lock.unlock() }
-        let latencies = state.latenciesMillis
-        let endToEndSamples = state.endToEndSamples
-        return TelemetrySnapshot(
-            generatedCount: state.generatedCount,
-            shownCount: state.shownCount,
-            suppressedCount: state.suppressedCount,
-            acceptedCount: state.acceptedCount,
-            latencyMillisP50: Self.percentile(latencies, 0.5),
-            latencyMillisP95: Self.percentile(latencies, 0.95),
-            latencySampleCount: latencies.count,
-            endToEnd: Self.endToEndStats(from: endToEndSamples)
+        return Self.snapshot(from: state)
+    }
+
+    public func archivedSnapshots() -> [CompletionTelemetrySnapshotFile] {
+        guard let url else { return [] }
+        let directory = url.deletingLastPathComponent()
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        return urls
+            .filter { Self.isSnapshotFilename($0.lastPathComponent) }
+            .compactMap { snapshotURL -> CompletionTelemetrySnapshotFile? in
+                guard let data = try? Data(contentsOf: snapshotURL),
+                      Self.looksLikeTelemetryState(data),
+                      let state = try? JSONDecoder().decode(State.self, from: data)
+                else { return nil }
+                return CompletionTelemetrySnapshotFile(
+                    url: snapshotURL,
+                    filename: snapshotURL.lastPathComponent,
+                    createdAt: Self.snapshotDate(from: snapshotURL.lastPathComponent),
+                    snapshot: Self.snapshot(from: state)
+                )
+            }
+            .sorted { lhs, rhs in
+                switch (lhs.createdAt, rhs.createdAt) {
+                case let (left?, right?) where left != right:
+                    return left > right
+                default:
+                    return lhs.filename > rhs.filename
+                }
+            }
+    }
+
+    @discardableResult
+    public func snapshotCurrentStats(now: Date = Date()) throws -> CompletionTelemetrySnapshotFile {
+        guard let url else { throw CompletionTelemetrySnapshotError.persistentStoreUnavailable }
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let snapshotURL = Self.uniqueSnapshotURL(in: directory, at: now)
+
+        lock.lock()
+        defer { lock.unlock() }
+        let snapshotState = state
+        let data = try JSONEncoder().encode(snapshotState)
+        try data.write(to: snapshotURL, options: .atomic)
+        state = State()
+        try? FileManager.default.removeItem(at: url)
+
+        return CompletionTelemetrySnapshotFile(
+            url: snapshotURL,
+            filename: snapshotURL.lastPathComponent,
+            createdAt: Self.snapshotDate(from: snapshotURL.lastPathComponent),
+            snapshot: Self.snapshot(from: snapshotState)
         )
     }
 
@@ -327,9 +414,84 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
         state = State()
         lock.unlock()
         if let url { try? FileManager.default.removeItem(at: url) }
+        removeArchivedSnapshots()
     }
 
     // MARK: - Helpers
+
+    private static func snapshot(from state: State) -> TelemetrySnapshot {
+        let latencies = state.latenciesMillis
+        let endToEndSamples = state.endToEndSamples
+        return TelemetrySnapshot(
+            generatedCount: state.generatedCount,
+            shownCount: state.shownCount,
+            suppressedCount: state.suppressedCount,
+            acceptedCount: state.acceptedCount,
+            latencyMillisP50: Self.percentile(latencies, 0.5),
+            latencyMillisP95: Self.percentile(latencies, 0.95),
+            latencySampleCount: latencies.count,
+            endToEnd: Self.endToEndStats(from: endToEndSamples)
+        )
+    }
+
+    private static func isSnapshotFilename(_ filename: String) -> Bool {
+        filename.hasPrefix(snapshotFilenamePrefix) && filename.hasSuffix(snapshotFilenameSuffix)
+    }
+
+    private static func snapshotFilename(at date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyyMMdd-HHmmss'Z'"
+        return "\(snapshotFilenamePrefix)\(formatter.string(from: date))\(snapshotFilenameSuffix)"
+    }
+
+    private static func snapshotDate(from filename: String) -> Date? {
+        guard isSnapshotFilename(filename) else { return nil }
+        let stem = filename
+            .dropFirst(snapshotFilenamePrefix.count)
+            .dropLast(snapshotFilenameSuffix.count)
+        guard stem.count >= 16 else { return nil }
+        let timestamp = String(stem.prefix(16))
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyyMMdd-HHmmss'Z'"
+        return formatter.date(from: timestamp)
+    }
+
+    private static func uniqueSnapshotURL(in directory: URL, at date: Date) -> URL {
+        let filename = snapshotFilename(at: date)
+        let base = (filename as NSString).deletingPathExtension
+        let ext = (filename as NSString).pathExtension
+        var candidate = directory.appendingPathComponent(filename, isDirectory: false)
+        var suffix = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory.appendingPathComponent("\(base)-\(suffix).\(ext)", isDirectory: false)
+            suffix += 1
+        }
+        return candidate
+    }
+
+    private static func looksLikeTelemetryState(_ data: Data) -> Bool {
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let dictionary = object as? [String: Any]
+        else { return false }
+        return telemetryStateKeys.contains { dictionary[$0] != nil }
+    }
+
+    private func removeArchivedSnapshots() {
+        guard let url else { return }
+        let directory = url.deletingLastPathComponent()
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        for snapshotURL in urls where Self.isSnapshotFilename(snapshotURL.lastPathComponent) {
+            try? FileManager.default.removeItem(at: snapshotURL)
+        }
+    }
 
     private func mutate(_ body: (inout State) -> Void) {
         lock.lock()

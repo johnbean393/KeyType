@@ -234,6 +234,108 @@ final class PersonalizationTests: XCTestCase {
         XCTAssertEqual(s.endToEnd.totalSamples.first, 120)
     }
 
+    func testTelemetrySnapshotCurrentStatsCopiesAndClearsCurrentStore() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keytype-telemetry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("telemetry.json")
+        let telemetry = CompletionTelemetryStore(url: url)
+        telemetry.recordShown()
+        telemetry.recordAccepted()
+        telemetry.recordLatency(milliseconds: 87)
+        telemetry.recordEndToEndSample(
+            CompletionLatencySample(totalMillis: 120, promptBuildMillis: 2, debounceMillis: 35, generationMillis: 82, presentMillis: 1)
+        )
+
+        let archived = try telemetry.snapshotCurrentStats(now: Date(timeIntervalSince1970: 1_780_000_000))
+
+        XCTAssertEqual(archived.filename, "keytype-latency-20260528-202640Z.json")
+        XCTAssertEqual(archived.url.deletingLastPathComponent(), directory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived.url.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "current telemetry file should be cleared")
+        XCTAssertEqual(archived.snapshot.shownCount, 1)
+        XCTAssertEqual(archived.snapshot.acceptedCount, 1)
+        XCTAssertEqual(archived.snapshot.endToEnd.sampleCount, 1)
+
+        let current = telemetry.snapshot()
+        XCTAssertEqual(current.shownCount, 0)
+        XCTAssertEqual(current.acceptedCount, 0)
+        XCTAssertEqual(current.endToEnd.sampleCount, 0)
+
+        let archives = telemetry.archivedSnapshots()
+        XCTAssertEqual(archives.map(\.filename), [archived.filename])
+        XCTAssertEqual(archives.first?.snapshot.endToEnd.totalSamples, [120])
+    }
+
+    func testTelemetrySnapshotCurrentStatsUsesUniqueFilenamesWithinSameSecond() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keytype-telemetry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("telemetry.json")
+        let telemetry = CompletionTelemetryStore(url: url)
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+
+        telemetry.recordShown()
+        let first = try telemetry.snapshotCurrentStats(now: now)
+        telemetry.recordShown()
+        let second = try telemetry.snapshotCurrentStats(now: now)
+
+        XCTAssertEqual(first.filename, "keytype-latency-20260528-202640Z.json")
+        XCTAssertEqual(second.filename, "keytype-latency-20260528-202640Z-2.json")
+        XCTAssertEqual(telemetry.archivedSnapshots().count, 2)
+    }
+
+    func testTelemetryArchivedSnapshotsIgnoreLatencyExportFiles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keytype-telemetry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("telemetry.json")
+        let telemetry = CompletionTelemetryStore(url: url)
+
+        let export = LatencyExport(
+            schemaVersion: LatencyExporter.currentSchemaVersion,
+            exportedAt: Date(timeIntervalSince1970: 1_780_000_000),
+            device: LatencyExportDeviceInfo(osVersion: "26.4.0", physicalMemoryBytes: 1, processorCount: 1),
+            engine: LatencyExportEngineInfo(),
+            counters: LatencyExportCounters(
+                generatedCount: 1,
+                shownCount: 1,
+                suppressedCount: 0,
+                acceptedCount: 0,
+                suppressionReasons: [:]
+            ),
+            endToEndSamples: [
+                CompletionLatencySample(totalMillis: 120, promptBuildMillis: 2, debounceMillis: 35, generationMillis: 82, presentMillis: 1)
+            ],
+            decoderLatenciesMillis: [82]
+        )
+        let exportURL = directory.appendingPathComponent("keytype-latency-20260529-084640Z.json")
+        try LatencyExporter.encodeJSON(export).write(to: exportURL)
+
+        XCTAssertTrue(telemetry.archivedSnapshots().isEmpty)
+    }
+
+    func testTelemetryClearAllRemovesArchivedSnapshots() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keytype-telemetry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("telemetry.json")
+        let telemetry = CompletionTelemetryStore(url: url)
+
+        telemetry.recordShown()
+        let archived = try telemetry.snapshotCurrentStats(now: Date(timeIntervalSince1970: 1_780_000_000))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived.url.path))
+
+        telemetry.clearAll()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: archived.url.path))
+        XCTAssertTrue(telemetry.archivedSnapshots().isEmpty)
+    }
+
     // MARK: - Latency export
 
     func testLatencyExporterPackagesAllSamplesAndContext() throws {

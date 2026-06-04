@@ -3015,3 +3015,21 @@ text. Both are now closed:
   Release `KeyTypeBench edge` improved from p95 total 93.590 ms and p95 generation 121.599 ms to
   p95 total 84.262 ms and p95 generation 99.083 ms. Quality stayed exactly the same at 128.6 total,
   precision 0.578, and wrong-show rate 0.180. Row drift had no visible changes or regressions.
+
+## ADR-087 — Archive local telemetry snapshots for Statistics comparisons
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Latency improvements are easiest to validate when the Settings Statistics pane can compare
+  the current live telemetry reservoir against a pre-upgrade baseline. The existing export path
+  writes a richer maintainer-facing report, but the UI needs a local snapshot that preserves exactly
+  the persisted telemetry counters and bounded latency samples the app already understands.
+- Decision: add local telemetry snapshots beside `telemetry.json` using
+  `keytype-latency-YYYYMMDD-HHMMSSZ.json` filenames. The Statistics pane's "Snapshot stats" action
+  writes the current raw telemetry state to one of those files, then clears only the live telemetry
+  file so new-version entries start from an empty reservoir. Snapshot comparison is opt-in from a
+  menu and capped at two selected archives at once to keep the histogram and rows readable.
+- Consequences: Current telemetry remains the primary Statistics series, while selected archives
+  overlay in the histogram and metric rows without changing the export schema. `clearAll()` now
+  removes archived telemetry snapshots as well as the live file so the Privacy pane's "Clear all
+  personal data" action still deletes all local telemetry artifacts.
