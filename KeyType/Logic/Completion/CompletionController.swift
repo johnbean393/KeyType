@@ -237,7 +237,7 @@ final class CompletionController {
 
     private var engine: ConstrainedGenerationEngine?
     private var generationTask: Task<Void, Never>?
-    private var debounceTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Error>?
     private var warmupTask: Task<Void, Never>?
     private var listenerToken: UUID?
     private var activeLatencyTrace: CompletionLatencyTrace?
@@ -594,11 +594,6 @@ final class CompletionController {
             requiredPrefixBytes: requiredPrefixBytes.count,
             maxCompletionTokens: request.maxCompletionTokens
         )
-        if !sideContextReused || lastGenerationLatencyMs == nil {
-            latencyTrace.eventWarmupScheduled()
-            startAnchorWarmup(engine: engine, request: request)
-        }
-
         // Debounce: coalesce rapid keystrokes, and DON'T hide the current ghost up front — we
         // transition directly old → new (or → hidden) when generation finishes, so typing updates
         // the suggestion in place instead of blinking it out and back in.
@@ -608,29 +603,33 @@ final class CompletionController {
         latencyTrace.eventDebounceScheduled(nanoseconds: debounceNanoseconds)
         generationTask?.cancel()
         debounceTask?.cancel()
-        debounceTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: debounceNanoseconds)
-            guard !Task.isCancelled, let self else { return }
+        let debounceGate = Task {
+            try await Task.sleep(nanoseconds: debounceNanoseconds)
             latencyTrace.eventDebounceElapsed()
-            self.generationTask = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    latencyTrace.eventGenerationBegin()
-                    let start = DispatchTime.now()
-                    let candidates = try await engine.completions(for: request)
-                    try Task.checkCancellation()
-                    let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
-                    latencyTrace.eventGenerationEnd(elapsedMs: elapsedMs, candidateCount: candidates.count)
-                    self.lastGenerationLatencyMs = elapsedMs
-                    self.telemetry.recordLatency(milliseconds: elapsedMs)
-                    self.present(candidates, request: request, style: style, latencyTrace: latencyTrace)
-                } catch is CancellationError {
-                    // Superseded by a newer keystroke — leave the current ghost as-is.
-                    self.finishLatencyTrace(latencyTrace, outcome: "cancelled")
-                } catch {
-                    self.log.error("Generation failed: \(error, privacy: .public)")
-                    self.finishLatencyTrace(latencyTrace, outcome: "generation-error")
-                }
+        }
+        debounceTask = debounceGate
+        generationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                latencyTrace.eventGenerationBegin()
+                let start = DispatchTime.now()
+                let candidates = try await engine.completions(for: request)
+                try Task.checkCancellation()
+                let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+                latencyTrace.eventGenerationEnd(elapsedMs: elapsedMs, candidateCount: candidates.count)
+                self.lastGenerationLatencyMs = elapsedMs
+                self.telemetry.recordLatency(milliseconds: elapsedMs)
+                try await debounceGate.value
+                try Task.checkCancellation()
+                self.present(candidates, request: request, style: style, latencyTrace: latencyTrace)
+            } catch is CancellationError {
+                debounceGate.cancel()
+                // Superseded by a newer keystroke — leave the current ghost as-is.
+                self.finishLatencyTrace(latencyTrace, outcome: "cancelled")
+            } catch {
+                debounceGate.cancel()
+                self.log.error("Generation failed: \(error, privacy: .public)")
+                self.finishLatencyTrace(latencyTrace, outcome: "generation-error")
             }
         }
     }

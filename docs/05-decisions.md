@@ -99,6 +99,7 @@ row here.**
 | 077 | Separate benchmark utility score from wrong-show risk | evaluation |
 | 078 | Batch FIM suffix-rerank probes by shared join prefix | performance |
 | 079 | Tighten adaptive debounce tiers after release latency cuts | performance |
+| 080 | Overlap generation with the debounce presentation gate | performance |
 
 ---
 
@@ -2869,3 +2870,21 @@ text. Both are now closed:
   still get a longer coalescing window while responsive paths stop waiting behind an old budget.
 - Consequences: Suggestion content and filtering are unchanged; the tradeoff is more speculative
   generation work during fast typing bursts, with cancellation protecting against stale presentation.
+
+## ADR-080 — Overlap generation with the debounce presentation gate
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: The completion pipeline previously slept for the adaptive debounce interval before
+  starting model generation. That made the wait fully additive to decode latency even though
+  generation is cancellable and a newer focused-field snapshot already cancels stale work. With
+  current release decode times, the intentional wait had become a large visible share of fast-path
+  latency.
+- Decision: start generation immediately after prompt construction and use the adaptive debounce as
+  a presentation gate. If generation finishes first, wait for the gate before showing; if the gate
+  finishes first, present as soon as generation completes. Cancel both the generation task and the
+  gate on the next context change.
+- Consequences: Candidate content, ranking, filtering, insertion, and stale-result suppression are
+  unchanged. The tradeoff is more model work that may be cancelled during rapid typing bursts.
+  End-to-end telemetry phases can now overlap, so `totalMillis` is the authoritative user-visible
+  latency while phase columns remain diagnostic.

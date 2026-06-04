@@ -4,18 +4,19 @@ import Foundation
 /// stable string so telemetry stays decoupled from `AutocompleteCore.SuppressionReason`.
 public typealias TelemetrySuppressionReason = String
 
-/// One sample of the wall-clock latency the user actually perceives, broken into the four phases
-/// that make up `total`: the AX→prompt main-actor work, the intentional debounce wait, the off-main
-/// model decode, and the present-on-screen handoff. Recorded only for completions that were shown
-/// (`outcome == "shown"`) so the rollup describes the visible latency budget, not the cost of
-/// suppressed/cancelled work. See ADR-070.
+/// One sample of the wall-clock latency the user actually perceives, broken into the main phases:
+/// AX→prompt main-actor work, the intentional debounce/presentation gate, off-main model decode,
+/// and the present-on-screen handoff. Generation may overlap the debounce gate, so phase values are
+/// diagnostic columns and do not necessarily sum to `total`. Recorded only for completions that were
+/// shown (`outcome == "shown"`) so the rollup describes the visible latency budget, not the cost of
+/// suppressed/cancelled work. See ADR-070/080.
 public struct CompletionLatencySample: Codable, Equatable, Sendable {
-    /// Trace start (AX snapshot received) → suggestion painted. Equal to the sum of the four phases
-    /// except for negligible interstitial scheduling slack.
+    /// Trace start (AX snapshot received) → suggestion painted.
     public var totalMillis: Double
     /// AX snapshot → `eventPromptBuilt` (main-actor prompt assembly, side-context fetch, policy).
     public var promptBuildMillis: Double
-    /// `eventDebounceScheduled` → `eventDebounceElapsed` (the adaptive coalescing wait — not work).
+    /// `eventDebounceScheduled` → `eventDebounceElapsed` (the adaptive coalescing/presentation gate
+    /// wait — not work). This can overlap `generationMillis`.
     public var debounceMillis: Double
     /// `eventGenerationBegin` → `eventGenerationEnd` (off-main constrained decode, the big one).
     public var generationMillis: Double
