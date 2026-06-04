@@ -2888,3 +2888,25 @@ text. Both are now closed:
   unchanged. The tradeoff is more model work that may be cancelled during rapid typing bursts.
   End-to-end telemetry phases can now overlap, so `totalMillis` is the authoritative user-visible
   latency while phase columns remain diagnostic.
+
+## ADR-081 — Reuse bounded anchor snapshots across retokenized typing
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Cross-keystroke anchor reuse already handles pure token appends, but BPE can rewrite the
+  final token sequence while a user types inside a word. Those retokenized prompts were forced down
+  the full-prefill path even when a recent older anchor was still an exact token prefix of the new
+  prompt. Production latency tails are decode-dominated, so avoidable full prompt re-decodes during
+  ordinary character-by-character typing are a direct user-visible cost.
+- Decision: keep a small bounded history of prior anchor sequence snapshots in `LlamaModelRuntime`.
+  When the current anchor is not a pure append of the immediately previous anchor, restore the most
+  recent historical snapshot whose tokens are an exact shorter prefix of the new anchor, then decode
+  only the remaining delta. The history is cleared with the KV cache and capped at eight entries by
+  default to bound native sequence-state memory. No partial recurrent-state rollback is used.
+- Consequences: Retokenized typing can avoid full prompt re-decodes while preserving the shipped
+  presentation contract. The release A/B for a production prompt typed through `" afternoon"` kept
+  the same shown/suppressed result at every character and the same top-five candidate set, while
+  reducing retokenized-step anchor tokens from 554 to 97 and latency from 310.1 ms to 233.8 ms.
+  Lower-ranked candidate order changed on two steps because restored-prefix decode and full prefill
+  are not bit-identical on this hybrid model; the visible suggestion path only consumes the first
+  candidate, and the candidate set stayed unchanged.

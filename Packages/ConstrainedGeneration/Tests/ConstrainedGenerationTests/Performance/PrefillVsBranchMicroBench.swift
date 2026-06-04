@@ -16,11 +16,16 @@ import XCTest
 final class PrefillVsBranchMicroBench: XCTestCase {
     private static let family = "qwen3-v151936"
 
-    private func load(incremental: Bool = true) throws -> LlamaModelRuntime {
+    private func load(
+        incremental: Bool = true,
+        anchorSnapshotHistoryLimit: Int = 8
+    ) throws -> LlamaModelRuntime {
         try XCTSkipUnless(ModelContainer.defaultModelExists(), "GGUF missing; skipping")
         return try LlamaModelRuntime(
             modelURL: try ModelContainer.modelURL(), contextLength: 2048,
-            enableKVFork: true, enableIncrementalBeam: incremental
+            enableKVFork: true,
+            enableIncrementalBeam: incremental,
+            anchorSnapshotHistoryLimit: anchorSnapshotHistoryLimit
         )
     }
 
@@ -150,6 +155,209 @@ final class PrefillVsBranchMicroBench: XCTestCase {
         print("========================================================================\n")
     }
 
+    /// Retokenized character-by-character typing A/B for the bounded anchor-history cache. When
+    /// BPE rewrites the final word, the current anchor is not a pure append of the previous anchor;
+    /// history can still restore an older exact-prefix snapshot and decode forward. This validates
+    /// the shipped engine output, not only low-level logits.
+    func testRetokenizedTypingAnchorHistoryPreservesCompletionsAndLatency() async throws {
+        let target = AppTarget(bundleIdentifier: "com.apple.TextEdit", appName: "TextEdit", windowTitle: "Untitled")
+        let seed = "I am writing to let you know that the meeting scheduled for tomorrow"
+        let phraseCandidates = [
+            " afternoon",
+            " has been moved",
+            " internationalization",
+            " autocomplete behavior",
+            " personalization latency"
+        ]
+
+        let probe = try load()
+        func request(_ before: String) -> CompletionRequest {
+            let ctx = TextFieldContext(beforeCursor: before, afterCursor: "", target: target, detectedLanguage: "en")
+            let prompt = PromptBuilder().buildPrompt(context: ctx).prompt
+            return CompletionRequest(context: ctx, prompt: prompt, mode: .prose, maxCompletionTokens: 4, maxDisplayWidth: 60)
+        }
+        func promptTokens(_ before: String) throws -> [TokenID] {
+            try probe.tokenizer.tokenize(request(before).prompt)
+        }
+
+        var selected: (phrase: String, inputs: [String], retokenized: [Int])?
+        for phrase in phraseCandidates {
+            var inputs = [seed]
+            var typed = seed
+            for character in phrase {
+                typed.append(character)
+                inputs.append(typed)
+            }
+            let anchors = try inputs.map(promptTokens)
+            var history: [[TokenID]] = []
+            var retokenized: [Int] = []
+            for index in anchors.indices {
+                let current = anchors[index]
+                if index > 0 {
+                    let previous = anchors[index - 1]
+                    let common = Self.commonPrefix(previous, current)
+                    let historicalPrefix = history
+                        .filter { $0.count < current.count && Self.hasPrefix(current, prefix: $0) }
+                        .map(\.count)
+                        .max() ?? 0
+                    if common < previous.count, historicalPrefix > 0 {
+                        retokenized.append(index)
+                    }
+                }
+                history.append(current)
+            }
+            if !retokenized.isEmpty {
+                selected = (phrase, inputs, retokenized)
+                break
+            }
+        }
+        await probe.shutdown()
+
+        guard let selected else {
+            throw XCTSkip("Tokenizer did not produce a retokenized production prompt for probe phrases")
+        }
+
+        final class AnchorDecodeRecorder: LocalModelRuntime {
+            let wrapped: LlamaModelRuntime
+            var metadata: ModelMetadata { wrapped.metadata }
+            var tokenizer: ModelTokenizing { wrapped.tokenizer }
+            private(set) var anchorDecodedThisCompletion = 0
+
+            init(_ wrapped: LlamaModelRuntime) {
+                self.wrapped = wrapped
+            }
+
+            func resetCompletionCounters() {
+                anchorDecodedThisCompletion = 0
+            }
+
+            func prepare(promptTokens: [TokenID]) async throws {
+                try await wrapped.prepare(promptTokens: promptTokens)
+                anchorDecodedThisCompletion += await wrapped.lastPrepareDecodedCount
+            }
+
+            func logitsForNextToken() async throws -> [TokenLogit] {
+                try await wrapped.logitsForNextToken()
+            }
+
+            func decodeNext(tokenID: TokenID) async throws {
+                try await wrapped.decodeNext(tokenID: tokenID)
+            }
+
+            func resetKVCache() async {
+                await wrapped.resetKVCache()
+                resetCompletionCounters()
+            }
+
+            func shutdown() async {
+                await wrapped.shutdown()
+            }
+
+            func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit] {
+                let result = try await wrapped.anchoredLogits(anchor: anchor, suffix: suffix)
+                anchorDecodedThisCompletion += await wrapped.lastPrepareDecodedCount
+                return result
+            }
+
+            func anchoredLogitsBatch(anchor: [TokenID], suffixes: [[TokenID]]) async throws -> [[TokenLogit]] {
+                let result = try await wrapped.anchoredLogitsBatch(anchor: anchor, suffixes: suffixes)
+                anchorDecodedThisCompletion += await wrapped.lastPrepareDecodedCount
+                return result
+            }
+        }
+
+        struct RunResult {
+            var candidates: [[String]]
+            var candidateSets: [Set<String>]
+            var visible: [String?]
+            var times: [Double]
+            var anchorDecoded: [Int]
+        }
+
+        func visibleText(from candidates: [CompletionCandidate], request: CompletionRequest) -> String? {
+            guard let best = candidates.first else { return nil }
+            let filter = DefaultCandidateFilter()
+            guard filter.suppressionReason(for: best, request: request) == nil else { return nil }
+
+            var shown = CaretBoundary.reconcile(best.text, beforeCursor: request.context.beforeCursor)
+            if request.context.afterCursor.isEmpty {
+                while let last = shown.last, last.isWhitespace { shown.removeLast() }
+            }
+            return shown.isEmpty ? nil : shown
+        }
+
+        func run(historyLimit: Int) async throws -> RunResult {
+            let raw = try load(anchorSnapshotHistoryLimit: historyLimit)
+            let runtime = AnchorDecodeRecorder(raw)
+            let profile = try openProfile(raw)
+            let engine = ConstrainedGenerationEngine(
+                runtime: runtime,
+                profile: profile,
+                configuration: DecodingConfiguration(maxCandidates: 5, enableFillInMiddle: true)
+            )
+
+            _ = try await engine.completions(for: request(seed)) // warm kernels
+            await runtime.resetKVCache()
+
+            var candidates: [[String]] = []
+            var candidateSets: [Set<String>] = []
+            var visible: [String?] = []
+            var times: [Double] = []
+            var anchorDecoded: [Int] = []
+            for input in selected.inputs {
+                runtime.resetCompletionCounters()
+                let req = request(input)
+                let start = DispatchTime.now()
+                let result = try await engine.completions(for: req)
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+                candidates.append(result.map(\.text))
+                candidateSets.append(Set(result.map(\.text)))
+                visible.append(visibleText(from: result, request: req))
+                times.append(ms)
+                anchorDecoded.append(runtime.anchorDecodedThisCompletion)
+            }
+
+            await runtime.shutdown()
+            return RunResult(
+                candidates: candidates,
+                candidateSets: candidateSets,
+                visible: visible,
+                times: times,
+                anchorDecoded: anchorDecoded
+            )
+        }
+
+        let withoutHistory = try await run(historyLimit: 0)
+        let withHistory = try await run(historyLimit: 8)
+        XCTAssertEqual(withHistory.visible, withoutHistory.visible)
+        XCTAssertEqual(withHistory.candidateSets, withoutHistory.candidateSets)
+
+        let offDecoded = selected.retokenized.reduce(0) { $0 + withoutHistory.anchorDecoded[$1] }
+        let onDecoded = selected.retokenized.reduce(0) { $0 + withHistory.anchorDecoded[$1] }
+        let offTime = selected.retokenized.reduce(0) { $0 + withoutHistory.times[$1] }
+        let onTime = selected.retokenized.reduce(0) { $0 + withHistory.times[$1] }
+        let lowerRankOrderChanges = zip(withHistory.candidates, withoutHistory.candidates)
+            .filter { $0 != $1 }
+            .count
+        XCTAssertLessThan(onDecoded, offDecoded)
+        #if !DEBUG
+        XCTAssertLessThan(onTime, offTime)
+        #endif
+
+        let speedup = offTime / max(0.0001, onTime)
+        print("\n================ retokenized typing anchor-history A/B ================")
+        print("  phrase                         : \"\(selected.phrase)\"")
+        print("  retokenized steps              : \(selected.retokenized.count) / \(selected.inputs.count - 1)")
+        print("  visible suggestions            : unchanged")
+        print("  candidate sets                 : unchanged")
+        print("  lower-rank order changes       : \(lowerRankOrderChanges)")
+        print(String(format: "  anchor tokens decoded          : off %d | on %d | %.2fx reduction",
+                     offDecoded, onDecoded, Double(offDecoded) / Double(max(1, onDecoded))))
+        print(String(format: "  retokenized-step latency        : off %.1f ms | on %.1f ms | %.2fx speedup",
+                     offTime, onTime, speedup))
+        print("=======================================================================\n")
+    }
+
     /// Records each `anchoredLogitsBatch` (one per beam level): how many branches, their suffix
     /// lengths, and wall time — so we can see the per-level cost and the re-decoded-suffix waste
     /// (the batched path reseeds the anchor and re-decodes each branch's FULL suffix every level).
@@ -228,6 +436,12 @@ final class PrefillVsBranchMicroBench: XCTestCase {
         var n = 0
         while n < a.count, n < b.count, a[n] == b[n] { n += 1 }
         return n
+    }
+
+    private static func hasPrefix(_ tokens: [TokenID], prefix: [TokenID]) -> Bool {
+        guard prefix.count <= tokens.count else { return false }
+        for index in prefix.indices where tokens[index] != prefix[index] { return false }
+        return true
     }
 
     /// Min-of-`runs` wall-clock seconds of an async op (min rejects scheduler/thermal noise).

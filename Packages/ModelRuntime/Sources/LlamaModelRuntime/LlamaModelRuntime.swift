@@ -66,6 +66,16 @@ public actor LlamaModelRuntime: LocalModelRuntime {
     /// Next-token logits at the end of `anchorTokens`, cached so the empty-suffix root branch needs
     /// no decode and stays correct even after a sibling branch overwrote the live logits buffer.
     private var anchorEndLogits: [TokenLogit]?
+    /// Previous anchor snapshots keyed by their exact token sequence. BPE tokenization can rewrite
+    /// the final token(s) as the user types inside a word; a recent older anchor often remains an
+    /// exact prefix of the new prompt, so restoring it avoids a full prompt re-decode without any
+    /// unsafe recurrent-state rollback.
+    private struct AnchorHistoryEntry {
+        var tokens: [TokenID]
+        var snapshot: [UInt8]
+    }
+    private nonisolated let anchorSnapshotHistoryLimit: Int
+    private var anchorSnapshotHistory: [AnchorHistoryEntry] = []
 
     private var currentTokens: [TokenID] = []
     /// How many tokens the most recent `prepare(promptTokens:)` actually pushed through
@@ -93,7 +103,11 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         maxSequences: Int = 4,
         // Incremental beam decoding (ADR-046): keep branch KV resident across levels and decode only
         // the new token. On by default; the reseed path (ADR-043) remains as a per-call fallback.
-        enableIncrementalBeam: Bool = true
+        enableIncrementalBeam: Bool = true,
+        // Retain a bounded set of prior anchor snapshots so retokenized character-by-character
+        // typing can restore the newest exact prefix instead of clearing and decoding the full
+        // prompt. Each entry is a native sequence snapshot, so keep the default intentionally small.
+        anchorSnapshotHistoryLimit: Int = 8
     ) throws {
         guard ModelContainer.modelExists(at: modelURL) else {
             throw LlamaRuntimeError.modelFileMissing(path: modelURL.path)
@@ -153,6 +167,7 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         self.enableKVFork = enableKVFork
         self.enableIncrementalBeam = enableIncrementalBeam
         self.maxSequences = Int(llama_n_seq_max(loadedCtx))
+        self.anchorSnapshotHistoryLimit = max(0, anchorSnapshotHistoryLimit)
         self.metadata = ModelMetadata(
             identifier: modelURL.lastPathComponent,
             family: "llama",
@@ -277,6 +292,7 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         anchorTokens = []
         anchorSnapshot = nil
         anchorEndLogits = nil
+        anchorSnapshotHistory.removeAll(keepingCapacity: true)
         invalidateFrontier()
     }
 
@@ -555,8 +571,11 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         }
 
         // The anchor is changing, so any resident beam frontier (seqs holding `oldAnchor + suffix`)
-        // is stale — drop it before mutating the cache.
+        // is stale — drop it before mutating the cache. Preserve the current anchor snapshot first:
+        // BPE typing often rewrites the tail token, but an older exact-prefix snapshot can still be
+        // restored safely and decoded forward.
         invalidateFrontier()
+        rememberAnchorSnapshotForHistory()
 
         if let snapshot = anchorSnapshot,
            anchorTokens.count < anchor.count,
@@ -567,6 +586,11 @@ public actor LlamaModelRuntime: LocalModelRuntime {
             let delta = Array(anchor[anchorTokens.count..<anchor.count])
             try decodeTokens(delta, startingAt: anchorTokens.count, seqID: anchorSeq)
             lastPrepareDecodedCount = delta.count
+        } else if let entry = bestHistoricalPrefix(for: anchor) {
+            try restore(entry.snapshot)
+            let delta = Array(anchor[entry.tokens.count..<anchor.count])
+            try decodeTokens(delta, startingAt: entry.tokens.count, seqID: anchorSeq)
+            lastPrepareDecodedCount = delta.count
         } else {
             llama_memory_clear(memory, true)
             try decodeTokens(anchor, startingAt: 0, seqID: anchorSeq)
@@ -576,6 +600,34 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         anchorTokens = anchor
         anchorSnapshot = try captureSequenceState()
         anchorEndLogits = try readLogits()
+    }
+
+    private func rememberAnchorSnapshotForHistory() {
+        guard anchorSnapshotHistoryLimit > 0,
+              !anchorTokens.isEmpty,
+              let snapshot = anchorSnapshot
+        else { return }
+
+        if let existing = anchorSnapshotHistory.firstIndex(where: { $0.tokens == anchorTokens }) {
+            anchorSnapshotHistory.remove(at: existing)
+        }
+        anchorSnapshotHistory.append(AnchorHistoryEntry(tokens: anchorTokens, snapshot: snapshot))
+        if anchorSnapshotHistory.count > anchorSnapshotHistoryLimit {
+            anchorSnapshotHistory.removeFirst(anchorSnapshotHistory.count - anchorSnapshotHistoryLimit)
+        }
+    }
+
+    private func bestHistoricalPrefix(for anchor: [TokenID]) -> AnchorHistoryEntry? {
+        var best: AnchorHistoryEntry?
+        for entry in anchorSnapshotHistory.reversed() {
+            guard entry.tokens.count < anchor.count,
+                  Self.hasPrefix(anchor, prefix: entry.tokens)
+            else { continue }
+            if best == nil || entry.tokens.count > best!.tokens.count {
+                best = entry
+            }
+        }
+        return best
     }
 
     /// Restores the live sequence to the captured `anchor` state.
@@ -658,5 +710,11 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         let n = min(a.count, b.count)
         while i < n && a[i] == b[i] { i += 1 }
         return i
+    }
+
+    private static func hasPrefix(_ tokens: [TokenID], prefix: [TokenID]) -> Bool {
+        guard prefix.count <= tokens.count else { return false }
+        for i in prefix.indices where tokens[i] != prefix[i] { return false }
+        return true
     }
 }

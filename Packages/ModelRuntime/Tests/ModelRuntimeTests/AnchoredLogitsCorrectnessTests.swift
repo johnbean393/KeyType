@@ -8,7 +8,10 @@ import XCTest
 /// incorrect on this model's hybrid memory, the forked logits would diverge here and we'd fall back
 /// to snapshot/restore before shipping. On-device only (skips without the GGUF).
 final class AnchoredLogitsCorrectnessTests: XCTestCase {
-    private func makeRuntime(enableKVFork: Bool) throws -> LlamaModelRuntime {
+    private func makeRuntime(
+        enableKVFork: Bool,
+        anchorSnapshotHistoryLimit: Int = 8
+    ) throws -> LlamaModelRuntime {
         try XCTSkipUnless(
             ModelContainer.defaultModelExists(),
             "Model file not present at \(ModelContainer.defaultModelFilename); skipping"
@@ -17,7 +20,8 @@ final class AnchoredLogitsCorrectnessTests: XCTestCase {
             modelURL: try ModelContainer.modelURL(),
             contextLength: 2048,
             reuseThreshold: 8,
-            enableKVFork: enableKVFork
+            enableKVFork: enableKVFork,
+            anchorSnapshotHistoryLimit: anchorSnapshotHistoryLimit
         )
     }
 
@@ -104,6 +108,88 @@ final class AnchoredLogitsCorrectnessTests: XCTestCase {
         XCTAssertEqual(afterGrowth, typed.count, "only the typed delta should be decoded")
     }
 
+    /// Character-by-character typing can retokenize the last word, so the new prompt is not a
+    /// literal token append of the previous one. The runtime should restore a recent exact-prefix
+    /// anchor snapshot and decode forward from there, rather than clearing and decoding the whole
+    /// prompt again.
+    func testAnchorHistoryReusesRetokenizedTypingPrefix() async throws {
+        let probe = try makeRuntime(enableKVFork: true)
+        let tok = probe.tokenizer
+        let seed = "I am writing to let you know that the meeting scheduled for tomorrow"
+        let phraseCandidates = [
+            " afternoon",
+            " has been moved",
+            " internationalization",
+            " autocomplete behavior",
+            " personalization latency"
+        ]
+
+        var selection: (phrase: String, anchors: [[TokenID]], retokenized: [Int])?
+        for phrase in phraseCandidates {
+            var anchors = [try tok.tokenize(seed)]
+            var text = seed
+            for character in phrase {
+                text.append(character)
+                anchors.append(try tok.tokenize(text))
+            }
+
+            var history: [[TokenID]] = []
+            var retokenized: [Int] = []
+            for index in anchors.indices {
+                let current = anchors[index]
+                if index > 0 {
+                    let previous = anchors[index - 1]
+                    let common = Self.commonPrefixLength(previous, current)
+                    let historicalPrefix = history
+                        .filter { $0.count < current.count && Self.hasPrefix(current, prefix: $0) }
+                        .map(\.count)
+                        .max() ?? 0
+                    if common < previous.count, historicalPrefix > 0 {
+                        retokenized.append(index)
+                    }
+                }
+                history.append(current)
+            }
+
+            if !retokenized.isEmpty {
+                selection = (phrase, anchors, retokenized)
+                break
+            }
+        }
+
+        guard let selection else {
+            throw XCTSkip("Tokenizer did not produce a retokenized typing prefix for probe phrases")
+        }
+
+        func run(historyLimit: Int) async throws -> (decoded: [Int], topSets: [Set<TokenID>], argmaxes: [TokenID?]) {
+            let runtime = try makeRuntime(enableKVFork: true, anchorSnapshotHistoryLimit: historyLimit)
+            var decoded: [Int] = []
+            var topSets: [Set<TokenID>] = []
+            var argmaxes: [TokenID?] = []
+            for anchor in selection.anchors {
+                let logits = try await runtime.anchoredLogits(anchor: anchor, suffix: [])
+                decoded.append(await runtime.lastPrepareDecodedCount)
+                topSets.append(Set(topK(logits, 5)))
+                argmaxes.append(argmax(logits))
+            }
+            await runtime.shutdown()
+            return (decoded, topSets, argmaxes)
+        }
+
+        let withoutHistory = try await run(historyLimit: 0)
+        let withHistory = try await run(historyLimit: 8)
+        XCTAssertEqual(withHistory.argmaxes, withoutHistory.argmaxes)
+        XCTAssertEqual(withHistory.topSets, withoutHistory.topSets)
+
+        let offDecoded = selection.retokenized.reduce(0) { $0 + withoutHistory.decoded[$1] }
+        let onDecoded = selection.retokenized.reduce(0) { $0 + withHistory.decoded[$1] }
+        XCTAssertLessThan(
+            onDecoded, offDecoded,
+            "historical anchor reuse should decode fewer prompt tokens on retokenized typing"
+        )
+        print("[anchor-history] phrase=\"\(selection.phrase)\" retokenizedSteps=\(selection.retokenized.count) decodedWithout=\(offDecoded) decodedWith=\(onDecoded)")
+    }
+
     /// Gates the batched beam-frontier expansion (ADR-043): `anchoredLogitsBatch` must produce the
     /// SAME next-token distribution for each branch as scoring that branch on its own with
     /// `anchoredLogits`. If multi-sequence seeding or batched decode diverged on this model's hybrid
@@ -169,6 +255,19 @@ final class AnchoredLogitsCorrectnessTests: XCTestCase {
         var m: Float = 0
         for t in tokens { m = max(m, abs((pm[t] ?? 0) - (qm[t] ?? 0))) }
         return m
+    }
+
+    private static func commonPrefixLength(_ a: [TokenID], _ b: [TokenID]) -> Int {
+        var i = 0
+        let n = min(a.count, b.count)
+        while i < n && a[i] == b[i] { i += 1 }
+        return i
+    }
+
+    private static func hasPrefix(_ tokens: [TokenID], prefix: [TokenID]) -> Bool {
+        guard prefix.count <= tokens.count else { return false }
+        for i in prefix.indices where tokens[i] != prefix[i] { return false }
+        return true
     }
 
     /// Gates incremental beam decoding (ADR-046): when consecutive `anchoredLogitsBatch` calls form a
