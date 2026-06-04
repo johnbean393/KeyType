@@ -92,15 +92,15 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         reuseThreshold: Int = 8,
         enableKVFork: Bool = true,
         // The beam frontier is decoded in parallel sequences (ADR-043) — this is the default and only
-        // decode path. Sized to exactly the decoder's `branchWidth` (4): the anchor is held as a
-        // serialized snapshot, not a concurrent live sequence, so peak concurrent sequences equals
-        // the branch count. An on-device sweep showed latency plateaus once `n_seq_max ≥ branchWidth`
-        // (4/5/8 are within noise — `n_seq_max` is a recurrent-buffer capacity bound, not the matmul
-        // batch dimension, so there is no power-of-two effect); wider frontiers chunk gracefully.
+        // decode path. Sized above the decoder's default `branchWidth` (2) so the adaptive proper-noun
+        // path can briefly keep three branches. The anchor is held as a serialized snapshot, not a
+        // concurrent live sequence, so peak concurrent sequences equals the branch count. An on-device
+        // sweep showed latency plateaus once `n_seq_max ≥ branchWidth`; wider frontiers chunk
+        // gracefully.
         // On this hybrid model the parallel (split) recurrent path reorders near-tied logits by ~0.12
         // vs a lone single-sequence decode (same envelope ADR-012/018 already accepted: identical
         // argmax and top-k set, only ranks 3+ of near-ties shuffle).
-        maxSequences: Int = 4,
+        maxSequences: Int = 3,
         // Incremental beam decoding (ADR-046): keep branch KV resident across levels and decode only
         // the new token. On by default; the reseed path (ADR-043) remains as a per-call fallback.
         enableIncrementalBeam: Bool = true,

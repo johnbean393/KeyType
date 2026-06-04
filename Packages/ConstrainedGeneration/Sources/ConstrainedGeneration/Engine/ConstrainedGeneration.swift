@@ -55,6 +55,7 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         var live = [GenerationBranch(requiredPrefix: request.requiredPrefixBytes)]
         var finalized: [GenerationBranch] = []
         let maxDepth = max(0, request.maxCompletionTokens)
+        let effectiveBranchWidth = effectiveBranchWidth(for: request)
 
         depthLoop: for _ in 0..<maxDepth {
             try Task.checkCancellation()
@@ -155,7 +156,7 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
                 }
             }
 
-            live = prune(nextLive)
+            live = prune(nextLive, branchWidth: effectiveBranchWidth)
             if shouldStopEarly(finalized: finalized, live: live, request: request) {
                 break depthLoop
             }
@@ -313,15 +314,35 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
     }
 
     /// Keep the highest-scoring branches within the relative-cutoff margin and beam width.
-    private func prune(_ branches: [GenerationBranch]) -> [GenerationBranch] {
+    private func prune(_ branches: [GenerationBranch], branchWidth: Int) -> [GenerationBranch] {
         guard !branches.isEmpty else { return [] }
         var sorted = branches.sorted { $0.score > $1.score }
         let best = sorted[0].score
         sorted = sorted.filter { best - $0.score <= configuration.relativeCutoff }
-        if configuration.branchWidth > 0 && sorted.count > configuration.branchWidth {
-            sorted.removeLast(sorted.count - configuration.branchWidth)
+        if branchWidth > 0 && sorted.count > branchWidth {
+            sorted.removeLast(sorted.count - branchWidth)
         }
         return sorted
+    }
+
+    /// Proper-noun mid-word completions need one extra branch because the model often keeps several
+    /// plausible capitalized continuations alive before the correct possessive/name form wins.
+    private func effectiveBranchWidth(for request: CompletionRequest) -> Int {
+        let configured = configuration.branchWidth
+        guard configured >= 2 else { return configured }
+        guard request.mode == .prose || request.mode == .correction else { return configured }
+        guard !request.requiredPrefixBytes.isEmpty else { return configured }
+        let stem = CurrentWordTypoGuard.trailingWord(of: request.context.beforeCursor)
+        guard Self.startsWithUppercaseLetter(stem) else { return configured }
+        return max(configured, 3)
+    }
+
+    private static func startsWithUppercaseLetter(_ text: String) -> Bool {
+        guard let first = text.first else { return false }
+        let scalar = String(first)
+        return scalar.rangeOfCharacter(from: .letters) != nil
+            && scalar == scalar.uppercased()
+            && scalar != scalar.lowercased()
     }
 
     /// Future token log-probabilities are never positive, so a live branch's current score is an

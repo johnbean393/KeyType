@@ -2960,3 +2960,23 @@ text. Both are now closed:
   `"wood logs to"`, and `"on's"` became `"onal education system"`) and one wrong visible `"0"`
   suggestion became acceptable suppression on a positive row. Short suffix-only completions still
   keep their original ranking when no closed alternative exists.
+
+## ADR-084 — Use a narrow default beam with a proper-noun exception
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: After capping healed mid-word token slack, the remaining edge-benchmark tail was still
+  dominated by beam expansion on healed mid-word requests. A pure `branchWidth = 2` decoder was
+  faster, but it introduced a visible regression on a capitalized proper-name stem: `"Rockefeller's"`
+  lost the branch that later closed correctly and instead surfaced an incorrect `"and"` continuation.
+- Decision: lower the default decoder `branchWidth` from 4 to 2, but widen the effective beam to 3
+  for prose/correction requests that are healing a non-empty required prefix from a capitalized
+  current-word stem. Lower the llama runtime's default `maxSequences` from 4 to 3 because the anchor
+  is serialized, not held as a concurrent live sequence, and the accepted decoder now needs at most
+  three active branches on its quality-preserving path.
+- Consequences: The release `KeyTypeBench edge` benchmark improved from p95 total 116.904 ms and
+  p95 generation 138.025 ms to p95 total 98.947 ms and p95 generation 124.325 ms. Quality improved
+  from 126.6 to 128.6, precision when shown from 0.563 to 0.578, and wrong-show rate from 0.187 to
+  0.180. Row drift versus the accepted baseline had no regressions and two improvements: the wrong
+  visible suggestions `"ry of"` and `"t-war immigration to"` became correct inserts
+  `"rical record"` and `"twar immigration to"`.

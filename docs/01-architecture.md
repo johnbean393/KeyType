@@ -105,8 +105,9 @@ each branch via `LocalModelRuntime.anchoredLogits(anchor: basePrompt, suffix: br
 honours cooperative `Task` cancellation so a newer keystroke aborts in-flight work. `TokenSampler`
 pre-selects the top candidates by raw logit before ranking so per-step work is bounded instead of
 vocabulary-wide, and the per-completion cost scales with the number of branch expansions, so
-`branchWidth` defaults to 4 (ADR-012). **Measure in a release build**: debug inflates per-token
-Swift work by 1–2 orders of magnitude. **KV branch reuse (ADR-018)** decodes the base prompt once
+`branchWidth` defaults to 2 with healed capitalized stems widened to 3 (ADR-084).
+**Measure in a release build**: debug inflates per-token Swift work by 1–2 orders of magnitude.
+**KV branch reuse (ADR-018)** decodes the base prompt once
 per completion and snapshot/restores it per branch (and appends only the typed delta across
 keystrokes), cutting the medium-append case from ~1140 decoded tokens / ~246 ms to ~115 tokens /
 ~87 ms (full prefills 12 → 1).

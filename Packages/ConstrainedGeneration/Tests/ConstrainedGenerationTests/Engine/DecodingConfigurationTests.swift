@@ -14,6 +14,7 @@ final class DecodingConfigurationTests: XCTestCase {
 
     func testExistingDefaultsUnchanged() {
         let config = DecodingConfiguration()
+        XCTAssertEqual(config.branchWidth, 2)
         XCTAssertEqual(config.maxCandidates, 5)
         XCTAssertFalse(config.enableFillInMiddle)
     }

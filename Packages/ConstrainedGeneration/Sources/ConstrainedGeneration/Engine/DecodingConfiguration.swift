@@ -53,7 +53,7 @@ public struct DecodingConfiguration: Equatable {
         topK: Int = 64,
         topP: Float = 0.95,
         temperature: Float = 0.8,
-        branchWidth: Int = 4,
+        branchWidth: Int = 2,
         relativeCutoff: Float = 6,
         minBranchProbability: Float = 0.02,
         maxCandidates: Int = 5,

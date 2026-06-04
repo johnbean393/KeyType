@@ -73,11 +73,12 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         requiredPrefix: [UInt8] = [],
         maxTokens: Int = 2,
         maxWidth: Int = 80,
+        beforeCursor: String = "",
         afterCursor: String = "",
         target: AppTarget = ConstrainedGenerationEngineTests.testTarget
     ) -> CompletionRequest {
         CompletionRequest(
-            context: TextFieldContext(beforeCursor: "", afterCursor: afterCursor, target: target),
+            context: TextFieldContext(beforeCursor: beforeCursor, afterCursor: afterCursor, target: target),
             prompt: "",
             requiredPrefixBytes: requiredPrefix,
             mode: .prose,
@@ -175,6 +176,55 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         let candidates = try await engine.completions(for: request(maxTokens: 2))
 
         XCTAssertEqual(candidates.map(\.text), ["good"])
+    }
+
+    func testCapitalizedHealedStemGetsOneExtraBeamSlot() async throws {
+        let profile = profile([
+            record(1, " RockeA"), record(2, " RockeB"), record(3, " RockeC"),
+            record(11, " stop."), record(21, " stop."), record(31, " winner.")
+        ])
+        let runtime = runtime([
+            []: [logit(1, 3), logit(2, 2), logit(3, 1)],
+            [1]: [logit(11, 1)],
+            [2]: [logit(21, 1)],
+            [3]: [logit(31, 1)]
+        ])
+        let config = DecodingConfiguration(branchWidth: 2)
+        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profile, configuration: config)
+
+        let candidates = try await engine.completions(for: request(
+            requiredPrefix: Array(" Rocke".utf8),
+            maxTokens: 2,
+            beforeCursor: "Rocke"
+        ))
+
+        XCTAssertTrue(
+            candidates.map(\.text).contains(" RockeC winner."),
+            "capitalized healed stems keep a third branch for proper-name continuations"
+        )
+    }
+
+    func testLowercaseHealedStemUsesConfiguredBeamWidth() async throws {
+        let profile = profile([
+            record(1, " rockeA"), record(2, " rockeB"), record(3, " rockeC"),
+            record(11, " stop."), record(21, " stop."), record(31, " winner.")
+        ])
+        let runtime = runtime([
+            []: [logit(1, 3), logit(2, 2), logit(3, 1)],
+            [1]: [logit(11, 1)],
+            [2]: [logit(21, 1)],
+            [3]: [logit(31, 1)]
+        ])
+        let config = DecodingConfiguration(branchWidth: 2)
+        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profile, configuration: config)
+
+        let candidates = try await engine.completions(for: request(
+            requiredPrefix: Array(" rocke".utf8),
+            maxTokens: 2,
+            beforeCursor: "rocke"
+        ))
+
+        XCTAssertFalse(candidates.map(\.text).contains(" rockeC winner."))
     }
 
     func testEarlyExitKeepsLockedTopCandidateWithoutDeeperDecode() async throws {

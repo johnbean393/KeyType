@@ -629,8 +629,8 @@ final class PrefillVsBranchMicroBench: XCTestCase {
     }
 
     /// Sweeps `maxSequences` (n_seq_max) to show that latency is flat across it once it covers the
-    /// beam's `branchWidth` (4) — extra sequence slots only reserve recurrent buffers, they are not
-    /// a matmul batch dimension, so there is no power-of-two effect. Confirms 4 is the tight optimum.
+    /// active beam width — extra sequence slots only reserve recurrent buffers, they are not a matmul
+    /// batch dimension, so there is no power-of-two effect.
     func testMaxSequencesSweep() async throws {
         try XCTSkipUnless(ModelContainer.defaultModelExists(), "GGUF missing; skipping")
         let profileURL = try ModelContainer.profileURL(family: Self.family)
@@ -643,9 +643,9 @@ final class PrefillVsBranchMicroBench: XCTestCase {
         let request = CompletionRequest(
             context: context, prompt: promptText, mode: .prose, maxCompletionTokens: 4, maxDisplayWidth: 60
         )
-        let config = DecodingConfiguration(maxCandidates: 5, enableFillInMiddle: true) // branchWidth 4
+        let config = DecodingConfiguration(maxCandidates: 5, enableFillInMiddle: true)
 
-        print("\n================ maxSequences (n_seq_max) sweep — branchWidth=4 ================")
+        print("\n================ maxSequences (n_seq_max) sweep ================")
         for maxSeq in [1, 2, 3, 4, 5, 8] {
             let runtime = try LlamaModelRuntime(
                 modelURL: try ModelContainer.modelURL(), contextLength: 2048, enableKVFork: true, maxSequences: maxSeq
