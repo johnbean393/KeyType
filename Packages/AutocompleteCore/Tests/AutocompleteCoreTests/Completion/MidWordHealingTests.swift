@@ -29,20 +29,28 @@ final class MidWordHealingTests: XCTestCase {
         XCTAssertEqual(plan?.heal, " Wat")
     }
 
-    func testHealsStemEndingInDigit() {
-        let plan = MidWordHealing.plan(for: context(before: "Meet me at gate 12"))
-        XCTAssertEqual(plan?.head, "Meet me at gate")
-        XCTAssertEqual(plan?.heal, " 12")
+    func testSuppressesStemEndingInDigit() {
+        let context = context(before: "Meet me at gate 12")
+        XCTAssertNil(MidWordHealing.plan(for: context))
+        XCTAssertTrue(MidWordHealing.shouldSuppressNumericMidWordStem(for: context))
+    }
+
+    func testSuppressesAlphaNumericStem() {
+        let context = context(before: "Congress ID H00")
+        XCTAssertNil(MidWordHealing.plan(for: context))
+        XCTAssertTrue(MidWordHealing.shouldSuppressNumericMidWordStem(for: context))
     }
 
     func testNoHealAtWordBoundary() {
         // Prefix ends on a space → between words → ordinary next-token continuation, no healing.
         XCTAssertNil(MidWordHealing.plan(for: context(before: "The weather is ")))
+        XCTAssertFalse(MidWordHealing.shouldSuppressNumericMidWordStem(for: context(before: "The weather is ")))
     }
 
     func testNoHealAfterPunctuation() {
         // Completed word + punctuation → not mid-word.
         XCTAssertNil(MidWordHealing.plan(for: context(before: "The weather is great.")))
+        XCTAssertFalse(MidWordHealing.shouldSuppressNumericMidWordStem(for: context(before: "The weather is great.")))
     }
 
     func testNoHealWhenNothingPrecedesTheWord() {
@@ -53,7 +61,9 @@ final class MidWordHealingTests: XCTestCase {
 
     func testNoHealMidLine() {
         // Text after the cursor → native fill-in-the-middle territory, not healing.
-        XCTAssertNil(MidWordHealing.plan(for: context(before: "The weather is gre", after: "at place")))
+        let context = context(before: "The weather is gre", after: "at place")
+        XCTAssertNil(MidWordHealing.plan(for: context))
+        XCTAssertFalse(MidWordHealing.shouldSuppressNumericMidWordStem(for: context))
     }
 
     func testReconstructsOriginalPrefix() {

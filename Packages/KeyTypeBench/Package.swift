@@ -50,7 +50,8 @@ let package = Package(
             dependencies: [
                 "KeyTypeBench",
                 .product(name: "AutocompleteCore", package: "AutocompleteCore"),
-                .product(name: "ModelRuntime", package: "ModelRuntime")
+                .product(name: "ModelRuntime", package: "ModelRuntime"),
+                .product(name: "TokenProfiles", package: "TokenProfiles")
             ]
         )
     ]

@@ -182,6 +182,36 @@ public final class ProductionCompletionEvaluator {
             )
         }
 
+        if MidWordHealing.shouldSuppressNumericMidWordStem(for: context) {
+            let reason = "numericMidWordStem"
+            let score = BenchmarkScorer.score(
+                expected: benchmarkCase.expected,
+                shownText: nil,
+                suppressionReason: reason
+            )
+            return BenchmarkRowResult(
+                caseID: benchmarkCase.id,
+                split: benchmarkCase.split,
+                sourceGroup: benchmarkCase.sourceGroup,
+                suites: benchmarkCase.suites,
+                tags: benchmarkCase.tags,
+                expectedKind: benchmarkCase.expected.kind,
+                outcome: score.outcome,
+                scoreContribution: score.contribution,
+                modelInfo: modelInfo,
+                promptTokenCount: 0,
+                candidateCount: 0,
+                topCandidateText: nil,
+                topKCandidateTexts: [],
+                shownText: nil,
+                suppressionReason: reason,
+                generationAttempted: false,
+                promptBuildMs: 0,
+                generationMs: 0,
+                totalMs: elapsedMilliseconds(since: totalStart)
+            )
+        }
+
         let promptStart = DispatchTime.now()
         let heal = MidWordHealing.plan(for: context)
         let promptContext = heal.map { context.replacingBeforeCursor($0.head) } ?? context

@@ -2980,3 +2980,20 @@ text. Both are now closed:
   0.180. Row drift versus the accepted baseline had no regressions and two improvements: the wrong
   visible suggestions `"ry of"` and `"t-war immigration to"` became correct inserts
   `"rical record"` and `"twar immigration to"`.
+
+## ADR-085 — Suppress numeric mid-word stems before decode
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: After narrowing the beam, the remaining edge-benchmark p95 tail still included healed
+  mid-word requests where the current stem contained digits, such as `"1940"` and `"H00"`. The
+  shipped path already suppressed both rows after generation because exact IDs, years, and
+  coordinates are poor fits for base-model token healing; the cost was paid before the suppression.
+- Decision: make token healing lexical-only for mid-word stems and add a shared pre-generation gate
+  that suppresses numeric or mixed-alphanumeric stems before prompt construction. Plain alphabetic
+  stems, including capitalized proper nouns, continue through the existing healing path.
+- Consequences: Release `KeyTypeBench edge` improved from p95 total 98.947 ms and p95 generation
+  124.325 ms to p95 total 93.590 ms and p95 generation 121.599 ms. Quality stayed exactly the same
+  at 128.6 total, precision 0.578, and wrong-show rate 0.180. Row drift had no visible changes or
+  regressions; two already-suppressed positive rows now skip generation with `numericMidWordStem`
+  instead of suppressing after 124 ms and 163 ms decodes.

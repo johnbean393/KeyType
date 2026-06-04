@@ -484,6 +484,14 @@ final class CompletionController {
         guard !context.beforeCursor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { reset(); return }
 
+        // Token healing is intentionally lexical. Numeric and mixed alphanumeric stems are exact-ID
+        // territory, and the filters suppress them after generation; skip that decode up front.
+        guard !MidWordHealing.shouldSuppressNumericMidWordStem(for: context)
+        else {
+            reset(keepingReuseHistory: true)
+            return
+        }
+
         // Skip identical re-emits — keep whatever is on screen, no flicker. The one exception is a
         // moved caret with unchanged text (e.g. the user scrolled the field): re-pin the visible
         // suggestion to the new caret rather than leaving it stranded at the old screen position.

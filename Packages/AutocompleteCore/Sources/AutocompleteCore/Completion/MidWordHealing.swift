@@ -24,16 +24,17 @@ public enum MidWordHealing {
     /// (the user is actively typing a word, not sitting on punctuation/whitespace), and (c) there is
     /// non-empty context before the word, so the model has something to continue from.
     public static func plan(for context: TextFieldContext) -> (head: String, heal: String)? {
-        guard context.afterCursor.isEmpty else { return nil }
-        let before = context.beforeCursor
-        guard let last = before.last, last.isLetter || last.isNumber else { return nil }
-        guard let wsIndex = before.lastIndex(where: { $0.isWhitespace }) else { return nil }
+        guard let split = split(for: context), !containsDigit(split.stem) else { return nil }
+        return (split.head, split.heal)
+    }
 
-        let head = String(before[..<wsIndex])
-        guard !head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-
-        let heal = String(before[wsIndex...]) // the separating whitespace + the partial word
-        return (head, heal)
+    /// Numeric and mixed alphanumeric stems are high-risk for token healing: the model often needs
+    /// exact IDs, years, or coordinates, and the shipped filters already suppress these cases after
+    /// generation. Suppress them before prompt construction instead of spending decode on a path we
+    /// do not trust enough to show.
+    public static func shouldSuppressNumericMidWordStem(for context: TextFieldContext) -> Bool {
+        guard let split = split(for: context) else { return false }
+        return containsDigit(split.stem)
     }
 
     /// Removes the healed stem from a completion so only the genuinely new text remains. The decoder
@@ -51,6 +52,25 @@ public enum MidWordHealing {
         var rest = Substring(completion.dropFirst(heal.count))
         while let first = rest.first, first.isWhitespace { rest = rest.dropFirst() }
         return String(rest)
+    }
+
+    private static func split(for context: TextFieldContext) -> (head: String, heal: String, stem: String)? {
+        guard context.afterCursor.isEmpty else { return nil }
+        let before = context.beforeCursor
+        guard let last = before.last, last.isLetter || last.isNumber else { return nil }
+        guard let wsIndex = before.lastIndex(where: { $0.isWhitespace }) else { return nil }
+
+        let head = String(before[..<wsIndex])
+        guard !head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+
+        let heal = String(before[wsIndex...]) // the separating whitespace + the partial word
+        let stemStart = before.index(after: wsIndex)
+        let stem = String(before[stemStart...])
+        return (head, heal, stem)
+    }
+
+    private static func containsDigit(_ text: String) -> Bool {
+        text.contains(where: \.isNumber)
     }
 }
 
