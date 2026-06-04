@@ -90,7 +90,7 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
                     // admissible tokens aren't masked out and the branch can't silently collapse to
                     // `noCandidate` (ADR-025).
                     constrained: !branch.remainingPrefix.isEmpty,
-                    isAdmissible: { profile.tokenAllowed($0, afterRequiredPrefix: branch.remainingPrefix) }
+                    isAdmissible: { self.tokenAllowed($0, afterRequiredPrefix: branch.remainingPrefix) }
                 )
 
                 // The model's single most likely continuation being a terminator is the
@@ -305,6 +305,28 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
     private func profileBytes(for id: TokenID) -> [UInt8] {
         if let bytes = profile.record(for: id)?.bytes { return bytes }
         return (try? runtime.tokenizer.rawBytes(for: id)) ?? []
+    }
+
+    private func tokenAllowed(_ id: TokenID, afterRequiredPrefix prefix: [UInt8]) -> Bool {
+        guard !prefix.isEmpty else { return true }
+        guard let mmapProfile = profile as? MmapAutocompleteProfile else {
+            return profile.tokenAllowed(id, afterRequiredPrefix: prefix)
+        }
+        return mmapProfile.withRawBytes(for: id) { tokenBytes in
+            Self.bytes(tokenBytes, startsWith: prefix) || Self.bytes(prefix, startsWith: tokenBytes)
+        } ?? false
+    }
+
+    private static func bytes(_ lhs: UnsafeRawBufferPointer, startsWith rhs: [UInt8]) -> Bool {
+        guard rhs.count <= lhs.count else { return false }
+        for index in rhs.indices where lhs[index] != rhs[index] { return false }
+        return true
+    }
+
+    private static func bytes(_ lhs: [UInt8], startsWith rhs: UnsafeRawBufferPointer) -> Bool {
+        guard rhs.count <= lhs.count else { return false }
+        for index in 0..<rhs.count where lhs[index] != rhs[index] { return false }
+        return true
     }
 
     private func finalizeIfValid(_ branch: GenerationBranch, into finalized: inout [GenerationBranch]) {

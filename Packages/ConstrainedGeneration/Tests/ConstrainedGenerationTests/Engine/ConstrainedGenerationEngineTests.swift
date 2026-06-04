@@ -51,6 +51,37 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         InMemoryAutocompleteProfile(vocabularySize: Self.testVocabSize, records: records)
     }
 
+    private func mmapProfile(_ records: [TokenProfileRecord]) throws -> MmapAutocompleteProfile {
+        var entries = (0..<Self.testVocabSize).map { id in
+            ACPFTokenEntry(
+                tokenID: TokenID(id),
+                bytes: [],
+                flags: [.excluded],
+                staticBias: 0,
+                displayWidth: 0,
+                tokenType: 0
+            )
+        }
+        for record in records {
+            entries[Int(record.tokenID)] = ACPFTokenEntry(
+                tokenID: record.tokenID,
+                bytes: record.bytes,
+                flags: record.flags,
+                staticBias: record.staticBias,
+                displayWidth: record.displayWidth,
+                tokenType: 0
+            )
+        }
+        let input = ACPFProfileInput(
+            modelFamily: "test",
+            vocabSize: Self.testVocabSize,
+            tokenizerDigest: ACPFTokenizerDigestValue(lo: 1, hi: 2),
+            entries: entries,
+            buildTimestamp: Date(timeIntervalSince1970: 0)
+        )
+        return try MmapAutocompleteProfile(data: ACPFWriter.encode(input))
+    }
+
     private func runtime(
         _ logitsByPath: [[TokenID]: [TokenLogit]],
         eos: TokenID? = nil,
@@ -366,6 +397,30 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         )
 
         XCTAssertEqual(candidates.map(\.text), ["zo"], "the only admissible token must be found")
+    }
+
+    func testRequiredPrefixSurvivesBelowPreselectionCutoffWithMmapProfile() async throws {
+        var records: [TokenProfileRecord] = [record(1, "zo")]
+        var rootLogits: [TokenLogit] = [logit(1, 0.1)]
+        var fillerID: TokenID = 1000
+        for a in 0..<17 {
+            for b in 0..<16 {
+                let text = String(UnicodeScalar(UInt8(97 + a))) + String(UnicodeScalar(UInt8(97 + b)))
+                records.append(record(fillerID, text))
+                rootLogits.append(logit(fillerID, 5.0))
+                fillerID += 1
+            }
+        }
+
+        let engine = try ConstrainedGenerationEngine(
+            runtime: runtime([[]: rootLogits]),
+            profile: mmapProfile(records)
+        )
+        let candidates = try await engine.completions(
+            for: request(requiredPrefix: Array("z".utf8), maxTokens: 1)
+        )
+
+        XCTAssertEqual(candidates.map(\.text), ["zo"], "mmap required-prefix checks must match the in-memory path")
     }
 
     func testUnsatisfiableRequiredPrefixYieldsNothing() async throws {

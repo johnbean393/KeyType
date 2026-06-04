@@ -2997,3 +2997,21 @@ text. Both are now closed:
   at 128.6 total, precision 0.578, and wrong-show rate 0.180. Row drift had no visible changes or
   regressions; two already-suppressed positive rows now skip generation with `numericMidWordStem`
   instead of suppressing after 124 ms and 163 ms decodes.
+
+## ADR-086 — Use zero-copy mmap bytes for required-prefix checks
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Healed mid-word generation still scans the full logits vector while the required prefix
+  is unsatisfied, because the admissible token may rank far below the raw top-k slice. On mmap-backed
+  ACPF profiles, each admissibility check previously called `record(for:)`, which copied the token's
+  byte slice into a fresh array before comparing it with the required prefix. That allocation was
+  repeated across the vocabulary on the latency-critical path.
+- Decision: keep the public `AutocompleteProfile` contract unchanged, but specialize
+  `ConstrainedGenerationEngine` for `MmapAutocompleteProfile` when checking required-prefix
+  admissibility. The mmap path now uses `withRawBytes(for:)` to compare the token bytes in place;
+  in-memory and other profile implementations continue through the protocol method.
+- Consequences: Candidate admissibility, ranking, filtering, and display behavior are unchanged.
+  Release `KeyTypeBench edge` improved from p95 total 93.590 ms and p95 generation 121.599 ms to
+  p95 total 84.262 ms and p95 generation 99.083 ms. Quality stayed exactly the same at 128.6 total,
+  precision 0.578, and wrong-show rate 0.180. Row drift had no visible changes or regressions.
