@@ -96,6 +96,7 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         private let logitsByPath: [[TokenID]: [TokenLogit]]
         private var currentTokens: [TokenID] = []
         private(set) var batchCalls = 0
+        private(set) var batchRequests: [(anchor: [TokenID], suffixes: [[TokenID]])] = []
 
         init(
             logitsByPath: [[TokenID]: [TokenLogit]],
@@ -128,6 +129,7 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
 
         func anchoredLogitsBatch(anchor: [TokenID], suffixes: [[TokenID]]) async throws -> [[TokenLogit]] {
             batchCalls += 1
+            batchRequests.append((anchor: anchor, suffixes: suffixes))
             return suffixes.map { logitsByPath[anchor + $0] ?? [] }
         }
     }
@@ -783,5 +785,29 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         ))
 
         XCTAssertEqual(candidates.map(\.text), ["A", "B"], "no join logits → order unchanged")
+    }
+
+    func testSuffixLikelihoodRerankBatchesJoinProbesUnderSharedPrefix() async throws {
+        let profileRecords = profile([record(11, "x"), record(12, "y")])
+        let runtime = CountingBatchRuntime(logitsByPath: [
+            []: [logit(11, 1.0), logit(12, 0.9)],      // base order: x above y
+            [97, 120]: [logit(90, -5.0), logit(91, 0.0)], // after "ax": suffix "Z" is unlikely
+            [97, 121]: [logit(90, 0.0)]                // after "ay": suffix "Z" is likely
+        ])
+        let config = DecodingConfiguration(maxCandidates: 5, suffixRerankTokenCount: 1, suffixRerankWeight: 1.0)
+        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profileRecords, configuration: config)
+
+        let candidates = try await engine.completions(for: CompletionRequest(
+            context: TextFieldContext(beforeCursor: "a", afterCursor: "Z", target: Self.testTarget),
+            prompt: "",
+            mode: .prose,
+            maxCompletionTokens: 1,
+            maxDisplayWidth: 80
+        ))
+
+        XCTAssertEqual(candidates.map(\.text), ["y", "x"], "batched join scoring preserves rerank quality")
+        XCTAssertEqual(runtime.batchCalls, 2, "search and rerank should each use one batched call")
+        XCTAssertEqual(runtime.batchRequests[1].anchor, [97], "rerank should prefill the shared prefix once")
+        XCTAssertEqual(runtime.batchRequests[1].suffixes, [[120], [121]], "candidate-specific join tails stay exact")
     }
 }

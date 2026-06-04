@@ -97,6 +97,7 @@ row here.**
 | 075 | Name reusable benchmark harness separately from dated benchmark artifacts | evaluation |
 | 076 | Rename misleading hard benchmark suite to edge | evaluation |
 | 077 | Separate benchmark utility score from wrong-show risk | evaluation |
+| 078 | Batch FIM suffix-rerank probes by shared join prefix | performance |
 
 ---
 
@@ -2833,3 +2834,22 @@ text. Both are now closed:
   `suppressionAccuracy`, then compare quality, coverage, and latency among models that pass those
   guardrails. This avoids rewarding noisy models while also avoiding an arbitrary scalar penalty for
   every incorrect ghost-text suggestion.
+
+## ADR-078 — Batch FIM suffix-rerank probes by shared join prefix
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Mid-line FIM completions use a suffix-likelihood rerank to preserve join quality, but the
+  previous implementation scored each candidate's `prefix + middle` join anchor separately. On real
+  models that forced repeated full prefills during the rerank, dominating the FIM tail even though
+  most candidate join anchors share the same token prefix.
+- Decision: keep the exact rerank objective, but factor the token-level longest common prefix across
+  all candidate join anchors and score every `joinAnchor + suffixPrefix` probe as
+  `sharedPrefix + candidateTail + suffixPrefix`. Probes are issued by suffix depth so the runtime's
+  incremental frontier can keep candidate tails resident and decode only the next real suffix token.
+  If a branch cannot be tokenized or returns no usable join logits, its score remains unchanged as
+  before. The runtime's existing four-sequence default stays in place; larger rerank batches chunk
+  rather than widening the recurrent-state envelope for every completion.
+- Consequences: Mid-line reranking preserves candidate order semantics while avoiding repeated
+  shared-prefix prefills. The optimization depends only on token identity, not text slicing, so BPE
+  merges across `prefix + middle` boundaries remain exact.

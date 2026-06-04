@@ -371,47 +371,57 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         guard !suffixTokens.isEmpty else { return branches }
 
         let trimmedPrefix = Self.trimmingTrailingWhitespace(request.context.beforeCursor)
-
-        var result: [GenerationBranch] = []
-        result.reserveCapacity(branches.count)
-        for branch in branches {
+        var joinAnchors: [(branchIndex: Int, tokens: [TokenID])] = []
+        joinAnchors.reserveCapacity(branches.count)
+        for (index, branch) in branches.enumerated() {
             try Task.checkCancellation()
-            var copy = branch
-            copy.score = try await suffixJoinAdjustedScore(
-                branch: branch,
-                trimmedPrefix: trimmedPrefix,
-                suffixTokens: suffixTokens
-            )
-            result.append(copy)
+            guard let tokens = try? runtime.tokenizer.tokenize(trimmedPrefix + branch.text),
+                  !tokens.isEmpty
+            else { continue }
+            joinAnchors.append((branchIndex: index, tokens: tokens))
+        }
+        guard !joinAnchors.isEmpty else { return branches }
+
+        let sharedAnchor = Self.commonTokenPrefix(joinAnchors.map(\.tokens))
+        let candidateTails = joinAnchors.map { Array($0.tokens.dropFirst(sharedAnchor.count)) }
+        var totals = Array(repeating: Float(0), count: branches.count)
+        var counts = Array(repeating: 0, count: branches.count)
+        for suffixIndex in suffixTokens.indices {
+            try Task.checkCancellation()
+            let suffixPrefix = Array(suffixTokens.prefix(suffixIndex))
+            let probeSuffixes = candidateTails.map { $0 + suffixPrefix }
+            let frontier = try await runtime.anchoredLogitsBatch(anchor: sharedAnchor, suffixes: probeSuffixes)
+            guard frontier.count == joinAnchors.count else { return branches }
+
+            let target = suffixTokens[suffixIndex]
+            for (join, logits) in zip(joinAnchors, frontier) {
+                guard let logProbability = Self.logProbability(of: target, in: logits) else { continue }
+                totals[join.branchIndex] += logProbability
+                counts[join.branchIndex] += 1
+            }
+        }
+
+        var result = branches
+        for index in result.indices where counts[index] > 0 {
+            result[index].score += configuration.suffixRerankWeight * (totals[index] / Float(counts[index]))
         }
         return result
     }
 
-    /// The branch's score plus `suffixRerankWeight × meanJoinLogProb`, or the unchanged score when the
-    /// join cannot be measured (no anchor tokens, mismatched frontier, or no usable logits).
-    private func suffixJoinAdjustedScore(
-        branch: GenerationBranch,
-        trimmedPrefix: String,
-        suffixTokens: [TokenID]
-    ) async throws -> Float {
-        guard let joinAnchor = try? runtime.tokenizer.tokenize(trimmedPrefix + branch.text),
-              !joinAnchor.isEmpty
-        else { return branch.score }
-
-        // Probe each leading suffix token conditioned on prefix + middle + the earlier suffix tokens.
-        let probeSuffixes: [[TokenID]] = (0..<suffixTokens.count).map { Array(suffixTokens.prefix($0)) }
-        let frontier = try await runtime.anchoredLogitsBatch(anchor: joinAnchor, suffixes: probeSuffixes)
-        guard frontier.count == suffixTokens.count else { return branch.score }
-
-        var total: Float = 0
-        var counted = 0
-        for (index, logits) in frontier.enumerated() {
-            guard let logProbability = Self.logProbability(of: suffixTokens[index], in: logits) else { continue }
-            total += logProbability
-            counted += 1
+    static func commonTokenPrefix(_ sequences: [[TokenID]]) -> [TokenID] {
+        guard var prefix = sequences.first else { return [] }
+        for sequence in sequences.dropFirst() {
+            let count = Swift.min(prefix.count, sequence.count)
+            var index = 0
+            while index < count, prefix[index] == sequence[index] {
+                index += 1
+            }
+            if index < prefix.count {
+                prefix.removeSubrange(index..<prefix.count)
+            }
+            if prefix.isEmpty { break }
         }
-        guard counted > 0 else { return branch.score }
-        return branch.score + configuration.suffixRerankWeight * (total / Float(counted))
+        return prefix
     }
 
     /// Exact log-softmax probability of `token` from a full-vocabulary logits vector, or `nil` when
