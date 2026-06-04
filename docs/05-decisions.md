@@ -2935,3 +2935,28 @@ text. Both are now closed:
   latency fell from 296.7 ms to 124.2 ms. The trade-off is lower coverage for the rare correct FIM
   row (one edge row moved from correct insert to acceptable suppression). Future re-enablement must
   be per-target and benchmarked before adding an explicit enable override.
+
+## ADR-083 — Cap healed mid-word token slack with boundary guards
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: After suppressing default mid-line FIM work, healed mid-word requests remained a latency
+  tail because token healing widened the generation request by two tokens. Reducing that slack to
+  one token cut decode depth, but the naive change introduced visible quality regressions: `" Aga"`
+  could strip a raw `" Aga Khan"` branch into a glued `"Khan"` insert, and `" dera"` could prefer an
+  unfinished `"licious"` fragment over a generated branch that reached a word boundary.
+- Decision: healed mid-word requests now add one decode token rather than two while keeping display
+  width slack equal to the re-emitted stem. Add a prose/correction-only `MidWordBoundaryGuard` both
+  in-beam and in the final candidate filter to drop healed branches that continue the forced stem as
+  a fresh uppercase word. Add a reorder-only tie-breaker for healed mid-word candidates that prefers
+  already-generated closed current-word continuations over long open fragments at the token cap,
+  while treating possessive continuations such as `"Rockefeller's"` as closed.
+- Consequences: The optimization reduces decode work without accepting the known glued-insert
+  failures from the naive one-token budget. Release `KeyTypeBench edge` improved from p95 total
+  124.236 ms and p95 generation 143.338 ms to p95 total 116.904 ms and p95 generation 138.025 ms.
+  Quality improved from 124.3 to 126.6, precision when shown from 0.543 to 0.563, and wrong-show
+  rate from 0.197 to 0.187. Row drift versus the accepted baseline had no regressions and three
+  improvements: two wrong visible suggestions became correct inserts (`"dish-brown"` became
+  `"wood logs to"`, and `"on's"` became `"onal education system"`) and one wrong visible `"0"`
+  suggestion became acceptable suppression on a positive row. Short suffix-only completions still
+  keep their original ranking when no closed alternative exists.

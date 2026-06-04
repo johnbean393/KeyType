@@ -429,4 +429,41 @@ final class CandidateFilterTests: XCTestCase {
             .insertionUnsafe
         )
     }
+
+    // MARK: - Mid-word boundary net
+
+    func testHealedProperNounBoundaryIsSuppressed() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate(" Aga Khan"),
+                request: request(beforeCursor: "Count Fleet ran against Aga", requiredPrefixBytes: Array(" Aga".utf8))
+            ),
+            .insertionUnsafe
+        )
+    }
+
+    func testHealedLowercaseTokenSplitIsKept() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(
+                for: candidate(" gre at"),
+                request: request(beforeCursor: "this is gre", requiredPrefixBytes: Array(" gre".utf8))
+            )
+        )
+    }
+
+    func testHealedBoundaryNetSkippedInCodeMode() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(
+                for: candidate(" Aga Khan"),
+                request: request(
+                    beforeCursor: "let value = Aga",
+                    requiredPrefixBytes: Array(" Aga".utf8),
+                    mode: .code
+                )
+            )
+        )
+    }
 }

@@ -103,6 +103,9 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         if MidWordCharsetGuard.violates(completion: candidate.text, request: request) {
             return .insertionUnsafe
         }
+        if MidWordBoundaryGuard.violates(completion: candidate.text, request: request) {
+            return .insertionUnsafe
+        }
 
         // 7. Suffix-duplication net (the engine drops these too; this is the documented last gate).
         //    A mid-line / FIM completion that just reproduces the text already after the caret would

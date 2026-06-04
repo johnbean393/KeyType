@@ -131,6 +131,11 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
                         if MidWordCharsetGuard.violates(completion: child.text, request: request) {
                             continue
                         }
+                        // Drop healed mid-word branches that complete the forced stem as a separate
+                        // word and would display as a glued insert after `MidWordHealing.strip`.
+                        if MidWordBoundaryGuard.violates(completion: child.text, request: request) {
+                            continue
+                        }
                         switch profile.stopBehavior(for: id) {
                         case .stopAndDisplay:
                             // The sentence-end flag is context-free; only stop on a *real*
@@ -177,7 +182,10 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         // the runtime returns no logits (every stub-backed test). See ADR-057.
         let reranked = try await rerankBySuffixLikelihood(surviving, request: request)
 
-        return makeCandidates(from: reranked, mode: request.mode)
+        return rerankHealedMidWordClosedContinuations(
+            makeCandidates(from: reranked, mode: request.mode),
+            request: request
+        )
     }
 
     /// Minimum grapheme length a salvaged (truncated) middle must have to be worth showing. Mirrors
@@ -465,5 +473,60 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
                 mode: mode
             )
         }
+    }
+
+    /// Reorder-only tie-break for healed mid-word requests. If a high-scoring branch leaves a long
+    /// current-word fragment open at the token cap (`" dera"` -> `"licious"`), prefer an already
+    /// generated branch that reaches a word boundary (`" deranged and"`). Short suffixes stay put so
+    /// useful completions such as `"tion"` are not hidden when they are the best available option.
+    private func rerankHealedMidWordClosedContinuations(
+        _ candidates: [CompletionCandidate],
+        request: CompletionRequest
+    ) -> [CompletionCandidate] {
+        guard candidates.count > 1 else { return candidates }
+        guard request.mode == .prose || request.mode == .correction else { return candidates }
+        guard !request.requiredPrefixBytes.isEmpty else { return candidates }
+        guard !CurrentWordTypoGuard.trailingWord(of: request.context.beforeCursor).isEmpty else {
+            return candidates
+        }
+
+        let heal = String(decoding: request.requiredPrefixBytes, as: UTF8.self)
+        let classes = candidates.map { Self.midWordContinuationClass($0.text, heal: heal) }
+        guard classes.contains(.closed) else { return candidates }
+        guard classes.contains(.longOpen) else { return candidates }
+
+        return zip(candidates.indices, candidates).sorted { lhs, rhs in
+            let lhsClass = classes[lhs.0]
+            let rhsClass = classes[rhs.0]
+            if lhsClass.priority != rhsClass.priority {
+                return lhsClass.priority > rhsClass.priority
+            }
+            return lhs.0 < rhs.0
+        }.map(\.1)
+    }
+
+    private enum MidWordContinuationClass: Equatable {
+        case closed
+        case shortOpen
+        case longOpen
+        case boundaryOrEmpty
+
+        var priority: Int {
+            switch self {
+            case .closed: return 3
+            case .shortOpen: return 2
+            case .boundaryOrEmpty: return 1
+            case .longOpen: return 0
+            }
+        }
+    }
+
+    private static func midWordContinuationClass(_ text: String, heal: String) -> MidWordContinuationClass {
+        let continuation = MidWordHealing.strip(text, heal: heal)
+        let lead = CurrentWordTypoGuard.leadingWord(of: continuation)
+        guard !lead.isEmpty else { return .boundaryOrEmpty }
+        if lead.count < continuation.count { return .closed }
+        if lead.contains("'") || lead.contains("\u{2019}") { return .closed }
+        return lead.count >= 5 ? .longOpen : .shortOpen
     }
 }

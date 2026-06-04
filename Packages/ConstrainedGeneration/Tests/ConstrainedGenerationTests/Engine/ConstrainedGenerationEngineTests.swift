@@ -695,6 +695,79 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         XCTAssertEqual(fixed.map(\.text), [" collaboration "], "healed nonsense dropped, real word kept")
     }
 
+    func testHealedMidWordBoundaryBranchDroppedInBeam() async throws {
+        let records = [
+            record(1, " Aga"), record(20, " Khan"), record(21, "inst"), record(30, " a field")
+        ]
+        let logits: [[TokenID]: [TokenLogit]] = [
+            []: [logit(1, 2.0)],
+            [1]: [logit(20, 2.0), logit(21, 1.0)],
+            [1, 21]: [logit(30, 2.0)]
+        ]
+        let healedRequest = CompletionRequest(
+            context: TextFieldContext(
+                beforeCursor: "Count Fleet next entered the Withers Stakes. Aga",
+                afterCursor: "",
+                target: Self.testTarget
+            ),
+            prompt: "",
+            requiredPrefixBytes: Array(" Aga".utf8),
+            mode: .prose,
+            maxCompletionTokens: 3,
+            maxDisplayWidth: 80
+        )
+
+        let engine = ConstrainedGenerationEngine(runtime: runtime(logits), profile: profile(records))
+        let candidates = try await engine.completions(for: healedRequest)
+        XCTAssertEqual(candidates.map(\.text), [" Against a field"])
+    }
+
+    func testHealedMidWordLongOpenFragmentDemotedBehindClosedWord() async throws {
+        let records = [
+            record(1, " dera"), record(20, "licious"), record(21, "nged"), record(30, " and")
+        ]
+        let logits: [[TokenID]: [TokenLogit]] = [
+            []: [logit(1, 2.0)],
+            [1]: [logit(20, 3.0), logit(21, 1.0)],
+            [1, 21]: [logit(30, 1.0)]
+        ]
+        let healedRequest = CompletionRequest(
+            context: TextFieldContext(beforeCursor: "The character was dera", afterCursor: "", target: Self.testTarget),
+            prompt: "",
+            requiredPrefixBytes: Array(" dera".utf8),
+            mode: .prose,
+            maxCompletionTokens: 3,
+            maxDisplayWidth: 80
+        )
+
+        let engine = ConstrainedGenerationEngine(runtime: runtime(logits), profile: profile(records))
+        let candidates = try await engine.completions(for: healedRequest)
+        XCTAssertEqual(Array(candidates.map(\.text).prefix(2)), [" deranged and", " deralicious"])
+    }
+
+    func testHealedMidWordPossessiveContinuationKeepsRank() async throws {
+        let records = [
+            record(1, " Rocke"), record(20, "feller's"), record(21, "y"), record(30, " and William")
+        ]
+        let logits: [[TokenID]: [TokenLogit]] = [
+            []: [logit(1, 2.0)],
+            [1]: [logit(20, 3.0), logit(21, 1.0)],
+            [1, 21]: [logit(30, 1.0)]
+        ]
+        let healedRequest = CompletionRequest(
+            context: TextFieldContext(beforeCursor: "The family name was Rocke", afterCursor: "", target: Self.testTarget),
+            prompt: "",
+            requiredPrefixBytes: Array(" Rocke".utf8),
+            mode: .prose,
+            maxCompletionTokens: 3,
+            maxDisplayWidth: 80
+        )
+
+        let engine = ConstrainedGenerationEngine(runtime: runtime(logits), profile: profile(records))
+        let candidates = try await engine.completions(for: healedRequest)
+        XCTAssertEqual(Array(candidates.map(\.text).prefix(2)), [" Rockefeller's", " Rockey and William"])
+    }
+
     // MARK: - Suffix-overlap truncation (ADR-057)
 
     /// A branch that emits a genuine middle and then runs into the suffix is salvaged: the engine

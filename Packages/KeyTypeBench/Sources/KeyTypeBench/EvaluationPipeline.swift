@@ -198,12 +198,13 @@ public final class ProductionCompletionEvaluator {
 
         let requiredPrefixBytes = heal.map { Array($0.heal.utf8) } ?? []
         let healSlack = heal?.heal.count ?? 0
+        let healExtraTokens = healSlack > 0 ? 1 : 0
         let request = CompletionRequest(
             context: context,
             prompt: promptResult.prompt,
             requiredPrefixBytes: requiredPrefixBytes,
             mode: policy.completionMode,
-            maxCompletionTokens: (benchmarkCase.limits?.maxCompletionTokens ?? defaultMaxCompletionTokens) + (healSlack > 0 ? 2 : 0),
+            maxCompletionTokens: (benchmarkCase.limits?.maxCompletionTokens ?? defaultMaxCompletionTokens) + healExtraTokens,
             maxDisplayWidth: (benchmarkCase.limits?.maxDisplayWidth ?? defaultMaxDisplayWidth) + healSlack
         )
 

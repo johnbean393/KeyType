@@ -563,18 +563,18 @@ final class CompletionController {
             includeEnvironmentContext: policy.includesEnvironmentContext
         )
         let requiredPrefixBytes = heal.map { Array($0.heal.utf8) } ?? []
-        // The re-emitted stem consumes part of the token/width budget, so widen both by the heal's
-        // length to preserve the continuation's allowance.
+        // The re-emitted stem consumes display width and may consume one token before the usable
+        // suffix starts. Keep the exact width slack, but cap token slack to avoid slow mid-word tails.
         let healSlack = heal?.heal.count ?? 0
-        // Completion length is user-configurable (Settings) and maps to the decoder's token/width
-        // budget; token healing widens it at runtime as before.
+        let healExtraTokens = healSlack > 0 ? 1 : 0
+        // Completion length is user-configurable (Settings) and maps to the decoder's token/width budget.
         let length = settings.completionLength
         let request = CompletionRequest(
             context: context,
             prompt: promptResult.prompt,
             requiredPrefixBytes: requiredPrefixBytes,
             mode: policy.completionMode,
-            maxCompletionTokens: length.maxCompletionTokens + (healSlack > 0 ? 2 : 0),
+            maxCompletionTokens: length.maxCompletionTokens + healExtraTokens,
             maxDisplayWidth: length.maxDisplayWidth + healSlack
         )
         rememberFullPromptDebug(
