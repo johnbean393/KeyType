@@ -21,6 +21,7 @@ A target is matched by **bundle identifier**, **domain** (for browser web fields
 | Field | Effect |
 | --- | --- |
 | `completionsDisabled` | Suppress all completions here (`SuppressionReason.completionsDisabled`). |
+| `midLineCompletionsEnabled` | Explicitly opt this target into after-cursor / FIM completion. |
 | `midLineCompletionsDisabled` | Only complete at end-of-line (no FIM mid-line). |
 | `tabShortcutsDisabled` | Don't bind Tab/Shift+Tab — leave native Tab behavior intact. |
 | `trainingDataCollectionDisabled` | Never record writing history from this target. |
@@ -63,3 +64,6 @@ A target is matched by **bundle identifier**, **domain** (for browser web fields
 Overrides should be **conservative and legible**: each one fixes an observed, reproducible problem
 in a named app. Don't add speculative tuning. When in doubt, disabling completion in a hostile field
 (`completionsDisabled`) is consistent with *prefer suppression to a wrong suggestion*.
+
+Mid-line completion is disabled by default (ADR-082). Add `midLineCompletionsEnabled` only after a
+target-specific benchmark/log review shows after-cursor suggestions are both useful and low risk.

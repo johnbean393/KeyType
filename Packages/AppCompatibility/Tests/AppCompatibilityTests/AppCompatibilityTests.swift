@@ -21,6 +21,7 @@ final class AppCompatibilityTests: XCTestCase {
 
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertFalse(policy.allowsMidLineCompletion)
         XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertTrue(policy.insertionRequiresBackspaceAfterPaste)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
@@ -87,13 +88,25 @@ final class AppCompatibilityTests: XCTestCase {
 
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertTrue(policy.allowsTabAcceptance)
-        XCTAssertTrue(policy.allowsMidLineCompletion)
+        XCTAssertFalse(policy.allowsMidLineCompletion)
         XCTAssertFalse(policy.includesEnvironmentContext)
         XCTAssertEqual(policy.overlayPreference, .inline)
         XCTAssertEqual(policy.completionMode, .prose)
         XCTAssertEqual(policy.customInstructions, [
             "Continue only the current Obsidian note at the cursor. Preserve Markdown style; avoid vault chrome, backlinks, and file-tree text."
         ])
+    }
+
+    func testOverrideCanExplicitlyEnableMidLineCompletion() {
+        let target = AppTarget(bundleIdentifier: "com.example.proven-midline", appName: "Proven")
+        let context = TextFieldContext(beforeCursor: "before", afterCursor: "after", target: target)
+        let store = AppCompatibilityStore(overrides: [
+            TargetOverride(bundleIdentifier: target.bundleIdentifier, midLineCompletionsEnabled: true)
+        ])
+
+        let policy = store.policy(for: context)
+
+        XCTAssertTrue(policy.allowsMidLineCompletion)
     }
 
     func testSlackNativeUsesTextMirrorWithVerticalAlignmentFix() {

@@ -5,6 +5,7 @@ public struct TargetOverride: Equatable {
     public var bundleIdentifier: String?
     public var domain: String?
     public var completionsDisabled: Bool
+    public var midLineCompletionsEnabled: Bool
     public var midLineCompletionsDisabled: Bool
     public var tabShortcutsDisabled: Bool
     public var trainingDataCollectionDisabled: Bool
@@ -27,6 +28,7 @@ public struct TargetOverride: Equatable {
         bundleIdentifier: String? = nil,
         domain: String? = nil,
         completionsDisabled: Bool = false,
+        midLineCompletionsEnabled: Bool = false,
         midLineCompletionsDisabled: Bool = false,
         tabShortcutsDisabled: Bool = false,
         trainingDataCollectionDisabled: Bool = false,
@@ -45,6 +47,7 @@ public struct TargetOverride: Equatable {
         self.bundleIdentifier = bundleIdentifier
         self.domain = domain.map(Self.normalizedDomain)
         self.completionsDisabled = completionsDisabled
+        self.midLineCompletionsEnabled = midLineCompletionsEnabled
         self.midLineCompletionsDisabled = midLineCompletionsDisabled
         self.tabShortcutsDisabled = tabShortcutsDisabled
         self.trainingDataCollectionDisabled = trainingDataCollectionDisabled
@@ -65,6 +68,7 @@ public struct TargetOverride: Equatable {
         lhs.bundleIdentifier == rhs.bundleIdentifier
             && lhs.domain == rhs.domain
             && lhs.completionsDisabled == rhs.completionsDisabled
+            && lhs.midLineCompletionsEnabled == rhs.midLineCompletionsEnabled
             && lhs.midLineCompletionsDisabled == rhs.midLineCompletionsDisabled
             && lhs.tabShortcutsDisabled == rhs.tabShortcutsDisabled
             && lhs.trainingDataCollectionDisabled == rhs.trainingDataCollectionDisabled

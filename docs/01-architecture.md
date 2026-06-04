@@ -73,8 +73,8 @@ The on-screen caret rectangle is resolved by `AXCaretGeometryResolver`, **ported
 ### `Prompting` — sectioned budgeted prompt ✅
 See `02-prompting.md`. Implements `PromptSection`, priority/min/max budgets, truncation modes,
 `PromptBuilder` (base-continuation + ChatML), a **tokenizer-backed** counter (via `ModelRuntime`,
-ADR-008) with the approximate counter as a fallback, caret-boundary sanitization, native FIM, and
-per-app environment-context gating + personalization wiring (ADR-017/023).
+ADR-008) with the approximate counter as a fallback, caret-boundary sanitization, policy-gated
+native FIM, and per-app environment-context gating + personalization wiring (ADR-017/023/082).
 
 ### `ModelRuntime` — local LLM ✅
 `LlamaModelRuntime` wraps **llama.cpp** (prebuilt xcframework, ADR-007): GGUF load,

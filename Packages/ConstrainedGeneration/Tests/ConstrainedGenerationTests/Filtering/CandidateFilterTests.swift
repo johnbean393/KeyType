@@ -48,6 +48,12 @@ final class CandidateFilterTests: XCTestCase {
         CompletionCandidate(text: text, tokenIDs: tokenIDs, displayWidth: displayWidth)
     }
 
+    private func midLineEnabledFilter() -> DefaultCandidateFilter {
+        DefaultCandidateFilter(compatibilityStore: AppCompatibilityStore(overrides: [
+            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, midLineCompletionsEnabled: true)
+        ]))
+    }
+
     // MARK: - Pass-through
 
     func testAcceptsAValidCandidate() {
@@ -66,10 +72,7 @@ final class CandidateFilterTests: XCTestCase {
     }
 
     func testMidLineCompletionDisabledWhenTextFollowsCursor() {
-        let store = AppCompatibilityStore(overrides: [
-            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, midLineCompletionsDisabled: true)
-        ])
-        let filter = DefaultCandidateFilter(compatibilityStore: store)
+        let filter = DefaultCandidateFilter()
         // Text after the cursor → mid-line → suppressed.
         XCTAssertEqual(
             filter.suppressionReason(for: candidate(" world"), request: request(afterCursor: "tail")),
@@ -221,7 +224,7 @@ final class CandidateFilterTests: XCTestCase {
     // MARK: - Suffix-duplication net
 
     func testSuppressesCompletionDuplicatingAfterCursor() {
-        let filter = DefaultCandidateFilter()
+        let filter = midLineEnabledFilter()
         // Mid-line caret: the model copies the text already after the cursor.
         XCTAssertEqual(
             filter.suppressionReason(
@@ -236,7 +239,7 @@ final class CandidateFilterTests: XCTestCase {
     }
 
     func testSuppressesMidWordSuffixCopyWithGarbagePrefix() {
-        let filter = DefaultCandidateFilter()
+        let filter = midLineEnabledFilter()
         XCTAssertEqual(
             filter.suppressionReason(
                 for: candidate("**formance to the RTX 5070, so it's"),
@@ -250,7 +253,7 @@ final class CandidateFilterTests: XCTestCase {
     }
 
     func testKeepsGenuineMidLineCompletion() {
-        let filter = DefaultCandidateFilter()
+        let filter = midLineEnabledFilter()
         XCTAssertNil(
             filter.suppressionReason(
                 for: candidate("like"),

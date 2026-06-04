@@ -35,6 +35,9 @@ public struct AppCompatibilityStore {
             if override.completionsDisabled {
                 policy.isCompletionEnabled = false
             }
+            if override.midLineCompletionsEnabled {
+                policy.allowsMidLineCompletion = true
+            }
             if override.midLineCompletionsDisabled {
                 policy.allowsMidLineCompletion = false
             }

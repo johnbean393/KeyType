@@ -90,6 +90,12 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
         TokenLogit(tokenID: id, logit: value)
     }
 
+    private func midLineEnabledStore() -> AppCompatibilityStore {
+        AppCompatibilityStore(overrides: [
+            TargetOverride(bundleIdentifier: Self.testTarget.bundleIdentifier, midLineCompletionsEnabled: true)
+        ])
+    }
+
     private final class CountingBatchRuntime: LocalModelRuntime {
         let metadata: ModelMetadata
         let tokenizer: ModelTokenizing = UTF8FallbackTokenizer()
@@ -702,7 +708,11 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
             [1]: [logit(11, 1.0)],
             [1, 11]: [logit(12, 1.0)]
         ])
-        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profileRecords)
+        let engine = ConstrainedGenerationEngine(
+            runtime: runtime,
+            profile: profileRecords,
+            compatibilityStore: midLineEnabledStore()
+        )
 
         // Field: "The capital of |the largest city". The model regurgitates the suffix after "Paris ".
         let candidates = try await engine.completions(for: CompletionRequest(
@@ -727,7 +737,11 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
             [1]: [logit(2, 1.0)],
             [1, 2]: [logit(3, 1.0)]
         ])
-        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profileRecords)
+        let engine = ConstrainedGenerationEngine(
+            runtime: runtime,
+            profile: profileRecords,
+            compatibilityStore: midLineEnabledStore()
+        )
 
         let candidates = try await engine.completions(for: CompletionRequest(
             context: TextFieldContext(beforeCursor: "The capital of ", afterCursor: "the largest city", target: Self.testTarget),
@@ -752,7 +766,12 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
             [66]: [logit(90, 0.0)]                     // after "B": the suffix token 'Z' is likely
         ])
         let config = DecodingConfiguration(maxCandidates: 5, suffixRerankTokenCount: 1, suffixRerankWeight: 1.0)
-        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profileRecords, configuration: config)
+        let engine = ConstrainedGenerationEngine(
+            runtime: runtime,
+            profile: profileRecords,
+            compatibilityStore: midLineEnabledStore(),
+            configuration: config
+        )
 
         let candidates = try await engine.completions(for: CompletionRequest(
             context: TextFieldContext(beforeCursor: "", afterCursor: "Z", target: Self.testTarget),
@@ -774,7 +793,12 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
             []: [logit(65, 1.0), logit(66, 0.9)]
         ])
         let config = DecodingConfiguration(maxCandidates: 5, suffixRerankTokenCount: 1, suffixRerankWeight: 1.0)
-        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profileRecords, configuration: config)
+        let engine = ConstrainedGenerationEngine(
+            runtime: runtime,
+            profile: profileRecords,
+            compatibilityStore: midLineEnabledStore(),
+            configuration: config
+        )
 
         let candidates = try await engine.completions(for: CompletionRequest(
             context: TextFieldContext(beforeCursor: "", afterCursor: "Z", target: Self.testTarget),
@@ -795,7 +819,12 @@ final class ConstrainedGenerationEngineTests: XCTestCase {
             [97, 121]: [logit(90, 0.0)]                // after "ay": suffix "Z" is likely
         ])
         let config = DecodingConfiguration(maxCandidates: 5, suffixRerankTokenCount: 1, suffixRerankWeight: 1.0)
-        let engine = ConstrainedGenerationEngine(runtime: runtime, profile: profileRecords, configuration: config)
+        let engine = ConstrainedGenerationEngine(
+            runtime: runtime,
+            profile: profileRecords,
+            compatibilityStore: midLineEnabledStore(),
+            configuration: config
+        )
 
         let candidates = try await engine.completions(for: CompletionRequest(
             context: TextFieldContext(beforeCursor: "a", afterCursor: "Z", target: Self.testTarget),

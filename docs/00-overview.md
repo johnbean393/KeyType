@@ -75,7 +75,8 @@ constrained decode → filter → overlay → Tab-insert all work against live m
   populate a full `TextFieldContext` (before/after, selection, caret rect, EOL, RTL, app,
   window, browser domain, labels, language). See ADR-006.
 - ✅ `Prompting` — sectioned/budgeted builder with a **tokenizer-backed** counter, caret-boundary
-  sanitization, native FIM for mid-line, and per-app environment-context gating (ADR-008/017).
+  sanitization, opt-in native FIM for proven mid-line targets, and per-app environment-context
+  gating (ADR-008/017/082).
 - ✅ `ModelRuntime` — `LlamaModelRuntime` over the prebuilt llama.cpp xcframework: GGUF load,
   tokenize/detokenize, batch decode, next-token logits, EOS/EOT, and KV prefix reuse via
   snapshot/restore. `StubModelRuntime` is retained for tests (ADR-007/018).

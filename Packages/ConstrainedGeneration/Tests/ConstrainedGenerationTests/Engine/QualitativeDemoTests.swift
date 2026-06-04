@@ -142,9 +142,10 @@ final class QualitativeDemoTests: XCTestCase {
     }
 
     /// Production-like inputs the old demos never covered: trailing whitespace at the caret,
-    /// mid-line completion (non-empty after-cursor), and suffix collisions. Mirrors what the live
-    /// app captures, and applies the same `CaretBoundary.reconcile` the app uses so the printed
-    /// "field" column is what the user would actually see inserted. FIM is enabled. See ADR-017.
+    /// after-cursor default suppression, and suffix collisions. Mirrors what the live app captures,
+    /// and applies the same `CaretBoundary.reconcile` the app uses so the printed "field" column is
+    /// what the user would actually see inserted. FIM is configured, but AppCompatibility leaves
+    /// mid-line completion off by default. See ADR-082.
     func testPrintProductionLikeInputs() async throws {
         let (engine, _) = try loadEngine(
             configuration: DecodingConfiguration(maxCandidates: 5, enableFillInMiddle: true)
@@ -161,10 +162,10 @@ final class QualitativeDemoTests: XCTestCase {
             ("def add(a, b):\n    return ", "\n")       // mid-line code: fill "a + b"
         ]
 
-        print("\n================ KeyType production-like inputs (FIM on) ================")
+        print("\n================ KeyType production-like inputs (default mid-line policy) ================")
         for (before, after) in cases {
             // The prompt string mimics the PromptBuilder boundary fix (trailing-trimmed prefix);
-            // FIM mid-line ignores it and assembles from context.
+            // an opt-in FIM target would ignore it and assemble from context.
             let promptText = String(before.reversed().drop { $0.isWhitespace }.reversed())
             let request = CompletionRequest(
                 context: TextFieldContext(beforeCursor: before, afterCursor: after, target: target),

@@ -47,7 +47,7 @@ reads `SUPPRESS(x)`, find `x` here and check whether the gate is firing correctl
 | --- | --- |
 | `secureFieldExcluded` | Password/secure field — never complete. `AppCompatibility` `secureFieldExclusion`. |
 | `completionsDisabled` | App/domain disabled via `TargetOverride.completionsDisabled`. |
-| `midLineCompletionDisabled` | Mid-line gated off for this target (`midLineCompletionsDisabled`). |
+| `midLineCompletionDisabled` | Mid-line gated off by default or for this target (`midLineCompletionsDisabled`). |
 | `tabShortcutsDisabled` | Tab acceptance disabled for this target. |
 | `invalidUTF8` | Candidate bytes don't decode — dropped in the engine / filter. |
 | `requiredPrefixNotSatisfied` | Doesn't extend the current word's required prefix (ADR-025). |

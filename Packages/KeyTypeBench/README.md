@@ -7,7 +7,7 @@ The runner evaluates the production-like path:
 1. Resolve `AppCompatibilityStore` policy.
 2. Apply mid-word healing.
 3. Build the production prompt with `PromptBuilder` and the model tokenizer.
-4. Decode through `ConstrainedGenerationEngine` with FIM enabled.
+4. Decode through `ConstrainedGenerationEngine` with production app-compatibility policy.
 5. Run `DefaultCandidateFilter`.
 6. Strip healed stems and reconcile the caret boundary.
 7. Score the final shown text or suppression reason.

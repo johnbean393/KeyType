@@ -1,3 +1,4 @@
+import AppCompatibility
 import AutocompleteCore
 @testable import ConstrainedGeneration
 import LlamaModelRuntime
@@ -13,9 +14,10 @@ import XCTest
 ///      `PromptBuilder` output (instruction header + bracketed metadata sections). This probe runs
 ///      BOTH through the same loaded model so the gap is visible side by side.
 ///
-///   2. Is native fill-in-the-middle viable on our Qwen3.5-2B-Base GGUF for mid-line completion?
-///      The vocab ships `<|fim_prefix|>` / `<|fim_suffix|>` / `<|fim_middle|>`; this probe encodes
-///      them as real control tokens (via `tokenizeAllowingSpecial`) and greedily decodes the middle.
+///   2. Is opt-in native fill-in-the-middle viable on our Qwen3.5-2B-Base GGUF for mid-line
+///      completion? The vocab ships `<|fim_prefix|>` / `<|fim_suffix|>` / `<|fim_middle|>`; this
+///      probe encodes them as real control tokens (via `tokenizeAllowingSpecial`) and greedily
+///      decodes the middle.
 ///
 /// Skip-gated on the GGUF + ACPF profile being present. Run with:
 ///   swift test --package-path Packages/ConstrainedGeneration \
@@ -45,9 +47,15 @@ final class PromptStrategyProbeTests: XCTestCase {
         _ profile: MmapAutocompleteProfile,
         fim: Bool = false
     ) -> ConstrainedGenerationEngine {
-        ConstrainedGenerationEngine(
+        let compatibilityStore = fim
+            ? AppCompatibilityStore(overrides: [
+                TargetOverride(bundleIdentifier: target.bundleIdentifier, midLineCompletionsEnabled: true)
+            ])
+            : AppCompatibilityStore()
+        return ConstrainedGenerationEngine(
             runtime: runtime,
             profile: profile,
+            compatibilityStore: compatibilityStore,
             configuration: DecodingConfiguration(maxCandidates: 5, enableFillInMiddle: fim)
         )
     }
@@ -120,8 +128,8 @@ final class PromptStrategyProbeTests: XCTestCase {
             ("Please ", " me know if you have any questions.", "let"),
             ("def add(a, b):\n    return ", "\n", "a + b")
         ]
-        print("\n---- MID-LINE (fill) : base engine vs native FIM (greedy + engine) ----")
-        print("(FIM engine path now always applies: context windowing + suffix-overlap truncation + suffix-likelihood rerank — ADR-057)")
+        print("\n---- MID-LINE (fill) : default policy vs opt-in native FIM (greedy + engine) ----")
+        print("(default production policy suppresses after-cursor; opt-in FIM applies context windowing + suffix-overlap truncation + suffix-likelihood rerank)")
         for (before, after, want) in midLine {
             let prodPrompt = productionPrompt(before: before, after: after)
             let prodEngine = try await engineTop(engine, prompt: prodPrompt, before: before, after: after, maxNew: maxNew)
@@ -131,7 +139,13 @@ final class PromptStrategyProbeTests: XCTestCase {
             // suffix overlap, and reranks by suffix-join likelihood) + reconcile. Print the top two
             // candidates so the rerank's ordering is visible.
             let fimRequest = CompletionRequest(
-                context: TextFieldContext(beforeCursor: before, afterCursor: after, target: target, detectedLanguage: "en"),
+                context: TextFieldContext(
+                    beforeCursor: before,
+                    afterCursor: after,
+                    geometry: TextFieldGeometry(isAtEndOfLine: false),
+                    target: target,
+                    detectedLanguage: "en"
+                ),
                 prompt: prodPrompt,
                 mode: .prose,
                 maxCompletionTokens: maxNew,
@@ -143,9 +157,9 @@ final class PromptStrategyProbeTests: XCTestCase {
             }
 
             print("\nBEFORE: \(disp(before))   AFTER: \(disp(after))   (want ≈ \(disp(want)))")
-            print("  (A) base engine (collides w/ suffix)   : \(disp(prodEngine))")
-            print("  (C) native FIM → greedy                : \(disp(fimGreedy))")
-            print("  (C) native FIM → engine (top-2, reconciled): \(fimRanked.isEmpty ? "(suppressed)" : fimRanked.joined(separator: ", "))")
+            print("  (A) default policy → engine                : \(disp(prodEngine))")
+            print("  (C) opt-in native FIM → greedy             : \(disp(fimGreedy))")
+            print("  (C) opt-in native FIM → engine (top-2, reconciled): \(fimRanked.isEmpty ? "(suppressed)" : fimRanked.joined(separator: ", "))")
         }
         print("\n===============================================================\n")
     }

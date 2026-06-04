@@ -65,9 +65,15 @@ leading newline artifact, and — when the real text already ends in whitespace 
 leading separator space so the field never gets a double space. The controller stores the
 *reconciled* candidate, so the overlay and the Tab/Shift+Tab accept paths agree.
 
-## Mid-line: native fill-in-the-middle (ADR-017)
+## Mid-line: suppressed by default; native fill-in-the-middle is opt-in (ADR-017/082)
 
-When the caret has non-empty `afterCursor`, base continuation tends to duplicate the suffix
+When the caret has non-empty `afterCursor`, KeyType suppresses by default. Current production and
+edge-benchmark data show mid-line/FIM suggestions are more often wrong than useful, and the path is a
+large latency-tail contributor. This follows the product rule: no suggestion is better than a wrong
+one.
+
+For targets that explicitly opt in through `AppCompatibility`, native FIM is still available. Base
+continuation tends to duplicate the suffix
 (`"The capital of " | "is Paris."` → `" France is Paris."`). For models with trained FIM tokens
 (`<|fim_prefix|>` / `<|fim_suffix|>` / `<|fim_middle|>` each a single vocab token), the
 `ConstrainedGenerationEngine` instead assembles, from the raw context (not the scaffolded prompt):
@@ -76,12 +82,12 @@ When the caret has non-empty `afterCursor`, base continuation tends to duplicate
 <|fim_prefix|>{trailing-trimmed prefix}<|fim_suffix|>{suffix}<|fim_middle|>
 ```
 
-This is gated by `DecodingConfiguration.enableFillInMiddle` and falls back to base continuation when
-disabled, when there is no suffix, or when the markers don't resolve to single tokens on the loaded
-model. The FIM markers are control tokens (suppressed by the ACPF profile) so they never leak into
-output, and `CaretBoundary.reconcile` strips the leading newline FIM tends to prepend. Enabled in
-the app after the on-device `PromptStrategyProbeTests` confirmed it beats the base path on mid-line
-cases.
+This is gated by `CompletionPolicy.allowsMidLineCompletion`,
+`DecodingConfiguration.enableFillInMiddle`, and visual mid-line geometry. It falls back to base
+continuation when disabled, when there is no suffix, when the caret is visually at end of line, or
+when the markers don't resolve to single tokens on the loaded model. The FIM markers are control
+tokens (suppressed by the ACPF profile) so they never leak into output, and
+`CaretBoundary.reconcile` strips the leading newline FIM tends to prepend.
 
 Three always-on FIM-quality behaviors then refine mid-line output (ADR-057): the raw prefix/suffix
 are **windowed toward the caret** (`fimMaxPrefixTokens`/`fimMaxSuffixTokens`) so a long body stays
@@ -182,4 +188,3 @@ Measure these as the prompt/generation evolve:
 - `afterCursor` is head-truncated (keeps text nearest the caret).
 - Section ordering is stable and `beforeCursor` is always last in base mode.
 - Optional sections (clipboard/OCR/history) omitted cleanly when empty.
-

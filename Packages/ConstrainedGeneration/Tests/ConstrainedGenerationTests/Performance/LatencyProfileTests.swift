@@ -130,17 +130,17 @@ final class LatencyProfileTests: XCTestCase {
         let (raw, profile) = try load()
         let target = AppTarget(bundleIdentifier: "com.apple.TextEdit", appName: "TextEdit", windowTitle: "Untitled")
 
-        // Cases mirror the live app: prose append + a mid-line fill (FIM path). beforeCursor lengths
-        // span a realistic short/medium/long spread.
+        // Cases mirror the live app: prose append plus a default-policy after-cursor suppression.
+        // beforeCursor lengths span a realistic short/medium/long spread.
         let cases: [(name: String, before: String, after: String)] = [
             ("short append", "Thanks so much for your ", ""),
             ("medium append", "I am writing to let you know that the meeting scheduled for tomorrow ", ""),
             ("long append (paragraph)", Self.paragraph, ""),
-            ("mid-line FIM", "The capital of ", "is one of the largest cities in Europe.")
+            ("mid-line default suppression", "The capital of ", "is one of the largest cities in Europe.")
         ]
 
         print("\n================ KeyType production latency profile ================")
-        print("config: branchWidth=\(DecodingConfiguration().branchWidth) maxTokens=4 maxWidth=60 FIM=on\n")
+        print("config: branchWidth=\(DecodingConfiguration().branchWidth) maxTokens=4 maxWidth=60 FIM=configured policy=mid-line-off\n")
 
         for c in cases {
             let runtime = ProfilingRuntime(raw)

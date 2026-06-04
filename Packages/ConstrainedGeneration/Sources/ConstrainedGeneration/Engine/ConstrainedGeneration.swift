@@ -246,7 +246,10 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
     /// continuation — when FIM is disabled, there is no suffix, or the model's vocab does not encode
     /// the markers as single tokens.
     private func fillInMiddlePrompt(for request: CompletionRequest) throws -> (tokens: [TokenID], tail: String)? {
-        guard configuration.enableFillInMiddle, !request.context.afterCursor.isEmpty else { return nil }
+        guard configuration.enableFillInMiddle,
+              !request.context.afterCursor.isEmpty,
+              !request.context.geometry.isAtEndOfLine
+        else { return nil }
         let tokenizer = runtime.tokenizer
         let pre = try tokenizer.tokenizeAllowingSpecial(Self.fimPrefixMarker)
         let suf = try tokenizer.tokenizeAllowingSpecial(Self.fimSuffixMarker)

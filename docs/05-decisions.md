@@ -100,6 +100,8 @@ row here.**
 | 078 | Batch FIM suffix-rerank probes by shared join prefix | performance |
 | 079 | Tighten adaptive debounce tiers after release latency cuts | performance |
 | 080 | Overlap generation with the debounce presentation gate | performance |
+| 081 | Reuse bounded anchor snapshots across retokenized typing | performance |
+| 082 | Suppress mid-line completions by default | generation/app-compatibility |
 
 ---
 
@@ -2910,3 +2912,26 @@ text. Both are now closed:
   Lower-ranked candidate order changed on two steps because restored-prefix decode and full prefill
   are not bit-identical on this hybrid model; the visible suggestion path only consumes the first
   candidate, and the candidate set stayed unchanged.
+
+## ADR-082 — Suppress mid-line completions by default
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Production prompt logs showed non-empty-`afterCursor` requests dominating the latency
+  tail: in a 1,000-row local prompt-completion log, after-cursor requests were 34% of events but had
+  p50 generation 335.9 ms and p95 877.2 ms, versus 87.2 ms / 157.9 ms when `afterCursor` was empty.
+  The offline edge benchmark showed the same quality problem: the FIM tag had only one correct
+  insert in 75 rows, 61 wrong visible suggestions, and p95 total latency above 330 ms. This violates
+  the product principle that suppression beats a wrong suggestion.
+- Decision: make `CompletionPolicy.allowsMidLineCompletion` default to `false`, so text after the
+  caret is suppressed at the policy gate unless an app/domain override explicitly enables mid-line
+  completion. Add `TargetOverride.midLineCompletionsEnabled` for future measured opt-ins and keep
+  `midLineCompletionsDisabled` as the explicit off switch. FIM assembly also now requires visual
+  mid-line geometry (`!context.geometry.isAtEndOfLine`) so an enabled target with following text on a
+  later line uses the base prompt rather than the native FIM prompt.
+- Consequences: The shipped default no longer attempts FIM/mid-line generation, removing a slow and
+  low-precision path. Release `KeyTypeBench edge` improved aggregate quality score from 106.7 to
+  124.3, precision when shown from 0.298 to 0.543, and wrong-show rate from 0.557 to 0.197; p95 total
+  latency fell from 296.7 ms to 124.2 ms. The trade-off is lower coverage for the rare correct FIM
+  row (one edge row moved from correct insert to acceptable suppression). Future re-enablement must
+  be per-target and benchmarked before adding an explicit enable override.

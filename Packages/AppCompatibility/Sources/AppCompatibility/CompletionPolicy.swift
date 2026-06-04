@@ -23,7 +23,7 @@ public struct CompletionPolicy: Equatable {
 
     public init(
         isCompletionEnabled: Bool = true,
-        allowsMidLineCompletion: Bool = true,
+        allowsMidLineCompletion: Bool = false,
         allowsTabAcceptance: Bool = true,
         allowsTrainingDataCollection: Bool = true,
         insertionRequiresPasteAndMatchStyle: Bool = false,

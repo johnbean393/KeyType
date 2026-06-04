@@ -1,3 +1,4 @@
+import AppCompatibility
 import AutocompleteCore
 import ConstrainedGeneration
 import ModelRuntime
@@ -65,6 +66,7 @@ final class FillInMiddleAssemblyTests: XCTestCase {
         afterCursor: String,
         prompt: String = "SCAFFOLD",
         enableFIM: Bool,
+        isAtEndOfLine: Bool = false,
         fimMaxPrefixTokens: Int = 256,
         fimMaxSuffixTokens: Int = 64
     ) async throws -> [TokenID] {
@@ -72,6 +74,9 @@ final class FillInMiddleAssemblyTests: XCTestCase {
         let engine = ConstrainedGenerationEngine(
             runtime: runtime,
             profile: InMemoryAutocompleteProfile(vocabularySize: 70_000, records: []),
+            compatibilityStore: AppCompatibilityStore(overrides: [
+                TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, midLineCompletionsEnabled: true)
+            ]),
             configuration: DecodingConfiguration(
                 maxCandidates: 5,
                 enableFillInMiddle: enableFIM,
@@ -80,7 +85,12 @@ final class FillInMiddleAssemblyTests: XCTestCase {
             )
         )
         _ = try await engine.completions(for: CompletionRequest(
-            context: TextFieldContext(beforeCursor: beforeCursor, afterCursor: afterCursor, target: Self.target),
+            context: TextFieldContext(
+                beforeCursor: beforeCursor,
+                afterCursor: afterCursor,
+                geometry: TextFieldGeometry(isAtEndOfLine: isAtEndOfLine),
+                target: Self.target
+            ),
             prompt: prompt,
             mode: .prose,
             maxCompletionTokens: 1,
@@ -108,6 +118,17 @@ final class FillInMiddleAssemblyTests: XCTestCase {
             beforeCursor: "ab ",
             afterCursor: "cd",
             enableFIM: false
+        )
+        XCTAssertEqual(tokens, Array("SCAFFOLD".utf8).map { TokenID($0) })
+    }
+
+    func testFallsBackToBasePromptAtVisualEndOfLine() async throws {
+        let tokens = try await prepared(
+            tokenizer: FIMStubTokenizer(),
+            beforeCursor: "ab ",
+            afterCursor: "\nnext paragraph",
+            enableFIM: true,
+            isAtEndOfLine: true
         )
         XCTAssertEqual(tokens, Array("SCAFFOLD".utf8).map { TokenID($0) })
     }
