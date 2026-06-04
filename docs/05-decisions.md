@@ -3033,3 +3033,24 @@ text. Both are now closed:
   overlay in the histogram and metric rows without changing the export schema. `clearAll()` now
   removes archived telemetry snapshots as well as the live file so the Privacy pane's "Clear all
   personal data" action still deletes all local telemetry artifacts.
+
+## ADR-088 — Embed release notes in the Sparkle appcast item
+
+- Date: 2026-06-05
+- Status: accepted
+- Context: Sparkle's update dialog renders each appcast `<item>`'s release notes (an inline HTML
+  `<description>` or an external `sparkle:releaseNotesLink`). Our `docs/appcast.xml` items carried
+  only version/enclosure metadata, so the "Update Available" prompt showed users no "What's New",
+  giving them no reason to update. Meanwhile `Scripts/release.sh` already generated good notes from
+  `feat:`/`fix:` commits — but only for the GitHub release, never for the feed.
+- Decision: Reuse the existing commit-derived notes for both surfaces. `release.sh` now builds the
+  notes once, up front (markdown for the GitHub release plus an HTML rendering via a
+  `markdown_list_to_html` helper that escapes `& < >`), and embeds the HTML as an inline
+  `<description><![CDATA[…]]></description>` inside the new appcast `<item>`. Inline notes were
+  chosen over `sparkle:releaseNotesLink` so the text ships with the already-fetched, EdDSA-signed
+  feed (no extra network fetch, nothing else to host) and stays consistent with the GitHub release.
+  The item is now spliced in with `sed`'s `r` (read-file) command from a temp file instead of an
+  inline `a\` append, since multi-line HTML is impractical to escape inside a sed append.
+- Consequences: Every future release shows its features/fixes directly in the Sparkle prompt.
+  Release notes are only as good as the `feat:`/`fix:` commit hygiene between tags. Past `<item>`
+  entries remain note-less (the feed is append-only); they could be backfilled by hand if desired.

@@ -102,6 +102,28 @@ confirm_release_metadata_bump() {
     fi
 }
 
+# Convert a list of "- item" markdown lines into an HTML <ul>, escaping the few characters that
+# would otherwise break the appcast XML. Falls back to a single <p> when there are no entries.
+markdown_list_to_html() {
+    local lines="$1"
+    local empty_message="$2"
+
+    if [ -z "$lines" ]; then
+        printf '<p>%s</p>' "$empty_message"
+        return
+    fi
+
+    local items
+    items=$(printf '%s\n' "$lines" | sed \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        -e 's/^- //' \
+        -e 's#.*#<li>&</li>#')
+
+    printf '<ul>%s</ul>' "$(printf '%s' "$items" | tr -d '\n')"
+}
+
 
 # Step 1: Build and Archive
 
@@ -151,6 +173,57 @@ echo "Releasing $APP_NAME $VERSION_NUM (build $BUILD_NUM) - tag: $RELEASE_TAG"
 confirm_release_metadata_bump "$VERSION_NUM" "$BUILD_NUM" "$LAST_TAG" "$LAST_RELEASE_VERSION" "$LAST_RELEASE_BUILD"
 
 
+# Build release notes (shared by the Sparkle appcast item and the GitHub release)
+#
+# Sparkle shows each item's <description> as the "What's New" body in its update dialog, so the same
+# feat:/fix: commit summary that drives the GitHub release notes is also embedded (as HTML) into the
+# appcast. Build both representations here, before the appcast is updated in step 5.
+
+if [ -n "$LAST_TAG" ]; then
+    FEAT_COMMITS=$(git -C "$REPO_PATH" log "$LAST_TAG"..HEAD --oneline --grep="^feat:" --format="%s" | sed 's/^feat: /- /')
+    FIX_COMMITS=$(git -C "$REPO_PATH" log "$LAST_TAG"..HEAD --oneline --grep="^fix:" --format="%s" | sed 's/^fix: /- /')
+else
+    FEAT_COMMITS=$(git -C "$REPO_PATH" log --oneline --grep="^feat:" --format="%s" | sed 's/^feat: /- /')
+    FIX_COMMITS=$(git -C "$REPO_PATH" log --oneline --grep="^fix:" --format="%s" | sed 's/^fix: /- /')
+fi
+
+if [ -n "$LAST_TAG" ]; then
+    RELEASE_NOTES="# Update
+
+## New Features
+${FEAT_COMMITS:-No new features in this release.}
+
+## Bug Fixes
+${FIX_COMMITS:-No bug fixes in this release.}
+
+## Requirements
+
+- macOS Sonoma (14.0) or later
+- Apple Silicon Mac recommended for on-device model inference"
+
+    RELEASE_NOTES_HTML="<h2>New Features</h2>$(markdown_list_to_html "$FEAT_COMMITS" "No new features in this release.")<h2>Bug Fixes</h2>$(markdown_list_to_html "$FIX_COMMITS" "No bug fixes in this release.")"
+else
+    RELEASE_NOTES="# KeyType
+
+On-device, system-wide tab autocomplete for macOS.
+
+## Features
+
+- System-wide ghost-text completions accepted with Tab
+- Fully on-device prediction with a local LLM (no network calls)
+- Short, cursor-anchored continuations that prefer silence over a wrong guess
+- App-aware insertion and overlay behavior
+- Private by default: clipboard, screen/OCR, and writing-history context are opt-in
+
+## Requirements
+
+- macOS Sonoma (14.0) or later
+- Apple Silicon Mac recommended for on-device model inference"
+
+    RELEASE_NOTES_HTML="<p>On-device, system-wide tab autocomplete for macOS.</p><h2>Features</h2><ul><li>System-wide ghost-text completions accepted with Tab</li><li>Fully on-device prediction with a local LLM (no network calls)</li><li>Short, cursor-anchored continuations that prefer silence over a wrong guess</li><li>App-aware insertion and overlay behavior</li><li>Private by default: clipboard, screen/OCR, and writing-history context are opt-in</li></ul>"
+fi
+
+
 # Step 3: Notarize the .app
 
 echo "\n[3/7] Notarizing app..."
@@ -191,18 +264,24 @@ echo "\n[5/7] Updating docs/appcast.xml..."
 PUB_DATE=$(date +"%a, %d %b %Y %H:%M:%S %z")
 DMG_FILENAME="$APP_NAME.$VERSION_NUM.dmg"
 
-NEW_ITEM="        <item>\\
-            <title>$VERSION_NUM</title>\\
-            <pubDate>$PUB_DATE</pubDate>\\
-            <sparkle:version>$BUILD_NUM</sparkle:version>\\
-            <sparkle:shortVersionString>$VERSION_NUM</sparkle:shortVersionString>\\
-            <sparkle:minimumSystemVersion>$MIN_OS</sparkle:minimumSystemVersion>\\
-            <enclosure url=\"$REPO_URL/releases/download/$RELEASE_TAG/$DMG_FILENAME\" sparkle:edSignature=\"$ED_SIGNATURE\" length=\"$FILE_LENGTH\" type=\"application/octet-stream\"/>\\
-        </item>"
+# Build the new <item> in a temp file (including the <description> Sparkle renders as "What's New")
+# and splice it in with sed's `r` command. Reading from a file sidesteps the escaping problems that
+# inline HTML would cause inside a sed append.
+APPCAST_ITEM_TMP=$(mktemp)
+cat > "$APPCAST_ITEM_TMP" <<EOF
+        <item>
+            <title>$VERSION_NUM</title>
+            <pubDate>$PUB_DATE</pubDate>
+            <sparkle:version>$BUILD_NUM</sparkle:version>
+            <sparkle:shortVersionString>$VERSION_NUM</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>$MIN_OS</sparkle:minimumSystemVersion>
+            <description><![CDATA[$RELEASE_NOTES_HTML]]></description>
+            <enclosure url="$REPO_URL/releases/download/$RELEASE_TAG/$DMG_FILENAME" sparkle:edSignature="$ED_SIGNATURE" length="$FILE_LENGTH" type="application/octet-stream"/>
+        </item>
+EOF
 
-sed -i '' "/<title>$APP_NAME<\/title>/a\\
-$NEW_ITEM
-" "$APPCAST_PATH"
+sed -i '' "/<title>$APP_NAME<\/title>/r $APPCAST_ITEM_TMP" "$APPCAST_PATH"
+rm -f "$APPCAST_ITEM_TMP"
 
 
 # Step 6: Rename DMG to match the release URL pattern
@@ -231,47 +310,7 @@ echo "DMG ready: $OUTPUT_DIR/$DMG_FILENAME"
 echo "\n[7/7] Creating GitHub release..."
 cd "$REPO_PATH"
 
-# Extract feat: and fix: commit messages since the last tag
-if [ -n "$LAST_TAG" ]; then
-    FEAT_COMMITS=$(git log "$LAST_TAG"..HEAD --oneline --grep="^feat:" --format="%s" | sed 's/^feat: /- /')
-    FIX_COMMITS=$(git log "$LAST_TAG"..HEAD --oneline --grep="^fix:" --format="%s" | sed 's/^fix: /- /')
-else
-    FEAT_COMMITS=$(git log --oneline --grep="^feat:" --format="%s" | sed 's/^feat: /- /')
-    FIX_COMMITS=$(git log --oneline --grep="^fix:" --format="%s" | sed 's/^fix: /- /')
-fi
-
-# Build release notes
-if [ -n "$LAST_TAG" ]; then
-    RELEASE_NOTES="# Update
-
-## New Features
-${FEAT_COMMITS:-No new features in this release.}
-
-## Bug Fixes
-${FIX_COMMITS:-No bug fixes in this release.}
-
-## Requirements
-
-- macOS Sonoma (14.0) or later
-- Apple Silicon Mac recommended for on-device model inference"
-else
-    RELEASE_NOTES="# KeyType
-
-On-device, system-wide tab autocomplete for macOS.
-
-## Features
-
-- System-wide ghost-text completions accepted with Tab
-- Fully on-device prediction with a local LLM (no network calls)
-- Short, cursor-anchored continuations that prefer silence over a wrong guess
-- App-aware insertion and overlay behavior
-- Private by default: clipboard, screen/OCR, and writing-history context are opt-in
-
-## Requirements
-
-- macOS Sonoma (14.0) or later
-- Apple Silicon Mac recommended for on-device model inference"
-fi
+# RELEASE_NOTES was assembled earlier (shared with the appcast item); just reuse it here.
 
 # Show summary and ask for confirmation
 echo "\nReady to upload release"

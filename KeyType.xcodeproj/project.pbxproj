@@ -33,7 +33,6 @@
 		4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000046 /* SystemWordRecognizer.swift */; };
 		4B5450012FC9600000000051 /* LlamaModelRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000050 /* LlamaModelRuntime */; };
 		4B5450012FC9600000000055 /* PredictionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000054 /* PredictionLog.swift */; };
-		4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000310 /* FullPromptLog.swift */; };
 		4B5450012FC9600000000062 /* Personalization in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000061 /* Personalization */; };
 		4B5450012FC9600000000064 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000063 /* SettingsStore.swift */; };
 		4B5450012FC9600000000066 /* WritingHistoryRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */; };
@@ -67,6 +66,7 @@
 		4B5450012FC96000000002A1 /* CompletionPromotionCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */; };
 		4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */; };
 		4B5450012FC9600000000301 /* LatencyExportContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000300 /* LatencyExportContext.swift */; };
+		4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000310 /* FullPromptLog.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -107,7 +107,6 @@
 		4B5450012FC9600000000046 /* SystemWordRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWordRecognizer.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000049 /* KeyType.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeyType.entitlements; sourceTree = "<group>"; };
 		4B5450012FC9600000000054 /* PredictionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionLog.swift; sourceTree = "<group>"; };
-		4B5450012FC9600000000310 /* FullPromptLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullPromptLog.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000063 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000065 /* WritingHistoryRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingHistoryRecorder.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000067 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -137,6 +136,7 @@
 		4B5450012FC96000000002A0 /* CompletionPromotionCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionPromotionCache.swift; sourceTree = "<group>"; };
 		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000300 /* LatencyExportContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencyExportContext.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000310 /* FullPromptLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullPromptLog.swift; sourceTree = "<group>"; };
 		B1C0BEF22FCB000000000001 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		B1C0BEF32FCB000000000001 /* core.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = core.jsonl; sourceTree = "<group>"; };
 		B1C0BEF42FCB000000000001 /* edge.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = edge.jsonl; sourceTree = "<group>"; };
@@ -413,7 +413,7 @@
 				B1C0BEFB2FCB000000000001 /* Scripts */,
 				B1C0BEF22FCB000000000001 /* README.md */,
 			);
-			path = KeyTypeBench-20260603;
+			path = "KeyTypeBench-20260603";
 			sourceTree = "<group>";
 		};
 		B1C0BEF12FCB000000000001 /* Datasets */ = {
@@ -817,7 +817,7 @@
 				CODE_SIGN_ENTITLEMENTS = KeyType/KeyType.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -830,7 +830,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -851,7 +851,7 @@
 				CODE_SIGN_ENTITLEMENTS = KeyType/KeyType.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -864,7 +864,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 1.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -1027,10 +1027,6 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/CompletionUI;
 		};
-		B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/KeyTypeBench" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Packages/KeyTypeBench;
-		};
 		4B5450012FC9600000000026 /* XCLocalSwiftPackageReference "Packages/TextInsertion" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/TextInsertion;
@@ -1046,6 +1042,10 @@
 		4B5450012FC9600000000070 /* XCLocalSwiftPackageReference "Packages/ModelManagement" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/ModelManagement;
+		};
+		B1C0BEE52FCB000000000001 /* XCLocalSwiftPackageReference "Packages/KeyTypeBench" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/KeyTypeBench;
 		};
 /* End XCLocalSwiftPackageReference section */
 
