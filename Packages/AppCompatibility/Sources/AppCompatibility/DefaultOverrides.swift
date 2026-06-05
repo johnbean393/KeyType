@@ -123,7 +123,15 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.apple.MobileSMS",
+                stringInjectionChunkSize: 8,
+                verticalAlignmentOffset: { lineHeight in return -7 },
                 customInstructions: "Continue the current message. Keep it short and conversational."
+            ),
+            TargetOverride(
+                bundleIdentifier: "pro.writer.mac",
+                stringInjectionChunkSize: 8,
+                overlayPreference: .inline,
+                customInstructions: "Continue only the current iA Writer document at the cursor. Preserve the document's prose or Markdown style; avoid file-browser chrome and window titles."
             ),
             TargetOverride(
                 bundleIdentifier: "com.tencent.xinWeChat",

@@ -76,6 +76,44 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
+    func testIAWriterUsesDirectStringInjection() {
+        let target = AppTarget(
+            bundleIdentifier: "pro.writer.mac",
+            appName: "iA Writer",
+            domain: "Writer.txt"
+        )
+        let context = TextFieldContext(beforeCursor: "What ab", target: target)
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertEqual(policy.stringInjectionChunkSize, 8)
+        XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertEqual(policy.overlayPreference, .inline)
+        XCTAssertEqual(policy.completionMode, .prose)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue only the current iA Writer document at the cursor. Preserve the document's prose or Markdown style; avoid file-browser chrome and window titles."
+        ])
+    }
+
+    func testMessagesUsesDirectStringInjection() {
+        let target = AppTarget(bundleIdentifier: "com.apple.MobileSMS", appName: "Messages")
+        let context = TextFieldContext(beforeCursor: "this is a wo", target: target)
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertEqual(policy.stringInjectionChunkSize, 8)
+        XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertEqual(policy.overlayPreference, .inline)
+        XCTAssertEqual(policy.completionMode, .prose)
+        XCTAssertEqual(policy.customInstructions, [
+            "Continue the current message. Keep it short and conversational."
+        ])
+    }
+
     func testObsidianUsesMarkdownEditorPolicy() {
         let target = AppTarget(bundleIdentifier: "md.obsidian", appName: "Obsidian")
         let context = TextFieldContext(

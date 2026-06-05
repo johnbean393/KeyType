@@ -92,6 +92,26 @@ final class TextInsertionTests: XCTestCase {
         XCTAssertFalse(plan.useNonBreakingSpaceWorkaround)
     }
 
+    func testPlannerUsesChunkedInjectionForIAWriterMidWordText() {
+        let target = AppTarget(bundleIdentifier: "pro.writer.mac", appName: "iA Writer")
+        let plan = InsertionPlanner()
+            .plan(candidate: CompletionCandidate(text: "out"), context: context(target: target))
+
+        XCTAssertEqual(plan.strategy, .chunkedStringInjection(size: 8))
+        XCTAssertEqual(plan.text, "out")
+        XCTAssertFalse(plan.useNonBreakingSpaceWorkaround)
+    }
+
+    func testPlannerUsesChunkedInjectionForMessagesMidWordText() {
+        let target = AppTarget(bundleIdentifier: "com.apple.MobileSMS", appName: "Messages")
+        let plan = InsertionPlanner()
+            .plan(candidate: CompletionCandidate(text: "rkaround"), context: context(target: target))
+
+        XCTAssertEqual(plan.strategy, .chunkedStringInjection(size: 8))
+        XCTAssertEqual(plan.text, "rkaround")
+        XCTAssertFalse(plan.useNonBreakingSpaceWorkaround)
+    }
+
     // MARK: - Inserter dispatch
 
     func testPasteboardPasteSavesWritesPastesRestores() async throws {
