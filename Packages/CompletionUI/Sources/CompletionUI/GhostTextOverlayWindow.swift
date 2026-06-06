@@ -37,6 +37,10 @@ public final class GhostTextOverlayWindow {
     /// shifted by `placement.verticalOffset`.
     public func show(text: String, font: NSFont, placement: OverlayPlacement, textColor: NSColor? = nil) {
         guard !text.isEmpty else { hide(); return }
+        guard !Self.shouldSuppressMirrorOverflow(text: text, font: font, placement: placement) else {
+            hide()
+            return
+        }
 
         let layout = Self.layout(for: text, font: font, placement: placement)
         switch placement.presentation {
@@ -142,7 +146,9 @@ public final class GhostTextOverlayWindow {
         let remaining: CGFloat
         switch placement.mode {
         case .mirror:
-            remaining = field.width
+            remaining = placement.isRightToLeft
+                ? caret.minX - field.minX
+                : field.maxX - caret.maxX
         default:
             remaining = placement.isRightToLeft
                 ? caret.minX - field.minX
@@ -165,7 +171,44 @@ public final class GhostTextOverlayWindow {
             return max(8, min(32, fallbackLineHeight))
         }
 
+        if let field = placement.fieldRect,
+           !field.isEmpty,
+           field.height >= 40,
+           isApproximateCaretQuality(placement.cursorRectQuality),
+           caretHeight > fallbackLineHeight * 1.4 {
+            return max(8, min(32, fallbackLineHeight))
+        }
+
         return max(8, min(48, caretHeight))
+    }
+
+    private static func isApproximateCaretQuality(_ quality: CaretGeometryQuality) -> Bool {
+        quality == .derived || quality == .estimated
+    }
+
+    private static func visualCaretHeight(for placement: OverlayPlacement, lineHeight: CGFloat) -> CGFloat {
+        let caretHeight = placement.cursorRect.height
+        guard caretHeight > 0 else { return lineHeight }
+        guard isApproximateCaretQuality(placement.cursorRectQuality),
+              caretHeight > lineHeight * 1.4 else {
+            return caretHeight
+        }
+        return lineHeight
+    }
+
+    public static func shouldSuppressMirrorOverflow(text: String, font: NSFont, placement: OverlayPlacement) -> Bool {
+        guard placement.mode == .mirror,
+              isApproximateCaretQuality(placement.cursorRectQuality),
+              let field = placement.fieldRect,
+              !field.isEmpty else {
+            return false
+        }
+
+        let requiredWidth = ceil(measuredWidth(text, font: font)) + 2
+        let availableWidth = placement.isRightToLeft
+            ? placement.cursorRect.minX - field.minX
+            : field.maxX - placement.cursorRect.maxX
+        return requiredWidth > max(0, floor(availableWidth))
     }
 
     struct Layout: Equatable {
@@ -181,10 +224,13 @@ public final class GhostTextOverlayWindow {
         let caret = placement.cursorRect
         let fontLineHeight = ceil(font.ascender - font.descender)
         let lineHeight = max(Self.trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
+        let visualCaretHeight = Self.visualCaretHeight(for: placement, lineHeight: lineHeight)
         let singleLineWidth = ceil(measuredWidth(text, font: font)) + 2
+        let canWrapInsideField = placement.mode != .mirror
+            || !isApproximateCaretQuality(placement.cursorRectQuality)
 
         guard
-            placement.mode != .mirror,
+            canWrapInsideField,
             !placement.isRightToLeft,
             let field = placement.fieldRect,
             !field.isEmpty,
@@ -195,11 +241,11 @@ public final class GhostTextOverlayWindow {
             let y: CGFloat
             switch placement.mode {
             case .mirror:
-                x = placement.isRightToLeft ? caret.maxX - width : caret.minX
-                y = caret.maxY + 2
+                x = placement.isRightToLeft ? caret.maxX - width : caret.maxX
+                y = caret.minY + (visualCaretHeight - lineHeight) / 2
             default:
                 x = placement.isRightToLeft ? caret.minX - width : caret.maxX
-                y = caret.minY + (caret.height - lineHeight) / 2
+                y = caret.minY + (visualCaretHeight - lineHeight) / 2
             }
             return Layout(
                 frame: CGRect(x: x, y: y, width: width, height: lineHeight),
@@ -215,7 +261,7 @@ public final class GhostTextOverlayWindow {
             return Layout(
                 frame: CGRect(
                     x: placement.isRightToLeft ? caret.minX - singleLineWidth : caret.maxX,
-                    y: caret.minY + (caret.height - lineHeight) / 2,
+                    y: caret.minY + (visualCaretHeight - lineHeight) / 2,
                     width: singleLineWidth,
                     height: lineHeight
                 ),
@@ -232,7 +278,7 @@ public final class GhostTextOverlayWindow {
             lineHeight: lineHeight
         )
         let height = lineHeight * CGFloat(lines.count)
-        let y = caret.minY + (caret.height - lineHeight) / 2 - (height - lineHeight)
+        let y = caret.minY + (visualCaretHeight - lineHeight) / 2 - (height - lineHeight)
 
         return Layout(
             frame: CGRect(x: field.minX, y: y, width: fullLineWidth, height: height),
@@ -402,7 +448,7 @@ public final class InlineGhostTextPresenter: CompletionOverlayPresenting {
     /// height ≈ the glyph box (ascent+descent) at the rendered size, so we scale the typeface by the
     /// font's own metric ratio — when AX's size is already correct this reproduces it, and when it's
     /// wrong the caret height corrects it. Falls back to a system font when no field font is known.
-    static func resolveFont(_ font: NSFont?, placement: OverlayPlacement) -> NSFont {
+    public static func resolveFont(_ font: NSFont?, placement: OverlayPlacement) -> NSFont {
         let factor = CGFloat(placement.fontSizeAdjustmentFactor)
         let fallbackLineHeight = font.map { ceil($0.ascender - $0.descender) } ?? ceil(NSFont.systemFont(ofSize: NSFont.systemFontSize).ascender - NSFont.systemFont(ofSize: NSFont.systemFontSize).descender)
         let caretHeight = GhostTextOverlayWindow.trustedCaretHeight(

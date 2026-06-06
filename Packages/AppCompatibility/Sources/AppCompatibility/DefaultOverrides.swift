@@ -162,7 +162,6 @@ public extension AppCompatibilityStore {
             TargetOverride(
                 bundleIdentifier: "com.hnc.Discord",
                 stringInjectionChunkSize: 8,
-                verticalAlignmentOffset: { lineHeight in lineHeight + 2 },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Discord message only. Keep it short and conversational."
             )

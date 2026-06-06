@@ -8,14 +8,20 @@ import XCTest
 final class CompletionUITests: XCTestCase {
     private static let target = AppTarget(bundleIdentifier: "com.test.app", appName: "Test")
 
-    private func context(cursorRect: CGRect?, fieldRect: CGRect? = nil, isRTL: Bool = false) -> TextFieldContext {
+    private func context(
+        cursorRect: CGRect?,
+        fieldRect: CGRect? = nil,
+        isRTL: Bool = false,
+        cursorRectQuality: CaretGeometryQuality = .unknown
+    ) -> TextFieldContext {
         TextFieldContext(
             beforeCursor: "hello",
             geometry: TextFieldGeometry(
                 cursorRect: cursorRect,
                 fieldRect: fieldRect,
                 isAtEndOfLine: true,
-                isRightToLeft: isRTL
+                isRightToLeft: isRTL,
+                cursorRectQuality: cursorRectQuality
             ),
             target: Self.target
         )
@@ -34,10 +40,18 @@ final class CompletionUITests: XCTestCase {
         ]))
         let rect = CGRect(x: 10, y: 20, width: 1, height: 16)
         let fieldRect = CGRect(x: 0, y: 20, width: 120, height: 40)
-        let placement = resolver.placement(for: context(cursorRect: rect, fieldRect: fieldRect, isRTL: true))
+        let placement = resolver.placement(
+            for: context(
+                cursorRect: rect,
+                fieldRect: fieldRect,
+                isRTL: true,
+                cursorRectQuality: .derived
+            )
+        )
         XCTAssertEqual(placement?.cursorRect, rect)
         XCTAssertEqual(placement?.fieldRect, fieldRect)
         XCTAssertEqual(placement?.isRightToLeft, true)
+        XCTAssertEqual(placement?.cursorRectQuality, .derived)
         XCTAssertEqual(placement?.verticalOffset(18), 3)
     }
 
@@ -248,6 +262,69 @@ final class CompletionUITests: XCTestCase {
         XCTAssertLessThan(layout.frame.width, placement.fieldRect?.width ?? .infinity)
         XCTAssertEqual(layout.lines.map(\.text), [" continuation"])
         XCTAssertEqual(layout.lines.map(\.leadingInset), [0])
+    }
+
+    @MainActor
+    func testDiscordMirrorLayoutSuppressesOverflowWithDerivedMultilineCaret() {
+        let font = NSFont.systemFont(ofSize: 15)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 786, y: 111, width: 2, height: 44),
+            fieldRect: CGRect(x: 590, y: 94, width: 226, height: 78),
+            mode: .mirror,
+            cursorRectQuality: .derived
+        )
+
+        XCTAssertTrue(
+            GhostTextOverlayWindow.shouldSuppressMirrorOverflow(
+                text: "you.",
+                font: font,
+                placement: placement
+            )
+        )
+    }
+
+    @MainActor
+    func testDiscordMirrorLayoutKeepsShortSuggestionOnCaretLine() {
+        let font = NSFont.systemFont(ofSize: 15)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 786, y: 111, width: 2, height: 44),
+            fieldRect: CGRect(x: 590, y: 94, width: 226, height: 78),
+            mode: .mirror,
+            cursorRectQuality: .derived
+        )
+
+        let layout = GhostTextOverlayWindow.layout(for: "I'll", font: font, placement: placement)
+
+        XCTAssertFalse(
+            GhostTextOverlayWindow.shouldSuppressMirrorOverflow(
+                text: "I'll",
+                font: font,
+                placement: placement
+            )
+        )
+        XCTAssertEqual(layout.frame.minX, placement.cursorRect.maxX)
+        XCTAssertLessThanOrEqual(layout.frame.maxX, placement.fieldRect?.maxX ?? 0)
+        XCTAssertLessThanOrEqual(layout.lineHeight, 24)
+        XCTAssertEqual(layout.lines.map(\.text), ["I'll"])
+    }
+
+    @MainActor
+    func testDiscordMirrorLayoutSuppressesSingleLineToolbarCollision() {
+        let font = NSFont.systemFont(ofSize: 15)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 793, y: 111, width: 2, height: 44),
+            fieldRect: CGRect(x: 590, y: 94, width: 226, height: 78),
+            mode: .mirror,
+            cursorRectQuality: .derived
+        )
+
+        XCTAssertTrue(
+            GhostTextOverlayWindow.shouldSuppressMirrorOverflow(
+                text: " Let's",
+                font: font,
+                placement: placement
+            )
+        )
     }
 
     // MARK: - Advance past an accepted word

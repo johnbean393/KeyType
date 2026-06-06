@@ -548,6 +548,11 @@ public struct AXCaretGeometryResolver {
             return true
         }
 
+        if anchor.height >= 60,
+           cocoaRect.height > 32 {
+            return true
+        }
+
         if anchor.width >= 80,
            cocoaRect.width >= anchor.width * 0.5,
            cocoaRect.height >= min(anchor.height * 0.4, multilineHeight) {

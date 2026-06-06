@@ -217,7 +217,7 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
-    func testDiscordNativeUsesTextMirrorWithVerticalAlignmentFix() {
+    func testDiscordNativeUsesTextMirrorWithoutNativeOffset() {
         let target = AppTarget(bundleIdentifier: "com.hnc.Discord", appName: "Discord")
         let context = TextFieldContext(beforeCursor: "This", target: target)
 
@@ -227,7 +227,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.stringInjectionChunkSize, 8)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 26, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current Discord message only. Keep it short and conversational."
         ])

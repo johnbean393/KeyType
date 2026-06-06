@@ -37,6 +37,10 @@ public struct FocusedFieldSnapshot: Equatable {
 
 @MainActor
 public struct FocusedFieldReader {
+    private static let appCaretGeometryFallbacks: [any AppCaretGeometryFallback.Type] = [
+        DiscordComposeTextContext.self
+    ]
+
     private let resolver: AXCaretGeometryResolver
     private nonisolated let webAppClassifier: AppBundleWebAppClassifier
 
@@ -111,13 +115,21 @@ public struct FocusedFieldReader {
             return mailSnapshot
         }
 
+        let fieldRect = Self.fieldRect(for: textElement)
+        let resolvedCaret = Self.resolvedCaretGeometry(
+            target: target,
+            beforeCursor: split.beforeCursor,
+            fieldRect: fieldRect,
+            current: CapturedCaretGeometry(caretGeometry)
+        )
+
         let language = LanguageDetector.detectLanguage(in: split.beforeCursor)
         let geometry = TextFieldGeometry(
-            cursorRect: caretGeometry?.rect,
-            fieldRect: Self.fieldRect(for: textElement),
+            cursorRect: resolvedCaret.rect,
+            fieldRect: fieldRect,
             isAtEndOfLine: split.isAtEndOfLine,
             isRightToLeft: WritingDirection.isRightToLeft(split.beforeCursor.isEmpty ? rawValue : split.beforeCursor),
-            cursorRectQuality: Self.caretQuality(from: caretGeometry?.qualityLabel)
+            cursorRectQuality: resolvedCaret.quality
         )
 
         let context = TextFieldContext(
@@ -135,9 +147,9 @@ public struct FocusedFieldReader {
 
         return FocusedFieldSnapshot(
             context: context,
-            caretRect: caretGeometry?.rect,
-            caretSource: caretGeometry?.source,
-            caretQuality: caretGeometry?.qualityLabel
+            caretRect: resolvedCaret.rect,
+            caretSource: resolvedCaret.source,
+            caretQuality: resolvedCaret.quality.rawValue
         )
     }
 
@@ -303,13 +315,32 @@ public struct FocusedFieldReader {
         return score
     }
 
-    static func caretQuality(from label: String?) -> CaretGeometryQuality {
+    nonisolated static func caretQuality(from label: String?) -> CaretGeometryQuality {
         switch label {
         case "exact": .exact
         case "derived": .derived
         case "estimated": .estimated
         default: .unknown
         }
+    }
+
+    private static func resolvedCaretGeometry(
+        target: AppTarget,
+        beforeCursor: String,
+        fieldRect: CGRect?,
+        current: CapturedCaretGeometry
+    ) -> CapturedCaretGeometry {
+        for fallback in appCaretGeometryFallbacks {
+            if let override = fallback.caretGeometry(
+                target: target,
+                beforeCursor: beforeCursor,
+                fieldRect: fieldRect,
+                current: current
+            ) {
+                return override
+            }
+        }
+        return current
     }
 
     private static func fieldRect(for element: AXUIElement) -> CGRect? {

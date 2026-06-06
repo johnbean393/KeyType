@@ -28,6 +28,7 @@ public struct OverlayPlacement: Equatable {
     public var mode: OverlayMode
     public var presentation: OverlayPresentation
     public var isRightToLeft: Bool
+    public var cursorRectQuality: CaretGeometryQuality
     public var verticalOffset: VerticalAlignmentOffsetResolver
     public var fontSizeAdjustmentFactor: Double
 
@@ -37,6 +38,7 @@ public struct OverlayPlacement: Equatable {
         mode: OverlayMode = .inline,
         presentation: OverlayPresentation = .inlineGhost,
         isRightToLeft: Bool = false,
+        cursorRectQuality: CaretGeometryQuality = .unknown,
         verticalOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         fontSizeAdjustmentFactor: Double = 1
     ) {
@@ -45,6 +47,7 @@ public struct OverlayPlacement: Equatable {
         self.mode = mode
         self.presentation = presentation
         self.isRightToLeft = isRightToLeft
+        self.cursorRectQuality = cursorRectQuality
         self.verticalOffset = verticalOffset
         self.fontSizeAdjustmentFactor = fontSizeAdjustmentFactor
     }
@@ -55,6 +58,7 @@ public struct OverlayPlacement: Equatable {
             && lhs.mode == rhs.mode
             && lhs.presentation == rhs.presentation
             && lhs.isRightToLeft == rhs.isRightToLeft
+            && lhs.cursorRectQuality == rhs.cursorRectQuality
             && lhs.verticalOffset(0) == rhs.verticalOffset(0)
             && lhs.verticalOffset(12) == rhs.verticalOffset(12)
             && lhs.verticalOffset(24) == rhs.verticalOffset(24)
@@ -116,6 +120,7 @@ public struct OverlayPlacementResolver {
             fieldRect: context.geometry.fieldRect,
             mode: resolvedMode,
             isRightToLeft: context.geometry.isRightToLeft,
+            cursorRectQuality: context.geometry.cursorRectQuality,
             verticalOffset: policy.verticalAlignmentOffset,
             fontSizeAdjustmentFactor: policy.fontSizeAdjustmentFactor
         )
@@ -210,6 +215,7 @@ public struct GhostTextView: View {
             }
         }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isRightToLeft ? .trailing : .leading)
+            .clipped()
             .environment(\.layoutDirection, isRightToLeft ? .rightToLeft : .leftToRight)
     }
 

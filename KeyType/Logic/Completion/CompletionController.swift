@@ -1026,11 +1026,20 @@ final class CompletionController {
             placement.presentation = .capsule
         }
         let candidate = CompletionCandidate(text: shown, mode: .prose)
+        let effectiveStyle = Self.effectiveOverlayStyle(style, for: live)
+        let resolvedFont = InlineGhostTextPresenter.resolveFont(effectiveStyle.font, placement: placement)
+        if GhostTextOverlayWindow.shouldSuppressMirrorOverflow(text: shown, font: resolvedFont, placement: placement) {
+            predictionLog.append(
+                "PLACE suppress=mirrorOverflow cursor=\(PredictionLog.rect(placement.cursorRect)) field=\(placement.fieldRect.map(PredictionLog.rect) ?? "nil")"
+            )
+            clearCompletion()
+            return false
+        }
+
         visibleCandidate = candidate
         predictionLog.append(
             "PLACE mode=\(placement.mode) cursor=\(PredictionLog.rect(placement.cursorRect)) field=\(placement.fieldRect.map(PredictionLog.rect) ?? "nil")"
         )
-        let effectiveStyle = Self.effectiveOverlayStyle(style, for: live)
         presenter.show(candidate: candidate, placement: placement, font: effectiveStyle.font, textColor: effectiveStyle.color)
         return true
     }
