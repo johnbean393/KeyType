@@ -7,6 +7,8 @@
 
 import AutocompleteCore
 import AppKit
+import CompletionUI
+import MacContextCapture
 import Testing
 @testable import KeyType
 
@@ -57,6 +59,32 @@ struct KeyTypeTests {
 
     @Test func adaptiveDebounceStartsAtModerateDelayBeforeTelemetry() {
         #expect(CompletionController.adaptiveDebounceNanoseconds(lastGenerationLatencyMs: nil) == 25_000_000)
+    }
+
+    @Test @MainActor func caretDebugOverlaySnapshotUsesCapturedFieldGeometry() {
+        let caret = CGRect(x: 42, y: 20, width: 2, height: 18)
+        let field = CGRect(x: 10, y: 10, width: 100, height: 36)
+        let context = TextFieldContext(
+            beforeCursor: "hello",
+            geometry: TextFieldGeometry(
+                cursorRect: caret,
+                fieldRect: field,
+                isRightToLeft: false
+            ),
+            target: Self.target
+        )
+        let snapshot = FocusedFieldSnapshot(
+            context: context,
+            caretRect: caret,
+            caretSource: "test",
+            caretQuality: "exact"
+        )
+
+        let overlaySnapshot = ContextCaptureController.debugOverlaySnapshot(for: snapshot)
+
+        #expect(overlaySnapshot?.caretRect == caret)
+        #expect(overlaySnapshot?.fieldRect == field)
+        #expect(overlaySnapshot?.availableTextRect == CGRect(x: 44, y: 20, width: 66, height: 18))
     }
 
     @Test @MainActor func manualAppEntriesPersistWithPerAppDisable() {

@@ -78,8 +78,8 @@ final class ContextCaptureController {
             log.debug("\(self.lastSummary, privacy: .public)")
         }
 
-        if debugOverlayEnabled, let rect = snapshot.caretRect, !rect.isEmpty {
-            overlay.show(at: rect)
+        if debugOverlayEnabled, let overlaySnapshot = Self.debugOverlaySnapshot(for: snapshot) {
+            overlay.show(snapshot: overlaySnapshot)
         } else {
             overlay.hide()
         }
@@ -90,9 +90,23 @@ final class ContextCaptureController {
             overlay.hide()
             return
         }
-        if let rect = tracker.currentSnapshot?.caretRect, !rect.isEmpty {
-            overlay.show(at: rect)
+        if let snapshot = tracker.currentSnapshot,
+           let overlaySnapshot = Self.debugOverlaySnapshot(for: snapshot) {
+            overlay.show(snapshot: overlaySnapshot)
         }
+    }
+
+    static func debugOverlaySnapshot(for snapshot: FocusedFieldSnapshot) -> CaretDebugOverlaySnapshot? {
+        guard let caretRect = snapshot.caretRect, !caretRect.isEmpty else {
+            return nil
+        }
+
+        let geometry = snapshot.context.geometry
+        return CaretDebugOverlaySnapshot(
+            caretRect: caretRect,
+            fieldRect: geometry.fieldRect,
+            isRightToLeft: geometry.isRightToLeft
+        )
     }
 
     /// Compact, privacy-conscious one-line summary of a `TextFieldContext`. Lengths and

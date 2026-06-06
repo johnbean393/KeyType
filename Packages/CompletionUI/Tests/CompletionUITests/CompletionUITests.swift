@@ -76,6 +76,36 @@ final class CompletionUITests: XCTestCase {
         XCTAssertNil(resolver.placement(for: context(cursorRect: rect)))
     }
 
+    // MARK: - Caret debug overlay
+
+    func testCaretDebugOverlaySnapshotComputesLTRAvailableTextRect() {
+        let snapshot = CaretDebugOverlaySnapshot(
+            caretRect: CGRect(x: 642, y: 111, width: 2, height: 22),
+            fieldRect: CGRect(x: 590, y: 94, width: 226, height: 78)
+        )
+
+        XCTAssertEqual(snapshot.availableTextRect, CGRect(x: 644, y: 111, width: 172, height: 22))
+    }
+
+    func testCaretDebugOverlaySnapshotComputesRTLAvailableTextRect() {
+        let snapshot = CaretDebugOverlaySnapshot(
+            caretRect: CGRect(x: 642, y: 111, width: 2, height: 22),
+            fieldRect: CGRect(x: 590, y: 94, width: 226, height: 78),
+            isRightToLeft: true
+        )
+
+        XCTAssertEqual(snapshot.availableTextRect, CGRect(x: 590, y: 111, width: 52, height: 22))
+    }
+
+    func testCaretDebugOverlaySnapshotClampsAvailableRectInsideField() {
+        let snapshot = CaretDebugOverlaySnapshot(
+            caretRect: CGRect(x: 793, y: 150, width: 2, height: 44),
+            fieldRect: CGRect(x: 590, y: 94, width: 226, height: 78)
+        )
+
+        XCTAssertEqual(snapshot.availableTextRect, CGRect(x: 795, y: 128, width: 21, height: 44))
+    }
+
     // MARK: - Noop presenter visible state
 
     func testNoopPresenterTracksVisibleCandidate() {

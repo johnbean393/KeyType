@@ -3,8 +3,8 @@
 //  KeyType
 //
 //  The "Developer" Settings pane: diagnostics that aren't part of the everyday flow. Currently the
-//  caret debug overlay (moved here from the menu bar), which draws a marker at the detected caret to
-//  verify context capture. Gated on Accessibility, like the capture pipeline it visualizes.
+//  caret debug overlay (moved here from the menu bar), which draws captured caret and field geometry
+//  to verify context capture. Gated on Accessibility, like the capture pipeline it visualizes.
 //
 
 import SwiftUI
@@ -20,7 +20,7 @@ struct DeveloperSettingsView: View {
                 Toggle(isOn: $contextCapture.debugOverlayEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Show caret debug overlay")
-                        Text("Draws a marker at the detected caret position to verify context capture.")
+                        Text("Draws the detected caret, field, and available text rectangles to verify context capture.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
