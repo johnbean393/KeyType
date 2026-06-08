@@ -121,6 +121,33 @@ public final class DefaultCandidateFilter: CandidateFiltering {
             return .duplicatesAfterCursor
         }
 
+        // The content-overlap nets below judge the text that will actually be inserted. When the
+        // prompt was healed (ADR-019) the candidate re-emits the already-typed stem (" coll…"); strip
+        // it so the comparison is against the genuinely-new continuation, not the stem the user typed.
+        let insertedText = Self.healStripped(candidate.text, request: request)
+
+        // 7b. Prefix-repetition net: the completion reproduces a phrase already in the recent
+        //     preceding text, so accepting it would create a verbatim repetition loop.
+        //     Typical failure: small model predicts "i want to write about" after "…AI meetup."
+        //     because that exact phrase appeared earlier in the text. See PrefixRepetitionGuard.
+        if PrefixRepetitionGuard.repeatsPrefix(
+            completion: insertedText,
+            beforeCursor: request.context.beforeCursor
+        ) {
+            return .repeatsRecentPrefix
+        }
+
+        // 7c. Context-echo net: the completion verbatim-reproduces injected side context the user did
+        //     not type (clipboard / on-screen OCR). The small model parrots such context instead of
+        //     using it as background — e.g. text copied from one app surfacing in another's compose
+        //     field. Writing-history samples are excluded upstream (see `CompletionRequest`).
+        if ContextEchoGuard.echoesInjectedContext(
+            completion: insertedText,
+            injectedContext: request.injectedContext
+        ) {
+            return .echoesInjectedContext
+        }
+
         // 8. Mid-line confidence net. Native FIM is useful only when it is both short and highly
         //    likely; longer middle spans have been low-precision in edge data. Keep this deliberately
         //    conservative so re-enabled mid-line favors suppression over wrong visible text.
@@ -156,6 +183,15 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         guard candidate.tokenIDs.count <= maxVisibleMidLineTokenCount else { return true }
         let meanLogProbability = candidate.logProbability / Double(candidate.tokenIDs.count)
         return meanLogProbability < minimumMidLineMeanLogProbability
+    }
+
+    // MARK: - Heal-aware text
+
+    /// The text that will actually be inserted: for a healed request (ADR-019) the candidate re-emits
+    /// the already-typed stem, so strip it back off; otherwise the candidate text is inserted as-is.
+    static func healStripped(_ text: String, request: CompletionRequest) -> String {
+        guard !request.requiredPrefixBytes.isEmpty else { return text }
+        return MidWordHealing.strip(text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
     }
 
     // MARK: - Required prefix
@@ -210,9 +246,7 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         // For a healed request (ADR-019) the candidate re-emits the typed stem (`" coll…"`); strip it
         // so the leading word is the genuinely-new continuation rather than an empty leading-space run
         // — otherwise healed mid-word completions slip past the net entirely (ADR-025 follow-up).
-        let judged = request.requiredPrefixBytes.isEmpty
-            ? candidate.text
-            : MidWordHealing.strip(candidate.text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
+        let judged = Self.healStripped(candidate.text, request: request)
 
         let lead = CurrentWordTypoGuard.leadingWord(of: judged)
         guard !lead.isEmpty else { return false } // completion opened on a boundary — not our word
@@ -244,9 +278,7 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         let stem = CurrentWordTypoGuard.trailingWord(of: request.context.beforeCursor)
         guard !stem.isEmpty else { return false } // model started a fresh word — leave it
 
-        let judged = request.requiredPrefixBytes.isEmpty
-            ? candidate.text
-            : MidWordHealing.strip(candidate.text, heal: String(decoding: request.requiredPrefixBytes, as: UTF8.self))
+        let judged = Self.healStripped(candidate.text, request: request)
 
         let lead = CurrentWordTypoGuard.leadingWord(of: judged)
         guard !lead.isEmpty else { return false } // completion opened on a boundary — not our word

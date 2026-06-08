@@ -99,6 +99,11 @@ final class ScreenContextController {
         let key = windowKey(for: snapshot)
         guard key != lastWindowKey else { return }
         lastWindowKey = key
+        // Drop the previous window's cached OCR *before* kicking off the new (async) capture, so a
+        // completion fired in the just-focused window can't be fed the prior window's screen text
+        // while the fresh capture is still in flight. Without this, switching browser tabs/windows
+        // leaks the old page's text (e.g. a "2 of 10 …" results counter) into the new one's prompt.
+        engine.clear()
         capture(for: snapshot)
     }
 
@@ -120,7 +125,18 @@ final class ScreenContextController {
         // screen context carries only the *surrounding* on-screen text.
         let context = snapshot.context
         let fieldText = context.beforeCursor + context.afterCursor
-        engine.refresh(pid: pid, fieldText: fieldText)
+        // The caret location lets the capturer pick the right window when the app has several open,
+        // so screen context can't bleed in text from a different window of the same app. `caretRect`
+        // is in AppKit space (bottom-left origin) but ScreenCaptureKit window frames are in CG space
+        // (top-left origin), so convert before handing it down — otherwise the Y axes don't match and
+        // the wrong window (or none) is selected.
+        let focusPoint = snapshot.caretRect.flatMap { rect -> CGPoint? in
+            DisplayCoordinateConverter.coreGraphicsPoint(
+                fromAppKitPoint: CGPoint(x: rect.midX, y: rect.midY),
+                displays: ScreenDisplayGeometryProvider.current()
+            )
+        }
+        engine.refresh(pid: pid, fieldText: fieldText, focusPoint: focusPoint)
     }
 
     // MARK: - Eligibility

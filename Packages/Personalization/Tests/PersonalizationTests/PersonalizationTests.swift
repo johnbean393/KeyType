@@ -41,6 +41,25 @@ final class PersonalizationTests: XCTestCase {
         XCTAssertTrue(store.samples(for: WritingHistoryQuery(bundleIdentifier: "com.app.mail")).isEmpty)
     }
 
+    func testPersistentStoreDomainScopingExcludesOtherTabs() throws {
+        // DB-level coverage for the domain filter (the production path): two sites in the same browser
+        // bundle must not share context, and a nil-domain row must not leak into a domain-scoped query.
+        let (store, url) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        store.record(WritingHistorySample(text: "Draft about quarterly revenue numbers here.", appBundleIdentifier: "com.browser", domain: "mail.google.com"))
+        store.record(WritingHistorySample(text: "you can use it to access the OpenAI API key.", appBundleIdentifier: "com.browser", domain: "platform.openai.com"))
+        store.record(WritingHistorySample(text: "Some unknown-domain text from this browser.", appBundleIdentifier: "com.browser", domain: nil))
+
+        let result = store.samples(for: WritingHistoryQuery(
+            bundleIdentifier: "com.browser",
+            domain: "mail.google.com",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["Draft about quarterly revenue numbers here."])
+    }
+
     func testPersistentStoreDedupesIdenticalSample() throws {
         let (store, url) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -106,6 +125,56 @@ final class PersonalizationTests: XCTestCase {
             crossAppRecentCount: 0
         ))
         XCTAssertEqual(result, ["Newer note from this same app here."])
+    }
+
+    func testSameAppOnlyExcludesCrossAppContent() {
+        // Regression: a recent sample from another app must never be injected when the query is
+        // same-app-scoped — otherwise unrelated content (e.g. a Notes draft) bleeds into another
+        // app's prompt and the model parrots it verbatim.
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "you can use it to access the OpenAI API.", appBundleIdentifier: "com.app.notes", updatedAt: now),
+            WritingHistorySample(text: "Hi Molly, hope you are doing well today.", appBundleIdentifier: "com.app.mail", updatedAt: now.addingTimeInterval(-100))
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.app.mail",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["Hi Molly, hope you are doing well today."])
+        XCTAssertFalse(result.contains { $0.contains("OpenAI") }, "cross-app content must not leak")
+    }
+
+    func testSameAppScopingExcludesOtherWebDomains() {
+        // Two tabs in the same browser (same bundle) must not share context: a sample from another
+        // site, or one with no recorded domain, must not be injected into the focused domain's prompt.
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "Draft about quarterly revenue numbers.", appBundleIdentifier: "com.browser", domain: "mail.google.com", updatedAt: now),
+            WritingHistorySample(text: "you can use it to access the OpenAI API.", appBundleIdentifier: "com.browser", domain: "platform.openai.com", updatedAt: now),
+            WritingHistorySample(text: "Some unknown-domain text from this browser.", appBundleIdentifier: "com.browser", domain: nil, updatedAt: now)
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.browser",
+            domain: "mail.google.com",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["Draft about quarterly revenue numbers."])
+    }
+
+    func testNativeAppScopingIsUnaffectedByDomain() {
+        // A native app has no domain; same-app scoping must still return its samples.
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "A note typed in the native app here.", appBundleIdentifier: "com.app.notes", domain: nil, updatedAt: now)
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.app.notes",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["A note typed in the native app here."])
     }
 
     // MARK: - Telemetry

@@ -202,6 +202,12 @@ public final class PersistentWritingHistoryStore: WritingHistoryStoring, @unchec
                     .filter(Column("charCount") >= query.minimumCharacters)
                 if let bundle = query.bundleIdentifier, query.sameAppOnly {
                     request = request.filter(Column("appBundleIdentifier") == bundle)
+                    // Web fields: keep only the focused domain's rows so a different tab in the same
+                    // browser can't fill the row budget (and the in-memory selection then drops any
+                    // that slip through). Native apps have a nil domain and are unaffected.
+                    if let domain = query.domain, !domain.isEmpty {
+                        request = request.filter(Column("domain") == domain)
+                    }
                 }
                 if let language = query.language {
                     // Keep rows whose language matches or is unknown (conservative).
@@ -232,7 +238,14 @@ enum WritingHistorySelection {
 
         let sameApp = candidates.filter { entry in
             guard let bundle = query.bundleIdentifier else { return true }
-            return entry.appBundleIdentifier == bundle
+            guard entry.appBundleIdentifier == bundle else { return false }
+            // For web fields the bundle is the browser, so several sites share it. Require a matching
+            // domain so content from a different tab (or an unknown-domain sample) can't be treated as
+            // same-context and bleed in. Native apps have no domain, so this is inert for them.
+            if let queryDomain = query.domain, !queryDomain.isEmpty {
+                return entry.domain == queryDomain
+            }
+            return true
         }
         let crossApp = candidates.filter { entry in
             guard let bundle = query.bundleIdentifier else { return false }

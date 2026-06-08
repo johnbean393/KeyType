@@ -135,6 +135,12 @@ public struct CompletionRequest: Equatable {
     public var mode: CompletionMode
     public var maxCompletionTokens: Int
     public var maxDisplayWidth: Int
+    /// Side-context text injected into the prompt that the user did NOT type — clipboard contents and
+    /// on-screen OCR text. Carried alongside the request so the output filter can drop a completion
+    /// that merely parrots it verbatim (`ContextEchoGuard`). Writing-history samples are deliberately
+    /// excluded: they are scoped to the same app/domain and reproducing the user's own recurring
+    /// phrases is the point of that feature.
+    public var injectedContext: [String]
 
     public init(
         context: TextFieldContext,
@@ -142,7 +148,8 @@ public struct CompletionRequest: Equatable {
         requiredPrefixBytes: [UInt8] = [],
         mode: CompletionMode = .prose,
         maxCompletionTokens: Int = 4,
-        maxDisplayWidth: Int = 80
+        maxDisplayWidth: Int = 80,
+        injectedContext: [String] = []
     ) {
         self.context = context
         self.prompt = prompt
@@ -150,6 +157,7 @@ public struct CompletionRequest: Equatable {
         self.mode = mode
         self.maxCompletionTokens = maxCompletionTokens
         self.maxDisplayWidth = maxDisplayWidth
+        self.injectedContext = injectedContext
     }
 }
 
@@ -202,6 +210,13 @@ public enum SuppressionReason: Equatable {
     /// A mid-line / fill-in-the-middle completion that is too long or too low-probability to show
     /// without risking a wrong suggestion.
     case lowConfidenceMidLine
+    /// The completion reproduces a phrase that is already present in the recent text before the caret.
+    /// Accepting it would create a verbatim repetition loop. See `PrefixRepetitionGuard`.
+    case repeatsRecentPrefix
+    /// The completion verbatim-reproduces a span of injected side context the user did not type
+    /// (clipboard, on-screen OCR text) — the small model parroting context instead of predicting.
+    /// See `ContextEchoGuard`.
+    case echoesInjectedContext
     case noCandidate
 }
 

@@ -60,6 +60,63 @@ final class DisplayCoordinateConverterTests: XCTestCase {
         XCTAssertEqual(first.minY, 860, accuracy: 0.001)
     }
 
+    func testAppKitPointToCGFlipsAroundDisplayHeight() throws {
+        // AppKit (bottom-left) y=960 should map back to CG (top-left) y=120 on a 1080-tall display.
+        let cg = try XCTUnwrap(
+            DisplayCoordinateConverter.coreGraphicsPoint(
+                fromAppKitPoint: CGPoint(x: 50, y: 960),
+                displays: [singleDisplay]
+            )
+        )
+        XCTAssertEqual(cg.x, 50, accuracy: 0.001)
+        XCTAssertEqual(cg.y, 120, accuracy: 0.001)
+    }
+
+    func testCGRectToAppKitPointRoundTrips() throws {
+        // The point conversion must invert the rect conversion: a caret's CG midpoint → AppKit → CG
+        // returns the original midpoint. This is the exact path used for window selection.
+        let cgRect = CGRect(x: 300, y: 220, width: 2, height: 24)
+        let appKit = try XCTUnwrap(
+            DisplayCoordinateConverter.appKitRect(fromCoreGraphicsRect: cgRect, displays: [singleDisplay])
+        )
+        let backToCG = try XCTUnwrap(
+            DisplayCoordinateConverter.coreGraphicsPoint(
+                fromAppKitPoint: CGPoint(x: appKit.midX, y: appKit.midY),
+                displays: [singleDisplay]
+            )
+        )
+        XCTAssertEqual(backToCG.x, cgRect.midX, accuracy: 0.001)
+        XCTAssertEqual(backToCG.y, cgRect.midY, accuracy: 0.001)
+    }
+
+    func testAppKitPointToCGOnSecondaryDisplay() throws {
+        let secondary = DisplayGeometry(
+            appKitFrame: CGRect(x: 1920, y: 180, width: 1440, height: 900),
+            visibleFrame: CGRect(x: 1920, y: 204, width: 1440, height: 876),
+            coreGraphicsBounds: CGRect(x: 1920, y: 0, width: 1440, height: 900),
+            backingScaleFactor: 2
+        )
+        // AppKit point inside the secondary display. localY = appKitFrame.maxY(1080) - 1010 = 70,
+        // so CG y = coreGraphicsBounds.minY(0) + 70 = 70.
+        let cg = try XCTUnwrap(
+            DisplayCoordinateConverter.coreGraphicsPoint(
+                fromAppKitPoint: CGPoint(x: 2500, y: 1010),
+                displays: [singleDisplay, secondary]
+            )
+        )
+        XCTAssertEqual(cg.x, 2500, accuracy: 0.001)
+        XCTAssertEqual(cg.y, 70, accuracy: 0.001)
+    }
+
+    func testAppKitPointToCGReturnsNilOutsideAllDisplays() {
+        XCTAssertNil(
+            DisplayCoordinateConverter.coreGraphicsPoint(
+                fromAppKitPoint: CGPoint(x: 9000, y: 9000),
+                displays: [singleDisplay]
+            )
+        )
+    }
+
     func testMultiDisplayPicksContainingDisplay() throws {
         let primary = singleDisplay
         // Secondary 1440x900 sitting to the right of the primary in CG space; AppKit places it

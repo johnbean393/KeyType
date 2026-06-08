@@ -865,19 +865,7 @@ enum AXCaretHelper {
 
     @MainActor
     private static func displayGeometries() -> [DisplayGeometry] {
-        NSScreen.screens.compactMap { screen in
-            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
-                return nil
-            }
-
-            let displayID = CGDirectDisplayID(number.uint32Value)
-            return DisplayGeometry(
-                appKitFrame: screen.frame,
-                visibleFrame: screen.visibleFrame,
-                coreGraphicsBounds: CGDisplayBounds(displayID),
-                backingScaleFactor: screen.backingScaleFactor
-            )
-        }
+        ScreenDisplayGeometryProvider.current()
     }
 
     @MainActor
@@ -918,6 +906,27 @@ public struct DisplayGeometry: Equatable {
         self.visibleFrame = visibleFrame
         self.coreGraphicsBounds = coreGraphicsBounds
         self.backingScaleFactor = backingScaleFactor
+    }
+}
+
+/// Reads the live `[DisplayGeometry]` from `NSScreen`. Separated from the pure
+/// `DisplayCoordinateConverter` so the conversion math stays testable without a real display.
+public enum ScreenDisplayGeometryProvider {
+    @MainActor
+    public static func current() -> [DisplayGeometry] {
+        NSScreen.screens.compactMap { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+                return nil
+            }
+
+            let displayID = CGDirectDisplayID(number.uint32Value)
+            return DisplayGeometry(
+                appKitFrame: screen.frame,
+                visibleFrame: screen.visibleFrame,
+                coreGraphicsBounds: CGDisplayBounds(displayID),
+                backingScaleFactor: screen.backingScaleFactor
+            )
+        }
     }
 }
 
@@ -977,6 +986,31 @@ public enum DisplayCoordinateConverter {
             y: display.appKitFrame.maxY - localY - rect.height,
             width: rect.width,
             height: rect.height
+        )
+    }
+
+    /// Inverse of `appKitRect(fromCoreGraphicsRect:)` for a point: maps an AppKit (bottom-left origin)
+    /// global point to a CoreGraphics (top-left origin) global point. Needed because caret geometry is
+    /// stored in AppKit space while ScreenCaptureKit window frames are in CG space. Returns `nil` when
+    /// the point lands on no known display.
+    public static func coreGraphicsPoint(
+        fromAppKitPoint point: CGPoint,
+        displays: [DisplayGeometry]
+    ) -> CGPoint? {
+        guard let display = bestDisplay(
+            for: CGRect(origin: point, size: .zero),
+            displays: displays,
+            keyPath: \.appKitFrame
+        ) else {
+            return nil
+        }
+        // Invert: appKit.x = appKitFrame.minX + (cg.x - cgBounds.minX)
+        //         appKit.y = appKitFrame.maxY - (cg.y - cgBounds.minY)   (height 0)
+        let localX = point.x - display.appKitFrame.minX
+        let localY = display.appKitFrame.maxY - point.y
+        return CGPoint(
+            x: display.coreGraphicsBounds.minX + localX,
+            y: display.coreGraphicsBounds.minY + localY
         )
     }
 

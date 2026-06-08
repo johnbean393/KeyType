@@ -19,7 +19,8 @@ final class CandidateFilterTests: XCTestCase {
         target: AppTarget = CandidateFilterTests.target,
         placeholder: String? = nil,
         labels: [String] = [],
-        traits: TextFieldTraits = TextFieldTraits()
+        traits: TextFieldTraits = TextFieldTraits(),
+        injectedContext: [String] = []
     ) -> CompletionRequest {
         let context = TextFieldContext(
             beforeCursor: beforeCursor,
@@ -36,7 +37,8 @@ final class CandidateFilterTests: XCTestCase {
             requiredPrefixBytes: requiredPrefixBytes,
             mode: mode,
             maxCompletionTokens: maxCompletionTokens,
-            maxDisplayWidth: maxDisplayWidth
+            maxDisplayWidth: maxDisplayWidth,
+            injectedContext: injectedContext
         )
     }
 
@@ -376,6 +378,66 @@ final class CandidateFilterTests: XCTestCase {
         let filter = DefaultCandidateFilter()
         XCTAssertNil(
             filter.suppressionReason(for: candidate("orow.", tokenIDs: [1]), request: request(beforeCursor: "see you tom"))
+        )
+    }
+
+    // MARK: - Prefix-repetition net
+
+    func testSuppressesPrefixRepetitionLoop() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate(" you can use it to access the OpenAI API to do anything"),
+                request: request(beforeCursor: "You can use it to access the OpenAI. And")
+            ),
+            .repeatsRecentPrefix
+        )
+    }
+
+    func testPrefixRepetitionJudgedAfterHealingStem() {
+        // H1: under healing the candidate re-emits the typed stem (" ex"); the repetition check must
+        // run on the *inserted* text (stem stripped). The stripped continuation "ample data set here"
+        // reproduces an earlier phrase, but the RAW candidate ("example data set here") does NOT
+        // appear contiguously in the prefix — so this only fires if the heal stem is stripped first.
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate(" example data set here"),
+                request: request(
+                    beforeCursor: "ample data set here is good. Give me an ex",
+                    requiredPrefixBytes: Array(" ex".utf8)
+                )
+            ),
+            .repeatsRecentPrefix
+        )
+    }
+
+    // MARK: - Context-echo net
+
+    func testSuppressesEchoOfClipboardContext() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(
+                for: candidate(" if you require maintenance of UPS systems or backup"),
+                request: request(
+                    beforeCursor: "Hi Molly,",
+                    injectedContext: ["if you require maintenance of UPS systems or backup power, call us."]
+                )
+            ),
+            .echoesInjectedContext
+        )
+    }
+
+    func testKeepsCompletionNotPresentInInjectedContext() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(
+                for: candidate(" hope you are well"),
+                request: request(
+                    beforeCursor: "Hi Molly,",
+                    injectedContext: ["if you require maintenance of UPS systems or backup power, call us."]
+                )
+            )
         )
     }
 

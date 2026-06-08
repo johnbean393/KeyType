@@ -108,7 +108,14 @@ public struct InMemoryWritingHistoryStore: WritingHistoryProviding {
 
         let sameApp = candidates.filter { entry in
             guard let bundle = query.bundleIdentifier else { return true }
-            return entry.appBundleIdentifier == bundle
+            guard entry.appBundleIdentifier == bundle else { return false }
+            // For web fields the bundle is the browser, shared across sites; require a matching domain
+            // so a different tab's content can't be treated as same-context. Native apps have no
+            // domain, so this is inert for them. Mirrors `WritingHistorySelection` in Personalization.
+            if let queryDomain = query.domain, !queryDomain.isEmpty {
+                return entry.domain == queryDomain
+            }
+            return true
         }
         let crossApp = candidates.filter { entry in
             guard let bundle = query.bundleIdentifier else { return false }
