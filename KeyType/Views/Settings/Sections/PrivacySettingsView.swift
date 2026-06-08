@@ -56,6 +56,25 @@ struct PrivacySettingsView: View {
                         permissions.openScreenRecordingSettings()
                     }
                 }
+                Toggle(isOn: $settings.screenshotCalibrationEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use screenshots to improve suggestion appearance")
+                        Text("Calibrates ghost-text font size and vertical alignment from the focused field. Off by default; requires Screen Recording.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if settings.screenshotCalibrationEnabled, !permissions.screenRecording.isGranted {
+                            Text("Screen Recording is not granted — screenshot calibration stays off until you allow it in System Settings.")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                .onChange(of: settings.screenshotCalibrationEnabled) { _, isOn in
+                    if isOn, !permissions.screenRecording.isGranted {
+                        _ = permissions.requestScreenRecording()
+                        permissions.openScreenRecordingSettings()
+                    }
+                }
             }
 
             Section {

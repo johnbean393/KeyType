@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import AutocompleteCore
 import XCTest
 @testable import MacContextCapture
 
@@ -104,5 +105,74 @@ final class CaretGeometryQualityTests: XCTestCase {
 
         XCTAssertEqual(layout.lineIndex, 1)
         XCTAssertEqual(layout.xOffset, characterWidth * 4, accuracy: 0.5)
+    }
+
+    func testWrappedLineTrailingEdgeCaretIsRepairedFromFieldEstimate() {
+        let field = CGRect(x: 520, y: 142, width: 712, height: 44)
+        let beforeCursor = """
+        This is a test of the new KeyType feature, screenshot aware calibration and alignment of the suggestion. I hope at the end of each line
+        """
+        let badCaret = CGRect(x: 1226, y: 148, width: 2, height: 36)
+        let current = CapturedCaretGeometry(
+            rect: badCaret,
+            source: "AXBoundsForRange",
+            quality: CaretGeometryQuality.exact
+        )
+
+        let repaired = FocusedFieldReader.repairedCaretGeometry(
+            beforeCursor: beforeCursor,
+            fieldRect: field,
+            current: current
+        )
+        let selection = NSRange(location: (beforeCursor as NSString).length, length: 0)
+        let expected = AXCaretGeometryResolver.conservativeEstimatedCaretRect(
+            in: field,
+            text: beforeCursor,
+            selection: selection
+        )
+
+        XCTAssertEqual(repaired.quality, .estimated)
+        XCTAssertEqual(repaired.source, "AXFrameEstimateAfterInvalidCaret(AXBoundsForRange)")
+        XCTAssertEqual(repaired.rect?.minX ?? 0, expected.minX, accuracy: 0.001)
+        XCTAssertLessThan(repaired.rect?.minX ?? .greatestFiniteMagnitude, badCaret.minX - 80)
+    }
+
+    func testSingleLineTallCaretIsNotRepairedWithoutWrapEvidence() {
+        let field = CGRect(x: 520, y: 142, width: 712, height: 44)
+        let caret = CGRect(x: 620, y: 148, width: 2, height: 36)
+        let current = CapturedCaretGeometry(
+            rect: caret,
+            source: "AXBoundsForRange",
+            quality: CaretGeometryQuality.exact
+        )
+
+        let repaired = FocusedFieldReader.repairedCaretGeometry(
+            beforeCursor: "short text",
+            fieldRect: field,
+            current: current
+        )
+
+        XCTAssertEqual(repaired, current)
+    }
+
+    func testTopLineTrailingEdgeCaretIsNotRepairedAsContinuationLine() {
+        let field = CGRect(x: 520, y: 142, width: 712, height: 44)
+        let beforeCursor = """
+        This is a test of the new KeyType feature, screenshot aware calibration and alignment of the suggestion. I hope at the end of each line
+        """
+        let topLineCaret = CGRect(x: 1226, y: 168, width: 2, height: 16)
+        let current = CapturedCaretGeometry(
+            rect: topLineCaret,
+            source: "AXBoundsForRange",
+            quality: CaretGeometryQuality.exact
+        )
+
+        let repaired = FocusedFieldReader.repairedCaretGeometry(
+            beforeCursor: beforeCursor,
+            fieldRect: field,
+            current: current
+        )
+
+        XCTAssertEqual(repaired, current)
     }
 }

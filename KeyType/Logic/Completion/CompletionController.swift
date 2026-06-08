@@ -229,6 +229,7 @@ final class CompletionController {
     private let telemetry: CompletionTelemetryStore
     private let presenter: InlineGhostTextPresenter
     private let placementResolver: OverlayPlacementResolver
+    private let overlayCalibrator: ScreenshotOverlayCalibrator
     private let inserter: PasteboardCompletionInserter
     private let filter: DefaultCandidateFilter
     private let predictionLog = PredictionLog()
@@ -239,6 +240,10 @@ final class CompletionController {
     private var generationTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Error>?
     private var warmupTask: Task<Void, Never>?
+    private var overlayCalibrationTask: Task<Void, Never>?
+    private var overlayCalibrationInFlightKey: String?
+    private var overlayCalibrationCache: [String: ScreenshotCalibrationResult] = [:]
+    private var overlayCalibrationOrder: [String] = []
     private var listenerToken: UUID?
     private var activeLatencyTrace: CompletionLatencyTrace?
     private var fullPromptDebugByKey: [String: FullPromptDebugInfo] = [:]
@@ -281,6 +286,7 @@ final class CompletionController {
     private var reuseHistory = CompletionReuseHistory()
     /// The most recent focused-field context seen — the live caret the suggestion is reconciled to.
     private var latestContext: TextFieldContext?
+    private var latestSnapshot: FocusedFieldSnapshot?
     private var frozenSideContext: FrozenPromptSideContext?
     private var lastGenerationLatencyMs: Double?
     /// Set when the user accepts a word with Tab: keep the *rest* of the same suggestion in place and
@@ -342,7 +348,8 @@ final class CompletionController {
         history: WritingHistoryStoring = NullWritingHistoryStore(),
         screenTextProvider: ScreenTextProviding = NullScreenTextProvider(),
         telemetry: CompletionTelemetryStore = CompletionTelemetryStore(url: nil),
-        compatibilityStore: AppCompatibilityStore = KeyTypeModuleGraph.makeCompatibilityStore()
+        compatibilityStore: AppCompatibilityStore = KeyTypeModuleGraph.makeCompatibilityStore(),
+        overlayCalibrator: ScreenshotOverlayCalibrator = ScreenshotOverlayCalibrator()
     ) {
         self.tracker = tracker
         self.settings = settings
@@ -352,6 +359,7 @@ final class CompletionController {
         self.compatibilityStore = compatibilityStore
         self.presenter = InlineGhostTextPresenter()
         self.placementResolver = OverlayPlacementResolver(compatibilityStore: compatibilityStore)
+        self.overlayCalibrator = overlayCalibrator
         self.inserter = PasteboardCompletionInserter(
             planner: InsertionPlanner(compatibilityStore: compatibilityStore)
         )
@@ -430,6 +438,9 @@ final class CompletionController {
             tracker.removeListener(listenerToken)
         }
         listenerToken = nil
+        overlayCalibrationTask?.cancel()
+        overlayCalibrationTask = nil
+        overlayCalibrationInFlightKey = nil
         reset()
     }
 
@@ -441,6 +452,8 @@ final class CompletionController {
     func shutdown() async {
         stop()
         warmupTask?.cancel()
+        overlayCalibrationTask?.cancel()
+        overlayCalibrationTask = nil
         lastGenerationLatencyMs = nil
         loadState = .idle
         activeModelFilename = nil
@@ -456,10 +469,12 @@ final class CompletionController {
         // Conditions under which there can be no suggestion: tear everything down and reset.
         guard completionsEnabled, loadState == .ready, let engine else { reset(); return }
         guard let snapshot else {
+            latestSnapshot = nil
             if preserveScreenCaptureHoldForMissingSnapshot() { return }
             reset()
             return
         }
+        latestSnapshot = snapshot
         if preserveScreenCaptureHold(for: snapshot.context) { return }
         guard let caretRect = snapshot.caretRect, !caretRect.isEmpty else {
             if preserveHeldCompletion(for: snapshot.context) { return }
@@ -497,9 +512,15 @@ final class CompletionController {
         // suggestion to the new caret rather than leaving it stranded at the old screen position.
         let key = Self.contextKey(for: context)
         if key == lastContextKey {
+            let shouldResolveStyle = settings.screenshotCalibrationEnabled
+                || (visibleCandidate != nil && Self.caretMoved(from: lastCaretRect, to: caretRect))
+            let style = shouldResolveStyle ? FieldFontResolver.currentStyle() : nil
+            if let style {
+                refreshOverlayCalibration(for: snapshot, style: style)
+            }
             if visibleCandidate != nil, Self.caretMoved(from: lastCaretRect, to: caretRect) {
                 lastCaretRect = caretRect
-                renderSuggestion(for: context, style: FieldFontResolver.currentStyle())
+                renderSuggestion(for: context, style: style ?? FieldFontResolver.currentStyle())
             }
             return
         }
@@ -519,6 +540,7 @@ final class CompletionController {
         // Resolve the field font and foreground color now, on the main actor, before suspending
         // into generation, so the ghost text matches the field's typeface and color.
         let style = FieldFontResolver.currentStyle()
+        refreshOverlayCalibration(for: snapshot, style: style)
 
         // Holding an accepted suggestion: while its remainder still applies to the live caret, keep it
         // on screen and skip regeneration so repeated Tab presses accept subsequent words of the SAME
@@ -1027,7 +1049,13 @@ final class CompletionController {
         }
         let candidate = CompletionCandidate(text: shown, mode: .prose)
         let effectiveStyle = Self.effectiveOverlayStyle(style, for: live)
-        let overlayStyle = effectiveStyle.overlayTextStyle
+        let calibrated = calibratedOverlayInputs(
+            style: effectiveStyle,
+            placement: placement,
+            live: live
+        )
+        placement = calibrated.placement
+        let overlayStyle = calibrated.style.overlayTextStyle
         let mirrorContext = Self.textMirrorContext(for: live, placement: placement)
         let canUseTextMirror = GhostTextOverlayWindow.canUseTextMirror(
             placement: placement,
@@ -1054,6 +1082,149 @@ final class CompletionController {
             mirrorContext: mirrorContext
         )
         return true
+    }
+
+    private func refreshOverlayCalibration(
+        for snapshot: FocusedFieldSnapshot,
+        style: ResolvedFieldStyle
+    ) {
+        guard settings.screenshotCalibrationEnabled,
+              CGPreflightScreenCaptureAccess(),
+              !snapshot.context.traits.isSecureTextEntry,
+              !snapshot.context.traits.isPasswordField,
+              !snapshot.context.traits.isPasswordManagerContext,
+              let font = style.font,
+              snapshot.context.geometry.cursorRect?.isEmpty == false else {
+            overlayCalibrationTask?.cancel()
+            overlayCalibrationTask = nil
+            overlayCalibrationInFlightKey = nil
+            return
+        }
+
+        let key = Self.overlayCalibrationKey(
+            for: snapshot.context,
+            style: style,
+            windowID: snapshot.windowID
+        )
+        guard overlayCalibrationCache[key] == nil,
+              overlayCalibrationInFlightKey != key else {
+            return
+        }
+
+        overlayCalibrationTask?.cancel()
+        overlayCalibrationInFlightKey = key
+        let color = style.color
+        overlayCalibrationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await overlayCalibrator.calibrate(
+                    snapshot: snapshot,
+                    font: font,
+                    textColor: color
+                )
+                guard !Task.isCancelled else { return }
+                overlayCalibrationInFlightKey = nil
+
+                guard result.meetsQualityThresholds else {
+                    predictionLog.append(
+                        String(
+                            format: "CALIBRATE reject confidence=%.3f rmse=%.3f size=%.2f",
+                            Double(result.confidence),
+                            Double(result.rmse),
+                            Double(result.bestSize)
+                        )
+                    )
+                    return
+                }
+
+                rememberOverlayCalibration(result, forKey: key)
+                predictionLog.append(
+                    String(
+                        format: "CALIBRATE accept confidence=%.3f rmse=%.3f sizeFactor=%.3f verticalOffset=%.1f",
+                        Double(result.confidence),
+                        Double(result.rmse),
+                        Double(result.fontSizeAdjustmentFactor),
+                        Double(result.verticalAlignmentOffset)
+                    )
+                )
+
+                if visibleCandidate != nil,
+                   let latestContext,
+                   Self.overlayCalibrationKey(
+                       for: latestContext,
+                       style: style,
+                       windowID: snapshot.windowID
+                   ) == key {
+                    _ = renderSuggestion(for: latestContext, style: style, clearOnFailure: false)
+                }
+            } catch is CancellationError {
+                overlayCalibrationInFlightKey = nil
+            } catch {
+                overlayCalibrationInFlightKey = nil
+                log.debug("Screenshot calibration failed: \(error, privacy: .public)")
+            }
+        }
+    }
+
+    private func calibratedOverlayInputs(
+        style: ResolvedFieldStyle,
+        placement: OverlayPlacement,
+        live: TextFieldContext
+    ) -> (style: ResolvedFieldStyle, placement: OverlayPlacement) {
+        guard let result = cachedOverlayCalibration(for: live, style: style) else {
+            return (style, placement)
+        }
+
+        var calibratedStyle = style
+        if let font = style.font {
+            let calibratedSize = min(72, max(6, font.pointSize * result.fontSizeAdjustmentFactor))
+            calibratedStyle.font = NSFont(descriptor: font.fontDescriptor, size: calibratedSize)
+                ?? NSFont.systemFont(ofSize: calibratedSize)
+            if let lineHeight = style.lineHeight {
+                calibratedStyle.lineHeight = max(1, lineHeight * result.fontSizeAdjustmentFactor)
+            }
+        }
+
+        var calibratedPlacement = placement
+        if result.verticalAlignmentOffset != 0 {
+            calibratedPlacement.cursorRect = calibratedPlacement.cursorRect.offsetBy(
+                dx: 0,
+                dy: result.verticalAlignmentOffset
+            )
+        }
+        return (calibratedStyle, calibratedPlacement)
+    }
+
+    private func cachedOverlayCalibration(
+        for context: TextFieldContext,
+        style: ResolvedFieldStyle
+    ) -> ScreenshotCalibrationResult? {
+        guard settings.screenshotCalibrationEnabled,
+              let snapshot = latestSnapshot,
+              snapshot.context.target.bundleIdentifier == context.target.bundleIdentifier else {
+            return nil
+        }
+        let key = Self.overlayCalibrationKey(
+            for: context,
+            style: style,
+            windowID: snapshot.windowID
+        )
+        guard let result = overlayCalibrationCache[key],
+              result.meetsQualityThresholds else {
+            return nil
+        }
+        return result
+    }
+
+    private func rememberOverlayCalibration(_ result: ScreenshotCalibrationResult, forKey key: String) {
+        if overlayCalibrationCache[key] == nil {
+            overlayCalibrationOrder.append(key)
+        }
+        overlayCalibrationCache[key] = result
+        while overlayCalibrationOrder.count > 24 {
+            let removed = overlayCalibrationOrder.removeFirst()
+            overlayCalibrationCache.removeValue(forKey: removed)
+        }
     }
 
     /// The portion of the anchored completion still ahead of the live caret, or `nil` when the
@@ -1112,6 +1283,7 @@ final class CompletionController {
         lastContextKey = nil
         lastCaretRect = nil
         frozenSideContext = nil
+        latestSnapshot = nil
         if !keepingReuseHistory {
             reuseHistory.removeAll()
         }
@@ -1155,6 +1327,46 @@ final class CompletionController {
 
     private static func contextKey(for context: TextFieldContext) -> String {
         context.beforeCursor + "\u{1}" + context.afterCursor + "\u{1}" + context.target.bundleIdentifier
+    }
+
+    private static func overlayCalibrationKey(
+        for context: TextFieldContext,
+        style: ResolvedFieldStyle,
+        windowID: CGWindowID?
+    ) -> String {
+        let field = context.geometry.fieldRect ?? context.geometry.cursorRect ?? .zero
+        let font = style.font
+        return [
+            context.target.bundleIdentifier,
+            context.target.domain ?? "",
+            context.target.windowTitle ?? "",
+            windowID.map(String.init) ?? "window:nil",
+            rectKey(field),
+            font?.fontName ?? "font:nil",
+            font.map { String(format: "%.2f", Double($0.pointSize)) } ?? "size:nil",
+            style.color.map(colorKey) ?? "color:nil"
+        ].joined(separator: "\u{1D}")
+    }
+
+    private static func rectKey(_ rect: CGRect) -> String {
+        String(
+            format: "%.0f,%.0f,%.0f,%.0f",
+            Double(rect.minX),
+            Double(rect.minY),
+            Double(rect.width),
+            Double(rect.height)
+        )
+    }
+
+    private static func colorKey(_ color: NSColor) -> String {
+        let converted = color.usingColorSpace(.deviceRGB) ?? color
+        return String(
+            format: "%.2f,%.2f,%.2f,%.2f",
+            Double(converted.redComponent),
+            Double(converted.greenComponent),
+            Double(converted.blueComponent),
+            Double(converted.alphaComponent)
+        )
     }
 
     private static func fullPromptDebugKey(for request: CompletionRequest) -> String {

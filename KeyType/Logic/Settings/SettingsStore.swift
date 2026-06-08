@@ -106,6 +106,7 @@ final class SettingsStore {
         static let historyEnabled = "KeyType.settings.historyEnabled"
         static let clipboardEnabled = "KeyType.settings.clipboardEnabled"
         static let ocrEnabled = "KeyType.settings.ocrEnabled"
+        static let screenshotCalibrationEnabled = "KeyType.settings.screenshotCalibrationEnabled"
         static let fullPromptLoggingEnabled = "KeyType.settings.fullPromptLoggingEnabled"
         static let completionLength = "KeyType.settings.completionLength"
         static let selectedModelFilename = "KeyType.settings.selectedModelFilename"
@@ -134,6 +135,11 @@ final class SettingsStore {
     /// Opt-in: include on-screen / OCR context in the prompt. OFF by default.
     var ocrEnabled: Bool {
         didSet { defaults.set(ocrEnabled, forKey: Key.ocrEnabled) }
+    }
+
+    /// Opt-in: use screenshots to calibrate overlay font size/vertical alignment. OFF by default.
+    var screenshotCalibrationEnabled: Bool {
+        didSet { defaults.set(screenshotCalibrationEnabled, forKey: Key.screenshotCalibrationEnabled) }
     }
 
     /// Developer opt-in: write full prompts and candidate details to a shareable local log.
@@ -175,6 +181,7 @@ final class SettingsStore {
         self.historyEnabled = defaults.bool(forKey: Key.historyEnabled)
         self.clipboardEnabled = defaults.bool(forKey: Key.clipboardEnabled)
         self.ocrEnabled = defaults.bool(forKey: Key.ocrEnabled)
+        self.screenshotCalibrationEnabled = defaults.bool(forKey: Key.screenshotCalibrationEnabled)
         self.fullPromptLoggingEnabled = defaults.bool(forKey: Key.fullPromptLoggingEnabled)
         self.completionLength = (defaults.string(forKey: Key.completionLength))
             .flatMap(CompletionLength.init(rawValue:)) ?? .medium

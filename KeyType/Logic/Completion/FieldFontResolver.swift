@@ -20,7 +20,7 @@ struct ResolvedFieldStyle {
     var baselineOffset: CGFloat
     var lineHeight: CGFloat?
 
-    init(
+    nonisolated init(
         font: NSFont? = nil,
         color: NSColor? = nil,
         paragraphStyle: NSParagraphStyle? = nil,

@@ -111,6 +111,7 @@ row here.**
 | 089 | Model regional English as OS-derived prompt context | prompting |
 | 090 | Re-enable mid-line FIM with conservative visible gating | generation/performance |
 | 091 | TextKit mirror overlay and richer AX text style | ui/context-capture |
+| 092 | Screenshot-assisted overlay calibration | ui/context-capture/privacy |
 
 ---
 
@@ -3128,3 +3129,49 @@ text. Both are now closed:
   available. Eager redraw after accepting a word remains disabled for mirror mode because that path
   needs a fresh AX snapshot with surrounding context. More precise screenshot calibration and richer
   capsule-bubble styling remain future work.
+
+## ADR-092 — Screenshot-assisted overlay calibration
+
+- Date: 2026-06-08
+- Status: accepted
+- Context: Cotypist-style overlay fidelity does not stop at TextKit layout. Its reconstruction also
+  showed a screenshot-assisted calibration loop: resolve the target window id, capture the caret
+  region, OCR visible text when useful, render candidate font sizes/vertical offsets, compare pixels,
+  and only apply the correction when confidence clears a threshold. KeyType already had optional
+  Screen Recording/OCR for prompt context, but overlay rendering still trusted AX font/caret metrics
+  directly.
+- Decision: Add an opt-in "Use screenshots to improve suggestion appearance" setting, separate from
+  OCR prompt context. `FocusedFieldSnapshot` now carries a best-effort `CGWindowID` and window frame,
+  resolved first through dynamically-loaded private `_AXUIElementGetWindow` and then through
+  `CGWindowListCopyWindowInfo` as a fallback. `ScreenshotOverlayCalibrator` captures a cropped caret
+  region with ScreenCaptureKit or legacy `CGWindowListCreateImage`, runs a Vision OCR hook, renders
+  candidate text sizes and vertical offsets into deterministic bitmaps, scores them with normalized
+  glyph RMSE, and returns font-size/vertical corrections only when quality thresholds pass. The
+  completion controller caches those corrections by visual surface and redraws a visible suggestion
+  when a calibration result lands.
+- Consequences: Overlay appearance can now be corrected from pixels rather than AX metrics alone for
+  users who opt into Screen Recording. The feature has a larger privacy and latency surface than AX
+  capture, so it stays off by default, skips secure/password contexts, runs asynchronously, and never
+  feeds screenshot text into prompts. The private AX symbol is resolved dynamically so the app can
+  fall back cleanly if macOS removes it.
+
+## ADR-093 — Repair wrapped-line caret rects before overlay placement
+
+- Date: 2026-06-08
+- Status: accepted
+- Context: Some web-backed composers return an AX caret rectangle at the trailing edge of the
+  previous visual line after soft wrapping. The rectangle can be line-fragment-sized rather than
+  caret-sized, so renderers that faithfully align to it place ghost text at the wrong x coordinate
+  even when the captured field rect is correct. Cotypist's observable app surface links
+  ScreenCaptureKit and Vision, matching the high-level strategy of treating AX caret geometry as
+  provisional and validating it against independent visual/text evidence.
+- Decision: Keep the clean-room implementation in KeyType's capture layer: after app-specific
+  caret fallbacks run, detect wrapped multiline fields where the AX caret looks like a text
+  container or is stuck at the field trailing edge while a conservative text-layout estimate places
+  the caret on a continuation line. In those cases, downgrade the caret to an estimated
+  `AXFrameEstimateAfterInvalidCaret(...)` rect before `TextFieldGeometry` reaches overlay
+  placement. Leave short single-line fields untouched.
+- Consequences: Overlay renderers no longer need to compensate for this impossible caret geometry.
+  The fix favors a conservative estimate over a visibly wrong exact-looking AX result, matching the
+  product rule that suppression or approximation is preferable to misplaced suggestions. More
+  expensive screenshot/OCR calibration can still refine style and vertical alignment independently.

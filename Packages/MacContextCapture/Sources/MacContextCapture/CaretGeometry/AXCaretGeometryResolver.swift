@@ -103,7 +103,7 @@ public struct AXCaretGeometryResolver {
         }
 
         return AXCaretGeometryResult(
-            rect: conservativeEstimatedCaretRect(in: anchorFrame, text: textValue, selection: selection),
+            rect: Self.conservativeEstimatedCaretRect(in: anchorFrame, text: textValue, selection: selection),
             source: "AXFrameEstimateNonInvasive",
             quality: .estimated
         )
@@ -192,7 +192,7 @@ public struct AXCaretGeometryResolver {
            anchorFrame.width > 10,
            anchorFrame.height > 0 {
             return AXCaretGeometryResult(
-                rect: conservativeEstimatedCaretRect(in: anchorFrame, text: textValue, selection: selection),
+                rect: Self.conservativeEstimatedCaretRect(in: anchorFrame, text: textValue, selection: selection),
                 source: "AXFrameEstimate",
                 quality: .estimated
             )
@@ -366,12 +366,12 @@ public struct AXCaretGeometryResolver {
         return runs
     }
 
-    private func conservativeEstimatedCaretX(
+    nonisolated static func conservativeEstimatedCaretX(
         in cocoaRect: CGRect,
         text: String,
         selection: NSRange
     ) -> CGFloat {
-        let currentLinePrefix = currentLinePrefix(in: text, selection: selection)
+        let currentLinePrefix = Self.currentLinePrefix(in: text, selection: selection)
         let line = currentLinePrefix as NSString
 
         let estimatedWidthBias: CGFloat = 1.1
@@ -384,7 +384,7 @@ public struct AXCaretGeometryResolver {
         return cocoaRect.minX + estimatedWidth
     }
 
-    private func conservativeEstimatedCaretRect(
+    nonisolated static func conservativeEstimatedCaretRect(
         in cocoaRect: CGRect,
         text: String,
         selection: NSRange
@@ -393,7 +393,7 @@ public struct AXCaretGeometryResolver {
         let height = min(cocoaRect.height, lineHeight)
 
         guard cocoaRect.height > lineHeight * 2 else {
-            let x = min(conservativeEstimatedCaretX(in: cocoaRect, text: text, selection: selection), cocoaRect.maxX)
+            let x = min(Self.conservativeEstimatedCaretX(in: cocoaRect, text: text, selection: selection), cocoaRect.maxX)
             return CGRect(x: x, y: cocoaRect.minY, width: 2, height: height)
         }
 
@@ -513,7 +513,7 @@ public struct AXCaretGeometryResolver {
         return min(measuredWidth, CGFloat((text as NSString).length) * perCharacterCeiling)
     }
 
-    private func currentLinePrefix(in text: String, selection: NSRange) -> String {
+    private nonisolated static func currentLinePrefix(in text: String, selection: NSRange) -> String {
         let nsText = text as NSString
         let safeLocation = min(selection.location, nsText.length)
         let prefix = nsText.substring(to: safeLocation)

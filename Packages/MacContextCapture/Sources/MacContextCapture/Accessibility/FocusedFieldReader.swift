@@ -21,17 +21,23 @@ public struct FocusedFieldSnapshot: Equatable {
     public let caretRect: CGRect?
     public let caretSource: String?
     public let caretQuality: String?
+    public let windowID: CGWindowID?
+    public let windowFrame: CGRect?
 
     public init(
         context: TextFieldContext,
         caretRect: CGRect?,
         caretSource: String?,
-        caretQuality: String?
+        caretQuality: String?,
+        windowID: CGWindowID? = nil,
+        windowFrame: CGRect? = nil
     ) {
         self.context = context
         self.caretRect = caretRect
         self.caretSource = caretSource
         self.caretQuality = caretQuality
+        self.windowID = windowID
+        self.windowFrame = windowFrame
     }
 }
 
@@ -116,6 +122,12 @@ public struct FocusedFieldReader {
         }
 
         let fieldRect = Self.fieldRect(for: textElement)
+        let windowFrame = AXWindowIDResolver.windowFrame(for: textElement)
+        let windowID = AXWindowIDResolver.windowID(
+            for: textElement,
+            target: target,
+            fieldRect: fieldRect
+        )
         let resolvedCaret = Self.resolvedCaretGeometry(
             target: target,
             beforeCursor: split.beforeCursor,
@@ -149,7 +161,9 @@ public struct FocusedFieldReader {
             context: context,
             caretRect: resolvedCaret.rect,
             caretSource: resolvedCaret.source,
-            caretQuality: resolvedCaret.quality.rawValue
+            caretQuality: resolvedCaret.quality.rawValue,
+            windowID: windowID,
+            windowFrame: windowFrame
         )
     }
 
@@ -330,6 +344,7 @@ public struct FocusedFieldReader {
         fieldRect: CGRect?,
         current: CapturedCaretGeometry
     ) -> CapturedCaretGeometry {
+        var resolved = current
         for fallback in appCaretGeometryFallbacks {
             if let override = fallback.caretGeometry(
                 target: target,
@@ -337,10 +352,69 @@ public struct FocusedFieldReader {
                 fieldRect: fieldRect,
                 current: current
             ) {
-                return override
+                resolved = override
+                break
             }
         }
-        return current
+        return Self.repairedCaretGeometry(
+            beforeCursor: beforeCursor,
+            fieldRect: fieldRect,
+            current: resolved
+        )
+    }
+
+    nonisolated static func repairedCaretGeometry(
+        beforeCursor: String,
+        fieldRect: CGRect?,
+        current: CapturedCaretGeometry
+    ) -> CapturedCaretGeometry {
+        guard let fieldRect,
+              !fieldRect.isEmpty,
+              fieldRect.width > 10,
+              fieldRect.height >= 40,
+              let rect = current.rect,
+              !rect.isEmpty else {
+            return current
+        }
+
+        let caretLocation = (beforeCursor as NSString).length
+        let selection = NSRange(location: caretLocation, length: 0)
+        let estimatedLayout = AXCaretGeometryResolver.estimatedSoftWrappedCaretLayout(
+            in: beforeCursor,
+            selection: selection,
+            availableWidth: fieldRect.width
+        )
+        let hasWrappedContinuation = estimatedLayout.lineIndex > 0
+        guard hasWrappedContinuation else {
+            return current
+        }
+
+        let estimatedRect = AXCaretGeometryResolver.conservativeEstimatedCaretRect(
+            in: fieldRect,
+            text: beforeCursor,
+            selection: selection
+        )
+
+        let looksLikeContainer = AXCaretGeometryResolver.rectLooksLikeTextContainer(
+            rect,
+            anchor: fieldRect
+        )
+        let trailingEdgeTolerance = max(8, min(24, fieldRect.width * 0.03))
+        let estimatedAwayFromTrailingEdge = estimatedRect.minX < fieldRect.maxX - max(48, fieldRect.width * 0.10)
+        let stuckAtTrailingEdge = rect.maxX >= fieldRect.maxX - trailingEdgeTolerance
+            && estimatedAwayFromTrailingEdge
+        let verticalTolerance = max(10, estimatedRect.height * 0.75)
+        let verticallyCompatible = abs(rect.midY - estimatedRect.midY) <= verticalTolerance
+
+        guard looksLikeContainer || (stuckAtTrailingEdge && verticallyCompatible) else {
+            return current
+        }
+
+        return CapturedCaretGeometry(
+            rect: estimatedRect,
+            source: "AXFrameEstimateAfterInvalidCaret(\(current.source ?? "unknown"))",
+            quality: .estimated
+        )
     }
 
     private static func fieldRect(for element: AXUIElement) -> CGRect? {
