@@ -122,6 +122,10 @@ final class WritingHistoryRecorder {
         guard sample.text.trimmingCharacters(
             in: .whitespacesAndNewlines
         ).count >= minimumCharacters else { return }
+        // Belt-and-suspenders junk gate: skip entries that aren't prose (bare URLs, UUID blobs,
+        // filesystem paths) before they reach the encrypted DB. Mirrored in WritingHistorySelection
+        // for samples already on disk from before this guard was introduced.
+        guard WritingHistoryFilter.isProse(sample.text) else { return }
 
         // Re-resolve the policy from the captured metadata: secure/sensitive fields and apps that
         // disable training-data collection must never contribute samples.

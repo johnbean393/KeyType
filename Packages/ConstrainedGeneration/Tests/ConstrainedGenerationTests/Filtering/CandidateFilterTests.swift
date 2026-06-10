@@ -412,6 +412,86 @@ final class CandidateFilterTests: XCTestCase {
         )
     }
 
+    // MARK: - Reserved-marker net
+
+    func testSuppressesReservedPlaceholderToken() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate(" <unused56>"), request: request(beforeCursor: "Hello ")),
+            .reservedMarker
+        )
+    }
+
+    func testSuppressesEmbeddedChatMarker() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate(" text to <unused54><unused56>"), request: request(beforeCursor: "send ")),
+            .reservedMarker
+        )
+    }
+
+    func testGenuineMarkupIsNotSuppressedAsReservedMarker() {
+        // `<h2>` etc. are ordinary text the user might type; the reserved net must not claim them.
+        let filter = DefaultCandidateFilter()
+        XCTAssertNotEqual(
+            filter.suppressionReason(for: candidate("h2> heading", tokenIDs: [1]), request: request(beforeCursor: "write <")),
+            .reservedMarker
+        )
+    }
+
+    // MARK: - Markup-tag net
+
+    func testSuppressesPureMarkupTagInProse() {
+        // The logged failure: "my name is" in a web chat box → " </code>" (Gemma token 215) shown.
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate(" </code>"), request: request(beforeCursor: "my name is")),
+            .markupTagOutsideMarkupContext
+        )
+    }
+
+    func testSuppressesMultiTagCandidateInProse() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertEqual(
+            filter.suppressionReason(for: candidate("</td></tr>"), request: request(beforeCursor: "prisma carlyle")),
+            .markupTagOutsideMarkupContext
+        )
+    }
+
+    func testKeepsTagWhenUserIsWritingMarkup() {
+        // Context exemption: the field already contains markup, so a closing tag is wanted.
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(for: candidate("</b>"), request: request(beforeCursor: "use <b>bold text"))
+        )
+    }
+
+    func testKeepsTagWhenMarkupFollowsCaret() {
+        let filter = midLineEnabledFilter()
+        XCTAssertNil(
+            filter.suppressionReason(
+                for: candidate("<td>", tokenIDs: [1], displayWidth: 4),
+                request: request(beforeCursor: "<tr>", afterCursor: "</tr>")
+            )
+        )
+    }
+
+    func testMarkupNetSkippedInCodeMode() {
+        let filter = DefaultCandidateFilter()
+        XCTAssertNil(
+            filter.suppressionReason(for: candidate("</code>"), request: request(beforeCursor: "some text", mode: .code))
+        )
+    }
+
+    func testProseCandidateWithTrailingTagIsNotClaimedByMarkupNet() {
+        // Mixed content is not "pure markup" — other nets decide its fate.
+        let filter = DefaultCandidateFilter()
+        XCTAssertNotEqual(
+            filter.suppressionReason(for: candidate(" smith </b>"), request: request(beforeCursor: "my name is")),
+            .markupTagOutsideMarkupContext
+        )
+    }
+
     // MARK: - Context-echo net
 
     func testSuppressesEchoOfClipboardContext() {

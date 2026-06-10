@@ -49,7 +49,15 @@ public enum TokenClassifier {
 
         var flags = TokenProfileFlags()
 
-        // SPECIAL: control / user-defined / unknown / unused / known role / chat marker.
+        // Reserved/placeholder tokens (e.g. Gemma's `<unused0>`…`<unusedN>`) are never valid output,
+        // but some GGUF conversions fail to set the `.unused` attribute on them (they arrive as
+        // NORMAL/USER_DEFINED), so the attribute checks below miss them and they leak into suggestions
+        // as literal "<unused56>" text. Detect them by rendered byte content as a backstop. Check both
+        // the raw text and the BPE-marker-stripped form so a "▁<unused56>"/"Ġ<unused56>" variant can't
+        // slip the anchored match. See ADR.
+        let isReservedPlaceholder = matchesReservedPlaceholder(rawText) || matchesReservedPlaceholder(visibleText)
+
+        // SPECIAL: control / user-defined / unknown / unused / known role / chat marker / reserved.
         let isSpecial =
             probe.attr.contains(.control)
             || probe.attr.contains(.userDefined)
@@ -58,6 +66,7 @@ public enum TokenClassifier {
             || probe.isControl
             || probe.role != nil
             || matchesChatMarker(rawText)
+            || isReservedPlaceholder
         if isSpecial { flags.insert(.special) }
 
         // STOP: EOS / EOT / any EOG-declared token.
@@ -69,6 +78,14 @@ public enum TokenClassifier {
 
         // CHAT_MARKER: assistant scaffolding text we never want to emit.
         if matchesChatMarker(rawText) { flags.insert(.chatMarker) }
+
+        // MARKUP_TAG: a whole markup tag baked in as one vocab token (Gemma's `<b>`/`</code>`/…
+        // block at ids 168–237 arrives as NORMAL, like the `<unused56>` case above). Flagged —
+        // not excluded — so `BiasPolicy` can demote it in prose while code/terminal keep the
+        // canonical single-token path for genuine HTML/Markdown editing.
+        if !isSpecial, matchesMarkupTag(rawText) || matchesMarkupTag(visibleText) {
+            flags.insert(.markupTag)
+        }
 
         // INVALID_UTF8 (standalone byte fallback or partial multi-byte token).
         if rawText == nil { flags.insert(.invalidUTF8) }
@@ -208,6 +225,47 @@ public enum TokenClassifier {
         guard let text = text, !text.isEmpty else { return false }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         for regex in chatMarkerRegexes {
+            if regex.firstMatch(in: text, options: [], range: range) != nil {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Reserved / never-emitted placeholder tokens identified by their *rendered text* rather than a
+    /// tokenizer attribute, because some GGUF conversions don't flag them (notably Gemma's
+    /// `<unused0>`…`<unusedN>` block, which comes through as NORMAL). Kept deliberately narrow —
+    /// only the unambiguous model-internal placeholder forms, so genuine `<tag>` text the user might
+    /// type is unaffected.
+    private static let reservedPlaceholderRegexes: [NSRegularExpression] = {
+        let patterns = [
+            #"^<unused\d+>$"#,            // Gemma reserved slots
+            #"^<reserved[_ ]?\d+>$"#,     // other vendors' reserved blocks
+            #"^<extra_id_\d+>$"#,         // T5-style sentinel tokens
+            #"^<pad>$"#, #"^<mask>$"#     // padding / masking placeholders
+        ]
+        return patterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }()
+
+    /// A token whose entire rendered text (after optional leading whitespace) is one markup tag:
+    /// `<b>`, `</code>`, `<br/>`, … Anchored so partial-bracket text (`<3`, `a<b`) and
+    /// attribute-bearing tags never match; reserved placeholders (`<unused56>`) are special-cased
+    /// out by the caller before this runs.
+    private static let markupTagRegex = try? NSRegularExpression(
+        pattern: #"^\s*</?[a-zA-Z][a-zA-Z0-9]*( ?/)?>$"#,
+        options: []
+    )
+
+    static func matchesMarkupTag(_ text: String?) -> Bool {
+        guard let text = text, !text.isEmpty, let regex = markupTagRegex else { return false }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.firstMatch(in: text, options: [], range: range) != nil
+    }
+
+    static func matchesReservedPlaceholder(_ text: String?) -> Bool {
+        guard let text = text, !text.isEmpty else { return false }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        for regex in reservedPlaceholderRegexes {
             if regex.firstMatch(in: text, options: [], range: range) != nil {
                 return true
             }

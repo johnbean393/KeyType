@@ -90,6 +90,13 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
                     // admissible tokens aren't masked out and the branch can't silently collapse to
                     // `noCandidate` (ADR-025).
                     constrained: !branch.remainingPrefix.isEmpty,
+                    // Decode-time repetition penalty is scoped to this branch's own emitted tokens, so
+                    // a degenerate loop is demoted in favour of a non-repeating sibling. Suppressed
+                    // while a required prefix is still being satisfied (mid-word healing, ADR-019): that
+                    // path forces a specific continuation that may legitimately repeat an earlier token,
+                    // and demoting it would collapse the only admissible branch. Inert unless the
+                    // penalties are configured (see DecodingConfiguration.presencePenalty).
+                    recentTokens: branch.remainingPrefix.isEmpty ? branch.tokenIDs : [],
                     isAdmissible: { self.tokenAllowed($0, afterRequiredPrefix: branch.remainingPrefix) }
                 )
 

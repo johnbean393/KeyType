@@ -90,6 +90,12 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         //    insertable as an inline completion.
         if !Self.isInsertionSafe(candidate.text) { return .insertionUnsafe }
 
+        // 6·: Reserved model-internal markers (Gemma `<unused56>`, chat/FIM scaffolding). These are
+        //     masked at sample time once the profile is rebuilt (see TokenClassifier); this net is the
+        //     belt-and-suspenders for stale profiles / cross-token concatenations / other models, with
+        //     a distinct reason so telemetry can confirm the masking landed.
+        if Self.containsReservedMarker(candidate.text) { return .reservedMarker }
+
         // 6a. CJK script net: once the live caret is inside CJK text, a Latin-leading continuation
         //     is almost always pinyin/romanization leakage from the base model or IME composition.
         //     Suppress it rather than showing visibly wrong ghost text.
@@ -135,6 +141,27 @@ public final class DefaultCandidateFilter: CandidateFiltering {
             beforeCursor: request.context.beforeCursor
         ) {
             return .repeatsRecentPrefix
+        }
+
+        // 7b'. Intra-completion repetition: the same word appears ≥ 3 times within the candidate
+        //     itself ("text 1 1 1", "since 1 1 1") — model degeneration unrelated to side context.
+        //     Distinct from the prefix-repetition loop above (which checks against already-typed text).
+        if IntraCompletionRepetitionGuard.isDegenerate(insertedText) {
+            return .intraCompletionRepetition
+        }
+
+        // 7b''. Markup-tag net: the candidate is nothing but HTML tags in a prose context with no
+        //     markup in the surrounding text — Gemma's single-token tag block (`</code>` = 215)
+        //     surfacing in ordinary writing. Sample-time demotion (`BiasPolicy.markupTagStaticPenalty`)
+        //     is the primary defence; this context-aware net covers stale profiles and beam paths.
+        //     Code/terminal modes are untouched, and a field already containing markup is exempt.
+        if request.mode == .prose || request.mode == .correction,
+           MarkupTagGuard.violates(
+               completion: insertedText,
+               beforeCursor: request.context.beforeCursor,
+               afterCursor: request.context.afterCursor
+           ) {
+            return .markupTagOutsideMarkupContext
         }
 
         // 7c. Context-echo net: the completion verbatim-reproduces injected side context the user did
@@ -207,8 +234,8 @@ public final class DefaultCandidateFilter: CandidateFiltering {
 
     /// A candidate is unsafe to insert if it is empty / whitespace-only, carries any control
     /// character (C0 controls including tab and newline, or DEL), or has no alphanumeric content at
-    /// all. The last rule drops noise-only suggestions (`"..."`, `"…"`, `"—"`) that are never a
-    /// useful inline continuation; alphanumerics span every script, so CJK/Thai completions pass.
+    /// all. The alphanumeric rule drops noise-only suggestions (`"..."`, `"…"`, `"—"`); alphanumerics
+    /// span every script, so CJK/Thai pass. (Reserved markers get their own gate — see `suppressionReason`.)
     static func isInsertionSafe(_ text: String) -> Bool {
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
         for scalar in text.unicodeScalars {
@@ -216,6 +243,30 @@ public final class DefaultCandidateFilter: CandidateFiltering {
         }
         if text.rangeOfCharacter(from: .alphanumerics) == nil { return false }
         return true
+    }
+
+    /// Regexes for model-internal markers that must never appear in a shown completion: reserved
+    /// placeholders (`<unused56>`, `<reserved_…>`, `<extra_id_…>`, `<pad>`, `<mask>`) and chat /
+    /// FIM scaffolding (`<|…|>`, `<start_of_turn>`, …). Matched as substrings since a candidate may
+    /// embed one mid-text. Kept narrow so ordinary `<tag>` text the user types is unaffected.
+    private static let reservedMarkerRegexes: [NSRegularExpression] = {
+        let patterns = [
+            #"<unused\d+>"#,
+            #"<reserved[_ ]?\d+>"#,
+            #"<extra_id_\d+>"#,
+            #"<pad>"#, #"<mask>"#,
+            #"<\|[^|>]+\|>"#,
+            #"<start_of_turn>"#, #"<end_of_turn>"#
+        ]
+        return patterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
+    }()
+
+    static func containsReservedMarker(_ text: String) -> Bool {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        for regex in reservedMarkerRegexes where regex.firstMatch(in: text, options: [], range: range) != nil {
+            return true
+        }
+        return false
     }
 
     static func hasCJKScriptMismatch(_ text: String, request: CompletionRequest) -> Bool {

@@ -17,6 +17,7 @@ import Foundation
 import LlamaModelRuntime
 import MacContextCapture
 import ModelManagement
+import ModelProfileGeneration
 import ModelRuntime
 import Observation
 import Personalization
@@ -562,10 +563,18 @@ final class CompletionController {
         // optional side sections are frozen briefly so unrelated history/clipboard/OCR updates do
         // not rewrite the prompt prefix and destroy KV append reuse mid-burst.
         let (sideContext, sideContextReused) = promptSideContext(for: promptContext)
+        // Relevance-filter the frozen history against the *live* beforeCursor so topically-unrelated
+        // samples (e.g. a bio stored from an earlier session in the same app) are dropped before they
+        // reach the prompt. This runs at generation time with the current context, not inside the
+        // 2-second frozen side-context cache, so the judgment always reflects what the user is typing.
+        let filteredHistory = WritingHistoryFilter.filterByRelevance(
+            sideContext.previousUserInputs,
+            beforeCursor: context.beforeCursor
+        )
         let promptResult = KeyTypeModuleGraph.makePromptBuilder().buildPrompt(
             context: promptContext,
             customInstructions: settings.promptCustomInstructions(appInstructions: policy.customInstructions),
-            previousUserInputs: sideContext.previousUserInputs,
+            previousUserInputs: filteredHistory,
             pasteboardText: sideContext.pasteboardText,
             screenText: sideContext.screenText,
             includeEnvironmentContext: policy.includesEnvironmentContext
@@ -599,6 +608,7 @@ final class CompletionController {
             promptContext: promptContext,
             tokenHealing: heal.map { FullPromptTokenHealing(head: $0.head, heal: $0.heal) },
             sideContext: sideContext,
+            filteredPreviousUserInputs: filteredHistory,
             sideContextReused: sideContextReused,
             policy: policy,
             completionLength: length,
@@ -767,6 +777,7 @@ final class CompletionController {
         promptContext: TextFieldContext,
         tokenHealing: FullPromptTokenHealing?,
         sideContext: FrozenPromptSideContext,
+        filteredPreviousUserInputs: [String],
         sideContextReused: Bool,
         policy: CompletionPolicy,
         completionLength: CompletionLength,
@@ -784,7 +795,7 @@ final class CompletionController {
                 historyEnabled: sideContext.historyEnabled,
                 clipboardEnabled: sideContext.clipboardEnabled,
                 ocrEnabled: sideContext.ocrEnabled,
-                previousUserInputs: sideContext.previousUserInputs,
+                previousUserInputs: filteredPreviousUserInputs,
                 pasteboardText: sideContext.pasteboardText,
                 screenText: sideContext.screenText
             ),
@@ -1556,12 +1567,28 @@ final class CompletionController {
             forFilename: modelFilename,
             vocabSize: runtime.metadata.vocabularySize
         )
-        let profile = try MmapAutocompleteProfile.open(
-            at: try ModelContainer.profileURL(family: family),
-            tokenizerVocabSize: runtime.metadata.vocabularySize,
-            tokenizerBytes: { try runtime.tokenizer.rawBytes(for: $0) },
-            expectedModelFamily: family
-        )
+        let profileURL = try ModelContainer.profileURL(family: family)
+        func openProfile() throws -> MmapAutocompleteProfile {
+            try MmapAutocompleteProfile.open(
+                at: profileURL,
+                tokenizerVocabSize: runtime.metadata.vocabularySize,
+                tokenizerBytes: { try runtime.tokenizer.rawBytes(for: $0) },
+                expectedModelFamily: family
+            )
+        }
+        let profile: MmapAutocompleteProfile
+        do {
+            profile = try openProfile()
+        } catch {
+            // A profile built by an older classifier / schema version fails to open. No other launch
+            // path rebuilds it (setup only checks the file *exists*), so an app update that changes the
+            // token classification would otherwise brick completions for existing users. Rebuild it in
+            // place from the model's tokenizer, then retry. See ADR-021 / ACPF currentSchemaVersion.
+            Logger(subsystem: "com.pattonium.KeyType", category: "completion")
+                .error("ACPF profile open failed (\(String(describing: error), privacy: .public)); rebuilding for \(modelFilename, privacy: .public)")
+            _ = try await ProfileGenerator.generateProfileIfNeeded(forModelFilename: modelFilename)
+            profile = try openProfile()
+        }
         // Apply the telemetry-derived nudges to the decoder defaults: a larger relative cutoff keeps
         // more branches alive (fewer suppressions), a lower probability floor admits weaker-but-valid
         // continuations. Bounds are clamped inside `ThresholdTuner`. See ADR-023.

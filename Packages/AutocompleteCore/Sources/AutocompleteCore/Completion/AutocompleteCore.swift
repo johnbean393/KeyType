@@ -217,6 +217,19 @@ public enum SuppressionReason: Equatable {
     /// (clipboard, on-screen OCR text) — the small model parroting context instead of predicting.
     /// See `ContextEchoGuard`.
     case echoesInjectedContext
+    /// The completion contains a reserved model-internal marker (e.g. Gemma's `<unused56>`, chat/FIM
+    /// scaffolding) that should have been masked at sample time. Belt-and-suspenders for stale or
+    /// mis-flagged token profiles. See `TokenClassifier` / `DefaultCandidateFilter.containsReservedMarker`.
+    case reservedMarker
+    /// The completion contains a within-candidate token-repetition loop — the same word appears ≥ 3 times
+    /// ("text 1 1 1", "since 1 1 1"). Model degeneration, not a bleed from side context.
+    /// See `IntraCompletionRepetitionGuard`.
+    case intraCompletionRepetition
+    /// The completion is nothing but markup tags (`</code>`, `<b>`, …) in a prose/correction context
+    /// whose surrounding text contains no markup — Gemma's single-token HTML-tag block surfacing in
+    /// ordinary writing. Sample-time demotion is the primary defence (see
+    /// `BiasPolicy.markupTagStaticPenalty`); this is its context-aware output net. See `MarkupTagGuard`.
+    case markupTagOutsideMarkupContext
     case noCandidate
 }
 

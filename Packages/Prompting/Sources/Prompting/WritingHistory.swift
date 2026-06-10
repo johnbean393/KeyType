@@ -59,7 +59,9 @@ public struct WritingHistoryQuery: Equatable {
         longestCount: Int = 2,
         mostRecentCount: Int = 4,
         crossAppRecentCount: Int = 2,
-        tokenBudget: Int = 256,
+        // History is background style/context, not text to reproduce. A large budget let it dominate
+        // the prompt ~20:1 over the user's typed text and the small model parroted it; keep it modest.
+        tokenBudget: Int = 128,
         sameAppOnly: Bool = false
     ) {
         self.bundleIdentifier = bundleIdentifier
@@ -95,6 +97,7 @@ public struct InMemoryWritingHistoryStore: WritingHistoryProviding {
     public func samples(for query: WritingHistoryQuery) -> [String] {
         let candidates = entries.filter { entry in
             guard entry.text.count >= query.minimumCharacters else { return false }
+            guard WritingHistoryFilter.isProse(entry.text) else { return false }
             if query.sameAppOnly, let bundle = query.bundleIdentifier,
                entry.appBundleIdentifier != bundle {
                 return false
@@ -127,6 +130,8 @@ public struct InMemoryWritingHistoryStore: WritingHistoryProviding {
 
         func take(_ samples: [WritingHistorySample], upTo limit: Int) {
             for s in samples.prefix(limit) where seen.insert(s.text).inserted {
+                // Skip near-duplicate drafts; mirrors `WritingHistorySelection` in Personalization.
+                if picked.contains(where: { Self.isNearDuplicate(s.text, of: $0.text) }) { continue }
                 picked.append(s)
             }
         }
@@ -143,5 +148,23 @@ public struct InMemoryWritingHistoryStore: WritingHistoryProviding {
         }
 
         return Array(picked.prefix(query.fetchSize)).map { $0.text }
+    }
+
+    /// Word set (lowercased letters/digits) for cheap near-duplicate detection.
+    static func wordSet(_ text: String) -> Set<String> {
+        Set(text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+    }
+
+    /// True when two samples are near-identical (Jaccard ≥ 0.8, or the shorter is fully contained in
+    /// the longer). Mirror of `WritingHistorySelection.isNearDuplicate`; keep the two in sync.
+    static func isNearDuplicate(_ candidate: String, of existing: String) -> Bool {
+        let a = wordSet(candidate), b = wordSet(existing)
+        guard a.count >= 3, b.count >= 3 else { return candidate == existing }
+        let intersection = a.intersection(b).count
+        let union = a.union(b).count
+        if union > 0, Double(intersection) / Double(union) >= 0.8 { return true }
+        let smaller = a.count <= b.count ? a : b
+        let larger = a.count <= b.count ? b : a
+        return smaller.isSubset(of: larger)
     }
 }

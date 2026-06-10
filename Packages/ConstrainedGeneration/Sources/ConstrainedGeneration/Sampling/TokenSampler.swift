@@ -35,10 +35,25 @@ enum TokenSampler {
         profile: AutocompleteProfile,
         configuration: DecodingConfiguration,
         constrained: Bool = false,
+        recentTokens: [TokenID] = [],
         isAdmissible: (TokenID) -> Bool
     ) -> SamplerResult {
         guard !logits.isEmpty else { return .empty }
         let temperature = max(configuration.temperature, 1e-3)
+
+        // Decode-time repetition penalty (see `DecodingConfiguration.presencePenalty`). Build the
+        // per-token occurrence count for this branch once; when no penalty is configured (or the
+        // branch is empty) `occurrences` stays empty and the scaling loop below is byte-identical to
+        // the un-penalized path. The penalty adjusts only `value` (step 1) — never `argmaxLogit`,
+        // which stays on the raw logits so stop/hardStop detection is unaffected (ADR-010).
+        let presencePenalty = configuration.presencePenalty
+        let frequencyPenalty = configuration.frequencyPenalty
+        let penaltyActive = (presencePenalty != 0 || frequencyPenalty != 0) && !recentTokens.isEmpty
+        var occurrences: [TokenID: Int] = [:]
+        if penaltyActive {
+            occurrences.reserveCapacity(recentTokens.count)
+            for id in recentTokens { occurrences[id, default: 0] += 1 }
+        }
 
         // 0. Pre-select the highest raw-logit tokens. Running the profile lookups + softmax over
         //    the full vocabulary (150k+ tokens) per branch is the dominant cost; the surviving
@@ -79,7 +94,11 @@ enum TokenSampler {
             }
             if profile.isExcluded(id, mode: mode) { continue }
             if !isAdmissible(id) { continue }
-            let value = (logit.logit + profile.bias(for: id, mode: mode)) / temperature
+            var biased = logit.logit + profile.bias(for: id, mode: mode)
+            if penaltyActive, let count = occurrences[id], count > 0 {
+                biased -= presencePenalty + frequencyPenalty * Float(count)
+            }
+            let value = biased / temperature
             scaled.append((id, value))
             if value > maxValue { maxValue = value }
         }
