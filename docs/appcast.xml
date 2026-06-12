@@ -3,6 +3,15 @@
     <channel>
         <title>KeyType</title>
         <item>
+            <title>1.5</title>
+            <pubDate>Fri, 12 Jun 2026 11:45:51 +0800</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>1.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>New Features</h2><ul><li>Screenshot assisted ghost text alignment</li><li>TextKit render and better font capture</li><li>Enable re-optimized mid-line completions</li><li>Developer rect debug overlay</li><li>Support English variants</li></ul><h2>Bug Fixes</h2><ul><li>Remove Discord specific path</li><li>Improved text alignment</li><li>Codex ghost text alignment</li><li>Discord suggestion misalignment</li><li>Use string injection in iA Writer and Messages</li><li>Release script</li></ul>]]></description>
+            <enclosure url="https://github.com/johnbean393/KeyType/releases/download/v1.5.0/KeyType.1.5.dmg" sparkle:edSignature="Fwk3tJXXjz2rVbnGupCoSyYocWpntVJffF/YZnMjBJIGS94AmqhULXBn/6jOwEWO34866PTanl66n7oegezCBQ==" length="14745551" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>1.4</title>
             <pubDate>Fri, 05 Jun 2026 05:01:08 +0800</pubDate>
             <sparkle:version>6</sparkle:version>
