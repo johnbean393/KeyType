@@ -79,6 +79,35 @@ final class CommittedDatasetTests: XCTestCase {
         }
     }
 
+    /// The history-echo diagnostic fixture (stale/unrelated writing history) is measurement-only — it
+    /// has no behavioural CI assertion because the right fix layer was upstream selection, not an output
+    /// guard. This guards the *dataset* itself from rot: every line must decode, the stale-history cases
+    /// must carry topically-unrelated `previousUserInputs`, and the control case's reuse string must
+    /// actually appear in its history so the "legitimate reuse is not over-suppressed" check stays valid.
+    func testHistoryEchoFixtureIsWellFormed() throws {
+        let url = repositoryRoot()
+            .appendingPathComponent("Packages/KeyTypeBench/Sources/KeyTypeBench/Datasets/history-echo.jsonl")
+        let cases = try BenchmarkJSONL.loadCases(from: url)
+        XCTAssertEqual(cases.count, 4)
+
+        for row in cases {
+            XCTAssertFalse(row.context.beforeCursor.isEmpty, row.id)
+            XCTAssertFalse(row.context.previousUserInputs.isEmpty, "\(row.id) must carry writing history")
+            XCTAssertEqual(row.expected.kind, .insert, row.id)
+            XCTAssertTrue(row.tags.contains("history-echo"), row.id)
+        }
+
+        let control = try XCTUnwrap(cases.first { $0.tags.contains("control") })
+        let history = control.context.previousUserInputs.joined(separator: "\n")
+        XCTAssertTrue(
+            control.expected.shownAcceptable.contains { history.contains($0) },
+            "control reuse string must appear in its own writing history"
+        )
+
+        let staleCases = cases.filter { $0.tags.contains("stale-history") }
+        XCTAssertEqual(staleCases.count, 3, "three stale-unrelated-history cases")
+    }
+
     private func assertShare(
         _ count: Int,
         of total: Int,

@@ -41,6 +41,25 @@ final class PersonalizationTests: XCTestCase {
         XCTAssertTrue(store.samples(for: WritingHistoryQuery(bundleIdentifier: "com.app.mail")).isEmpty)
     }
 
+    func testPersistentStoreDomainScopingExcludesOtherTabs() throws {
+        // DB-level coverage for the domain filter (the production path): two sites in the same browser
+        // bundle must not share context, and a nil-domain row must not leak into a domain-scoped query.
+        let (store, url) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        store.record(WritingHistorySample(text: "Draft about quarterly revenue numbers here.", appBundleIdentifier: "com.browser", domain: "mail.google.com"))
+        store.record(WritingHistorySample(text: "you can use it to access the OpenAI API key.", appBundleIdentifier: "com.browser", domain: "platform.openai.com"))
+        store.record(WritingHistorySample(text: "Some unknown-domain text from this browser.", appBundleIdentifier: "com.browser", domain: nil))
+
+        let result = store.samples(for: WritingHistoryQuery(
+            bundleIdentifier: "com.browser",
+            domain: "mail.google.com",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["Draft about quarterly revenue numbers here."])
+    }
+
     func testPersistentStoreDedupesIdenticalSample() throws {
         let (store, url) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -106,6 +125,87 @@ final class PersonalizationTests: XCTestCase {
             crossAppRecentCount: 0
         ))
         XCTAssertEqual(result, ["Newer note from this same app here."])
+    }
+
+    func testSameAppOnlyExcludesCrossAppContent() {
+        // Regression: a recent sample from another app must never be injected when the query is
+        // same-app-scoped — otherwise unrelated content (e.g. a Notes draft) bleeds into another
+        // app's prompt and the model parrots it verbatim.
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "you can use it to access the OpenAI API.", appBundleIdentifier: "com.app.notes", updatedAt: now),
+            WritingHistorySample(text: "Hi Molly, hope you are doing well today.", appBundleIdentifier: "com.app.mail", updatedAt: now.addingTimeInterval(-100))
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.app.mail",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["Hi Molly, hope you are doing well today."])
+        XCTAssertFalse(result.contains { $0.contains("OpenAI") }, "cross-app content must not leak")
+    }
+
+    func testSameAppScopingExcludesOtherWebDomains() {
+        // Two tabs in the same browser (same bundle) must not share context: a sample from another
+        // site, or one with no recorded domain, must not be injected into the focused domain's prompt.
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "Draft about quarterly revenue numbers.", appBundleIdentifier: "com.browser", domain: "mail.google.com", updatedAt: now),
+            WritingHistorySample(text: "you can use it to access the OpenAI API.", appBundleIdentifier: "com.browser", domain: "platform.openai.com", updatedAt: now),
+            WritingHistorySample(text: "Some unknown-domain text from this browser.", appBundleIdentifier: "com.browser", domain: nil, updatedAt: now)
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.browser",
+            domain: "mail.google.com",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["Draft about quarterly revenue numbers."])
+    }
+
+    func testNativeAppScopingIsUnaffectedByDomain() {
+        // A native app has no domain; same-app scoping must still return its samples.
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "A note typed in the native app here.", appBundleIdentifier: "com.app.notes", domain: nil, updatedAt: now)
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.app.notes",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertEqual(result, ["A note typed in the native app here."])
+    }
+
+    func testSelectionDropsNearDuplicateDrafts() {
+        // The user kept editing one draft; an earlier version and its extension must not both be
+        // injected (that amplifies verbatim parroting and wastes the budget).
+        let now = Date()
+        let entries = [
+            WritingHistorySample(text: "i want to write about the AI meetup today", appBundleIdentifier: "com.app", updatedAt: now),
+            WritingHistorySample(text: "i want to write about the AI meetup", appBundleIdentifier: "com.app", updatedAt: now.addingTimeInterval(-10)),
+            WritingHistorySample(text: "completely unrelated note about gardening tips", appBundleIdentifier: "com.app", updatedAt: now.addingTimeInterval(-20))
+        ]
+        let result = WritingHistorySelection.select(from: entries, query: WritingHistoryQuery(
+            bundleIdentifier: "com.app",
+            minimumCharacters: 1,
+            longestCount: 0,
+            mostRecentCount: 8,
+            crossAppRecentCount: 0
+        ))
+        XCTAssertEqual(result.filter { $0.contains("AI meetup") }.count, 1, "near-duplicate drafts collapse to one")
+        XCTAssertTrue(result.contains("completely unrelated note about gardening tips"), "distinct samples are kept")
+    }
+
+    func testNearDuplicateKeepsDistinctSamples() {
+        XCTAssertFalse(WritingHistorySelection.isNearDuplicate(
+            "the quarterly revenue report is due friday",
+            of: "remember to water the office plants every morning"
+        ))
+        XCTAssertTrue(WritingHistorySelection.isNearDuplicate(
+            "thanks so much for the thoughtful feedback today",
+            of: "thanks so much for the thoughtful feedback"
+        ))
     }
 
     // MARK: - Telemetry
@@ -479,6 +579,137 @@ final class PersonalizationTests: XCTestCase {
         XCTAssertLessThanOrEqual(abs(a.relativeCutoffDelta), ThresholdTuner.maxCutoffDelta)
         XCTAssertGreaterThanOrEqual(a.minBranchProbabilityScale, ThresholdTuner.minProbabilityScale)
         XCTAssertLessThanOrEqual(a.minBranchProbabilityScale, ThresholdTuner.maxProbabilityScale)
+    }
+
+    // MARK: - Writing history quality filter
+
+    func testIsProse_acceptsNormalEmailText() {
+        XCTAssertTrue(WritingHistoryFilter.isProse("Hi Maya, thanks for the update on the project."))
+        XCTAssertTrue(WritingHistoryFilter.isProse("The quarterly report is due on Friday afternoon."))
+    }
+
+    func testIsProse_acceptsBioText() {
+        XCTAssertTrue(WritingHistoryFilter.isProse(
+            "AI, software, and ideas too good to ignore. Building a company brain for the industrial floor. Breaking things, learning fast."
+        ))
+    }
+
+    func testIsProse_rejectsBareURL() {
+        XCTAssertFalse(WritingHistoryFilter.isProse("https://github.com/shreeraman96"))
+        XCTAssertFalse(WritingHistoryFilter.isProse("www.example.com"))
+    }
+
+    func testIsProse_rejectsUUIDBlobEntry() {
+        // "uuid=..." style entries from captured file-open dialogs
+        XCTAssertFalse(WritingHistoryFilter.isProse("uuid=EF757712-3FDF-48F4-B026-DB0AEF04AC2B.jpeg"))
+    }
+
+    func testIsProse_rejectsFilesystemPath() {
+        XCTAssertFalse(WritingHistoryFilter.isProse("/Users/shreeram/Downloads/report.pdf"))
+        XCTAssertFalse(WritingHistoryFilter.isProse("/Library/Application Support/KeyType/Models/gemma.bin"))
+    }
+
+    func testIsProse_rejectsEmptyString() {
+        XCTAssertFalse(WritingHistoryFilter.isProse(""))
+        XCTAssertFalse(WritingHistoryFilter.isProse("   "))
+    }
+
+    func testFilterByRelevance_dropsZeroOverlapSampleBeyondRecencyFloor() {
+        let bio = "Building a company brain for the industrial floor. Breaking things, learning fast."
+
+        // With recencyFloor=0, all samples are subject to the Jaccard gate; bio is dropped.
+        let resultFloorZero = WritingHistoryFilter.filterByRelevance(
+            [bio], beforeCursor: "Hi Molly, This", recencyFloor: 0
+        )
+        XCTAssertTrue(resultFloorZero.isEmpty, "unrelated bio must be dropped when no recency floor")
+
+        // With recencyFloor=1 and two samples, the first is kept as style anchor;
+        // the second (bio) is beyond the floor and dropped.
+        let recent = "Hi Molly, I hope this finds you well."
+        let resultWithFloor = WritingHistoryFilter.filterByRelevance(
+            [recent, bio], beforeCursor: "Hi Molly, This", recencyFloor: 1
+        )
+        XCTAssertTrue(resultWithFloor.contains(recent), "most-recent sample kept as style anchor")
+        XCTAssertFalse(resultWithFloor.contains(bio), "unrelated bio beyond floor must be dropped")
+
+        // Both samples within the floor (default recencyFloor=2) → both kept unconditionally.
+        let resultBothInFloor = WritingHistoryFilter.filterByRelevance(
+            [recent, bio], beforeCursor: "Hi Molly, This"
+        )
+        XCTAssertEqual(resultBothInFloor.count, 2, "all samples within recency floor are always kept")
+    }
+
+    func testFilterByRelevance_keepsRelatedSample() {
+        let techNote = "We are building industrial floor automation systems."
+        // "industrial" and "floor" overlap with the cursor text
+        let result = WritingHistoryFilter.filterByRelevance(
+            [techNote],
+            beforeCursor: "Here is an update on the industrial floor project."
+        )
+        XCTAssertEqual(result, [techNote], "topically related sample must be kept")
+    }
+
+    func testFilterByRelevance_skipsFilterWhenCursorHasTooFewContentWords() {
+        let bio = "Building a company brain for the industrial floor."
+        // "Hi," has only 1 non-stopword → minimumContentWords not reached → all samples kept
+        let result = WritingHistoryFilter.filterByRelevance([bio], beforeCursor: "Hi,")
+        XCTAssertEqual(result, [bio], "filter must be skipped when cursor lacks content words")
+    }
+
+    func testFilterByRelevance_keepsSignOffWhenCursorContainsSignOffWord() {
+        let signOff = "Kind regards, Sam"
+        // "kind" appears in both sample and cursor → kept
+        let result = WritingHistoryFilter.filterByRelevance(
+            [signOff],
+            beforeCursor: "Thanks for the update. Kind"
+        )
+        XCTAssertEqual(result, [signOff], "sign-off kept when leading word appears in cursor")
+    }
+
+    func testFilterByRelevance_multipleInputsSomeMeetThreshold() {
+        let bio = "Building a company brain for the industrial floor."
+        let reply = "Thanks for reaching out about the project timeline."
+        let recent = "Hi Molly, looking forward to your reply."
+        // recencyFloor=1 → recent is the style anchor (always kept).
+        // bio has {building, company, brain, industrial, floor} → 0 overlap with "Hi Molly, Thanks" → dropped
+        // reply has {thanks, reaching, project, timeline} → "thanks" matches → kept
+        let result = WritingHistoryFilter.filterByRelevance(
+            [recent, bio, reply],
+            beforeCursor: "Hi Molly, Thanks",
+            recencyFloor: 1
+        )
+        XCTAssertTrue(result.contains(recent), "recency-floor anchor always kept")
+        XCTAssertFalse(result.contains(bio), "bio with zero overlap must be dropped beyond floor")
+        XCTAssertTrue(result.contains(reply), "reply sharing 'thanks' must be kept")
+    }
+
+    func testPersistentStoreFiltersJunkAtSelectionTime() throws {
+        // Junk stored via the raw store.record() path (bypassing the recorder's isProse guard,
+        // which runs only in WritingHistoryRecorder in the main app target). The selection-time
+        // filter must catch it so existing on-disk junk is cleaned up without a migration.
+        let (store, url) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // store.record() has no isProse check — it accepts anything, simulating pre-existing junk.
+        store.record(WritingHistorySample(
+            text: "https://github.com/shreeraman96",
+            appBundleIdentifier: "com.browser",
+            domain: "github.com"
+        ))
+        store.record(WritingHistorySample(
+            text: "The quarterly report is due on Friday afternoon.",
+            appBundleIdentifier: "com.browser",
+            domain: "github.com"
+        ))
+
+        let result = store.samples(for: WritingHistoryQuery(
+            bundleIdentifier: "com.browser",
+            domain: "github.com",
+            minimumCharacters: 1,
+            sameAppOnly: true
+        ))
+        XCTAssertFalse(result.contains("https://github.com/shreeraman96"), "URL junk must be filtered at selection time")
+        XCTAssertTrue(result.contains("The quarterly report is due on Friday afternoon."))
     }
 
     // MARK: - Keychain

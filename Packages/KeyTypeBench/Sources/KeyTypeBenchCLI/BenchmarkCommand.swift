@@ -91,6 +91,15 @@ struct Run: AsyncParsableCommand {
     @Option(name: .long, help: "Weight applied to FIM suffix-rerank score.")
     var suffixRerankWeight: Float = DecodingConfiguration().suffixRerankWeight
 
+    @Option(name: .long, help: "Decode-time presence penalty: subtracted once from any token already emitted on the branch. Sweep knob for the repetition-penalty default.")
+    var presencePenalty: Float = DecodingConfiguration().presencePenalty
+
+    @Option(name: .long, help: "Decode-time frequency penalty: subtracted per prior occurrence of a token on the branch.")
+    var frequencyPenalty: Float = DecodingConfiguration().frequencyPenalty
+
+    @Flag(name: .customLong("no-history"), help: "Drop writing-history (previousUserInputs) side context from prompts. A/B knob for the history-on/off experiment.")
+    var noHistory: Bool = false
+
     @Flag(name: .long, help: "Skip missing model/profile inputs instead of failing.")
     var skipMissing: Bool = false
 
@@ -176,7 +185,9 @@ struct Run: AsyncParsableCommand {
                 fimMaxPrefixTokens: fimMaxPrefixTokens,
                 fimMaxSuffixTokens: fimMaxSuffixTokens,
                 suffixRerankTokenCount: suffixRerankTokenCount,
-                suffixRerankWeight: suffixRerankWeight
+                suffixRerankWeight: suffixRerankWeight,
+                presencePenalty: presencePenalty,
+                frequencyPenalty: frequencyPenalty
             )
             let evaluator = ProductionCompletionEvaluator(
                 runtime: runtime,
@@ -185,7 +196,8 @@ struct Run: AsyncParsableCommand {
                 compatibilityStore: compatibilityStore,
                 decodingConfiguration: decodingConfiguration,
                 defaultMaxCompletionTokens: maxCompletionTokens,
-                defaultMaxDisplayWidth: maxDisplayWidth
+                defaultMaxDisplayWidth: maxDisplayWidth,
+                includeWritingHistory: !noHistory
             )
 
             do {

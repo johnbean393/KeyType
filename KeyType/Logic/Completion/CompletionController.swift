@@ -17,6 +17,7 @@ import Foundation
 import LlamaModelRuntime
 import MacContextCapture
 import ModelManagement
+import ModelProfileGeneration
 import ModelRuntime
 import Observation
 import Personalization
@@ -589,10 +590,18 @@ final class CompletionController {
         // optional side sections are frozen briefly so unrelated history/clipboard/OCR updates do
         // not rewrite the prompt prefix and destroy KV append reuse mid-burst.
         let (sideContext, sideContextReused) = promptSideContext(for: promptContext)
+        // Relevance-filter the frozen history against the *live* beforeCursor so topically-unrelated
+        // samples (e.g. a bio stored from an earlier session in the same app) are dropped before they
+        // reach the prompt. This runs at generation time with the current context, not inside the
+        // 2-second frozen side-context cache, so the judgment always reflects what the user is typing.
+        let filteredHistory = WritingHistoryFilter.filterByRelevance(
+            sideContext.previousUserInputs,
+            beforeCursor: context.beforeCursor
+        )
         let promptResult = KeyTypeModuleGraph.makePromptBuilder().buildPrompt(
             context: promptContext,
             customInstructions: settings.promptCustomInstructions(appInstructions: policy.customInstructions),
-            previousUserInputs: sideContext.previousUserInputs,
+            previousUserInputs: filteredHistory,
             pasteboardText: sideContext.pasteboardText,
             screenText: sideContext.screenText,
             includeEnvironmentContext: policy.includesEnvironmentContext
@@ -604,13 +613,21 @@ final class CompletionController {
         let healExtraTokens = healSlack > 0 ? 1 : 0
         // Completion length is user-configurable (Settings) and maps to the decoder's token/width budget.
         let length = settings.completionLength
+        // Clipboard and OCR are background context, not text to reproduce; carry them so the output
+        // filter can drop a completion that just parrots them verbatim. History is excluded — it is
+        // already same-app/domain scoped and echoing the user's own recurring phrases is intended.
+        let injectedContext = Self.injectedContext(
+            pasteboardText: sideContext.pasteboardText,
+            screenText: sideContext.screenText
+        )
         let request = CompletionRequest(
             context: context,
             prompt: promptResult.prompt,
             requiredPrefixBytes: requiredPrefixBytes,
             mode: policy.completionMode,
             maxCompletionTokens: length.maxCompletionTokens + healExtraTokens,
-            maxDisplayWidth: length.maxDisplayWidth + healSlack
+            maxDisplayWidth: length.maxDisplayWidth + healSlack,
+            injectedContext: injectedContext
         )
         rememberFullPromptDebug(
             for: request,
@@ -618,6 +635,7 @@ final class CompletionController {
             promptContext: promptContext,
             tokenHealing: heal.map { FullPromptTokenHealing(head: $0.head, heal: $0.heal) },
             sideContext: sideContext,
+            filteredPreviousUserInputs: filteredHistory,
             sideContextReused: sideContextReused,
             policy: policy,
             completionLength: length,
@@ -801,6 +819,7 @@ final class CompletionController {
         promptContext: TextFieldContext,
         tokenHealing: FullPromptTokenHealing?,
         sideContext: FrozenPromptSideContext,
+        filteredPreviousUserInputs: [String],
         sideContextReused: Bool,
         policy: CompletionPolicy,
         completionLength: CompletionLength,
@@ -818,7 +837,7 @@ final class CompletionController {
                 historyEnabled: sideContext.historyEnabled,
                 clipboardEnabled: sideContext.clipboardEnabled,
                 ocrEnabled: sideContext.ocrEnabled,
-                previousUserInputs: sideContext.previousUserInputs,
+                previousUserInputs: filteredPreviousUserInputs,
                 pasteboardText: sideContext.pasteboardText,
                 screenText: sideContext.screenText
             ),
@@ -928,11 +947,19 @@ final class CompletionController {
             return (cached, true)
         }
 
+        // Scope history to the focused app. Cross-app recent samples bleed unrelated content into the
+        // prompt — e.g. a Notes draft about an API key surfacing as a verbatim suggestion in a fresh
+        // Gmail message — which the small model tends to parrot. Same-app history still personalizes
+        // tone/recurring phrases without leaking content across contexts.
+        // Normalize an empty domain to nil so it can't collapse the same-app filter to `domain == ""`
+        // and silently drop all real history for the app.
+        let scopedDomain = context.target.domain.flatMap { $0.isEmpty ? nil : $0 }
         let query = WritingHistoryQuery(
             bundleIdentifier: context.target.bundleIdentifier,
-            domain: context.target.domain,
+            domain: scopedDomain,
             typingContext: context.typingContext,
-            language: context.detectedLanguage
+            language: context.detectedLanguage,
+            sameAppOnly: true
         )
         let previousUserInputs = settings.historyEnabled
             ? history.samples(for: query)
@@ -1012,6 +1039,59 @@ final class CompletionController {
         case notApplicable
     }
 
+    /// Clipboard + OCR text injected into the prompt, as the echo guard consumes it. History is
+    /// intentionally excluded (same-app/domain scoped; echoing the user's own phrases is intended).
+    private static func injectedContext(pasteboardText: String?, screenText: String?) -> [String] {
+        [pasteboardText, screenText].compactMap { $0 }
+    }
+
+    /// Re-check the context-dependent suppression nets against the *live* context before re-showing a
+    /// cached completion. The candidate was filtered once at generation time, but reuse re-shows it
+    /// without going back through the pipeline, and the inputs those nets key off can change after the
+    /// fact:
+    ///   - prefix-repetition / suffix-overlap key off `beforeCursor`/`afterCursor`, which grow as the
+    ///     user types through the suggestion — a tail clean at anchor time can become a verbatim
+    ///     repetition (or suffix duplication) of text just typed;
+    ///   - the echo guard keys off injected clipboard/OCR context, which can change mid-burst or differ
+    ///     from when an older reused snapshot was generated. We check it against the currently-frozen
+    ///     side context (already cached, so no hot-path pasteboard read).
+    /// Returns `true` when the remaining text is still safe to show.
+    private func reuseRemainingPassesLiveGuards(remaining: String, context: TextFieldContext) -> Bool {
+        Self.reuseRemainingIsSafe(
+            remaining: remaining,
+            context: context,
+            injectedContext: Self.injectedContext(
+                pasteboardText: frozenSideContext?.pasteboardText,
+                screenText: frozenSideContext?.screenText
+            )
+        )
+    }
+
+    /// Pure decision behind `reuseRemainingPassesLiveGuards`, factored out so the reuse-safety rules
+    /// are unit-testable without constructing a controller. `true` when `remaining` is still safe to
+    /// re-show against the given live context and injected side context.
+    nonisolated static func reuseRemainingIsSafe(
+        remaining: String,
+        context: TextFieldContext,
+        injectedContext: [String]
+    ) -> Bool {
+        guard !remaining.isEmpty else { return true }
+        if PrefixRepetitionGuard.repeatsPrefix(completion: remaining, beforeCursor: context.beforeCursor) {
+            return false
+        }
+        if SuffixOverlapGuard.duplicatesSuffix(
+            completion: remaining,
+            beforeCursor: context.beforeCursor,
+            afterCursor: context.afterCursor
+        ) {
+            return false
+        }
+        if ContextEchoGuard.echoesInjectedContext(completion: remaining, injectedContext: injectedContext) {
+            return false
+        }
+        return true
+    }
+
     @discardableResult
     private func applyReuseHistoryIfUseful(
         for live: TextFieldContext,
@@ -1022,6 +1102,11 @@ final class CompletionController {
 
         switch reuseHistory.decision(for: live) {
         case let .reuse(reuse):
+            guard reuseRemainingPassesLiveGuards(remaining: reuse.remainingText, context: live) else {
+                predictionLog.append("REUSE rejected by live guard remaining=\"\(PredictionLog.escape(reuse.remainingText))\"")
+                clearCompletion()
+                return .mustRecompute
+            }
             anchorText = reuse.anchorText
             anchorContext = reuse.anchorContext
             if updateLatestContext { latestContext = live }
@@ -1604,6 +1689,10 @@ final class CompletionController {
     ) -> Bool {
         switch decision {
         case let .reuse(reuse):
+            guard reuseRemainingPassesLiveGuards(remaining: reuse.remainingText, context: optimistic) else {
+                predictionLog.append("REUSE rejected by live guard remaining=\"\(PredictionLog.escape(reuse.remainingText))\"")
+                return false
+            }
             anchorText = reuse.anchorText
             anchorContext = reuse.anchorContext
             latestContext = optimistic
@@ -1790,12 +1879,28 @@ final class CompletionController {
             forFilename: modelFilename,
             vocabSize: runtime.metadata.vocabularySize
         )
-        let profile = try MmapAutocompleteProfile.open(
-            at: try ModelContainer.profileURL(family: family),
-            tokenizerVocabSize: runtime.metadata.vocabularySize,
-            tokenizerBytes: { try runtime.tokenizer.rawBytes(for: $0) },
-            expectedModelFamily: family
-        )
+        let profileURL = try ModelContainer.profileURL(family: family)
+        func openProfile() throws -> MmapAutocompleteProfile {
+            try MmapAutocompleteProfile.open(
+                at: profileURL,
+                tokenizerVocabSize: runtime.metadata.vocabularySize,
+                tokenizerBytes: { try runtime.tokenizer.rawBytes(for: $0) },
+                expectedModelFamily: family
+            )
+        }
+        let profile: MmapAutocompleteProfile
+        do {
+            profile = try openProfile()
+        } catch {
+            // A profile built by an older classifier / schema version fails to open. No other launch
+            // path rebuilds it (setup only checks the file *exists*), so an app update that changes the
+            // token classification would otherwise brick completions for existing users. Rebuild it in
+            // place from the model's tokenizer, then retry. See ADR-021 / ACPF currentSchemaVersion.
+            Logger(subsystem: "com.pattonium.KeyType", category: "completion")
+                .error("ACPF profile open failed (\(String(describing: error), privacy: .public)); rebuilding for \(modelFilename, privacy: .public)")
+            _ = try await ProfileGenerator.generateProfileIfNeeded(forModelFilename: modelFilename)
+            profile = try openProfile()
+        }
         // Apply the telemetry-derived nudges to the decoder defaults: a larger relative cutoff keeps
         // more branches alive (fewer suppressions), a lower probability floor admits weaker-but-valid
         // continuations. Bounds are clamped inside `ThresholdTuner`. See ADR-023.

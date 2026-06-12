@@ -5,7 +5,7 @@ import XCTest
 final class WindowOCRCaptureEngineTests: XCTestCase {
     private struct FakeCapturer: ScreenWindowTextCapturing {
         let result: String?
-        func captureWindowText(pid: pid_t, fieldText: String, maxLines: Int, maxChars: Int) async throws -> String? {
+        func captureWindowText(pid: pid_t, fieldText: String, focusPoint: CGPoint?, maxLines: Int, maxChars: Int) async throws -> String? {
             result
         }
     }

@@ -304,6 +304,48 @@ struct KeyTypeTests {
         #expect(advanced == nil)
     }
 
+    // MARK: - Reuse re-check (H2)
+
+    @Test func reuseRejectsRemainingThatRepeatsRecentlyTypedText() {
+        // As the user types through a cached suggestion, beforeCursor grows; a tail that becomes a
+        // verbatim repetition of just-typed text must not be re-shown via reuse.
+        let context = TextFieldContext(
+            beforeCursor: "You can use it to access the OpenAI. And",
+            target: Self.target
+        )
+        #expect(
+            CompletionController.reuseRemainingIsSafe(
+                remaining: " you can use it to access the OpenAI again",
+                context: context,
+                injectedContext: []
+            ) == false
+        )
+    }
+
+    @Test func reuseRejectsRemainingThatEchoesInjectedClipboard() {
+        // A cached completion (clean at anchor time) must not be re-shown if it now parrots the
+        // currently-injected clipboard/OCR context.
+        let context = TextFieldContext(beforeCursor: "Hi Molly,", target: Self.target)
+        #expect(
+            CompletionController.reuseRemainingIsSafe(
+                remaining: " if you require maintenance of UPS systems or",
+                context: context,
+                injectedContext: ["if you require maintenance of UPS systems or backup power, call us."]
+            ) == false
+        )
+    }
+
+    @Test func reuseAllowsGenuineRemaining() {
+        let context = TextFieldContext(beforeCursor: "Hi Molly,", target: Self.target)
+        #expect(
+            CompletionController.reuseRemainingIsSafe(
+                remaining: " hope you are doing well today",
+                context: context,
+                injectedContext: ["if you require maintenance of UPS systems or backup power, call us."]
+            )
+        )
+    }
+
     @Test func promotionCachePromotesLowerRankedBranchWhenTopIsInvalidated() {
         let cache = Self.promotionCache(candidates: [
             "ship it today",

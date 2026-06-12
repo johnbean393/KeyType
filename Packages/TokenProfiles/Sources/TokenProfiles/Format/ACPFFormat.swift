@@ -14,7 +14,9 @@ public enum ACPF {
     /// file was produced for a different endianness and must be rejected.
     public static let endianSentinel: UInt16 = 0x0102
 
-    /// First (and currently only) schema version.
+    /// On-disk *binary format* version. Bump only when the byte layout of the header, sections, or
+    /// records changes — never for changes to what gets baked into those bytes. Cache-busting for
+    /// *classifier output* changes is `generatorVersion`'s job, not this field's (see below).
     public static let currentSchemaVersion: UInt16 = 1
 
     /// One section descriptor per `SectionKind`, in the header's section array.
@@ -54,8 +56,17 @@ public enum ACPF {
     /// bytes. Anything in `0...255` is a real first byte.
     public static let emptyFirstByte: UInt16 = 256
 
-    /// Identifier stamped into the validation section's `generator_version` slot.
-    public static let generatorVersion: String = "keytype-acpf-1.0"
+    /// Identifier stamped into the validation section's `generator_version` slot, and the cache-busting
+    /// key for the *classifier* output. The tokenizer digest covers only vocab bytes, so a change to
+    /// `TokenClassifier` (which decides the `.excluded`/`.special` flags baked into every record and the
+    /// trie) does NOT change the digest and would otherwise leave stale profiles in place.
+    /// `MmapAutocompleteProfile.init` rejects a profile whose stamped `generator_version` differs from
+    /// this, forcing `ProfileGenerator` to rebuild. **Bump this whenever `TokenClassifier` output
+    /// changes**, independent of the binary `currentSchemaVersion`.
+    ///   1.0 → 1.1: reserved-placeholder exclusion by byte content (Gemma `<unusedN>` leak fix).
+    ///   1.1 → 1.2: markup-tag flag + prose demotion for Gemma's single-token HTML-tag block
+    ///              (`</code>` shown in prose contexts; cancelled in code/terminal modes).
+    public static let generatorVersion: String = "keytype-acpf-1.2"
 }
 
 /// Ordinals into the header's section array. **Stable across schema versions** — once an
@@ -373,6 +384,7 @@ public enum ACPFOpenError: Error, Equatable, CustomStringConvertible {
     case modelFamilyMismatch(expected: String, found: String)
     case vocabSizeMismatch(expected: Int, found: Int)
     case tokenizerDigestMismatch(expected: ACPFTokenizerDigestValue, found: ACPFTokenizerDigestValue)
+    case generatorVersionMismatch(expected: String, found: String)
     case malformedSectionPayload(kind: SectionKind, message: String)
 
     public var description: String {
@@ -399,6 +411,8 @@ public enum ACPFOpenError: Error, Equatable, CustomStringConvertible {
             return "ACPF: vocab_size \(found) != expected \(expected)"
         case let .tokenizerDigestMismatch(expected, found):
             return "ACPF: tokenizer digest \(found.hexPrefix) != expected \(expected.hexPrefix)"
+        case let .generatorVersionMismatch(expected, found):
+            return "ACPF: generator_version '\(found)' != expected '\(expected)' (rebuild required)"
         case let .malformedSectionPayload(kind, message):
             return "ACPF: section \(kind) payload is malformed: \(message)"
         }

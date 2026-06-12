@@ -48,6 +48,22 @@ public struct DecodingConfiguration: Equatable {
     /// Weight of the mean per-token suffix-join log-probability added to a branch's cumulative score
     /// before final ranking. See ADR-057.
     public var suffixRerankWeight: Float
+    /// Decode-time repetition control. Subtracted (in logit space, before temperature) from any token
+    /// that has already been emitted *on the same branch*, demoting degenerate intra-completion loops
+    /// ("access the OpenAI access the OpenAI") so a non-repeating sibling — or the stop token — wins the
+    /// beam instead of the controller having to suppress the looped output after the fact. The penalty
+    /// is suppressed while a branch is still satisfying a required prefix (mid-word healing), so it never
+    /// demotes a forced continuation (see `ConstrainedGenerationEngine`).
+    ///
+    /// `presencePenalty` is applied once if the token appears at all on the branch; `frequencyPenalty`
+    /// is applied per prior occurrence. Both default to `0` (inert — `SamplerResult` is byte-identical
+    /// to the un-penalized path), so the production default is unchanged until a value is chosen via the
+    /// KeyTypeBench sweep. This is a *demotion* lever, not a promotion one: it only reshuffles tokens
+    /// already in the candidate pool, so it bites on the medium/long completion lengths where loops
+    /// form and is near-inert at the short (≤4-token) default.
+    public var presencePenalty: Float
+    /// See `presencePenalty`. Scaled by the number of prior occurrences of the token on the branch.
+    public var frequencyPenalty: Float
 
     public init(
         topK: Int = 64,
@@ -61,7 +77,9 @@ public struct DecodingConfiguration: Equatable {
         fimMaxPrefixTokens: Int = 256,
         fimMaxSuffixTokens: Int = 64,
         suffixRerankTokenCount: Int = 0,
-        suffixRerankWeight: Float = 1.0
+        suffixRerankWeight: Float = 1.0,
+        presencePenalty: Float = 0,
+        frequencyPenalty: Float = 0
     ) {
         self.topK = topK
         self.topP = topP
@@ -75,5 +93,7 @@ public struct DecodingConfiguration: Equatable {
         self.fimMaxSuffixTokens = fimMaxSuffixTokens
         self.suffixRerankTokenCount = suffixRerankTokenCount
         self.suffixRerankWeight = suffixRerankWeight
+        self.presencePenalty = presencePenalty
+        self.frequencyPenalty = frequencyPenalty
     }
 }

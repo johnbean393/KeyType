@@ -159,11 +159,7 @@ public enum SuffixOverlapGuard {
     /// Case-folded string of only the alphanumeric scalars — drops whitespace, punctuation, and any
     /// stray symbol glyphs the model prepends, so the comparison is on real content.
     static func normalizedAlphanumerics(_ text: String) -> String {
-        var result = String.UnicodeScalarView()
-        for scalar in text.lowercased().unicodeScalars where CharacterSet.alphanumerics.contains(scalar) {
-            result.append(scalar)
-        }
-        return String(result)
+        AlphanumericNormalizer.normalize(text)
     }
 
     /// Whether the last scalar of `text` is a word character (letter or digit) — i.e. the caret is

@@ -202,6 +202,12 @@ public final class PersistentWritingHistoryStore: WritingHistoryStoring, @unchec
                     .filter(Column("charCount") >= query.minimumCharacters)
                 if let bundle = query.bundleIdentifier, query.sameAppOnly {
                     request = request.filter(Column("appBundleIdentifier") == bundle)
+                    // Web fields: keep only the focused domain's rows so a different tab in the same
+                    // browser can't fill the row budget (and the in-memory selection then drops any
+                    // that slip through). Native apps have a nil domain and are unaffected.
+                    if let domain = query.domain, !domain.isEmpty {
+                        request = request.filter(Column("domain") == domain)
+                    }
                 }
                 if let language = query.language {
                     // Keep rows whose language matches or is unknown (conservative).
@@ -228,11 +234,20 @@ public final class PersistentWritingHistoryStore: WritingHistoryStoring, @unchec
 /// and the shape of the M3 `InMemoryWritingHistoryStore`.
 enum WritingHistorySelection {
     static func select(from entries: [WritingHistorySample], query: WritingHistoryQuery) -> [String] {
-        let candidates = entries.filter { $0.text.count >= query.minimumCharacters }
+        let candidates = entries.filter {
+            $0.text.count >= query.minimumCharacters && WritingHistoryFilter.isProse($0.text)
+        }
 
         let sameApp = candidates.filter { entry in
             guard let bundle = query.bundleIdentifier else { return true }
-            return entry.appBundleIdentifier == bundle
+            guard entry.appBundleIdentifier == bundle else { return false }
+            // For web fields the bundle is the browser, so several sites share it. Require a matching
+            // domain so content from a different tab (or an unknown-domain sample) can't be treated as
+            // same-context and bleed in. Native apps have no domain, so this is inert for them.
+            if let queryDomain = query.domain, !queryDomain.isEmpty {
+                return entry.domain == queryDomain
+            }
+            return true
         }
         let crossApp = candidates.filter { entry in
             guard let bundle = query.bundleIdentifier else { return false }
@@ -244,6 +259,10 @@ enum WritingHistorySelection {
 
         func take(_ samples: [WritingHistorySample], upTo limit: Int) {
             for s in samples.prefix(limit) where seen.insert(s.text).inserted {
+                // Skip near-duplicate drafts (an earlier version of the same text the user kept
+                // editing). Injecting both wastes the budget and amplifies the model's tendency to
+                // parrot the most recent matching phrase verbatim.
+                if picked.contains(where: { isNearDuplicate(s.text, of: $0.text) }) { continue }
                 picked.append(s)
             }
         }
@@ -265,5 +284,25 @@ enum WritingHistorySelection {
             tokens += cost
         }
         return result
+    }
+
+    /// Word set (lowercased letters/digits) used for cheap near-duplicate detection. `n` is tiny
+    /// (≤ fetchSize), so the O(picked·words) comparison in `take` is negligible.
+    static func wordSet(_ text: String) -> Set<String> {
+        Set(text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+    }
+
+    /// True when two history samples are near-identical — high word-set overlap (Jaccard ≥ 0.8) or the
+    /// shorter is fully contained in the longer (an extended draft of the same text). Mirrored in
+    /// `InMemoryWritingHistoryStore`; keep the two in sync.
+    static func isNearDuplicate(_ candidate: String, of existing: String) -> Bool {
+        let a = wordSet(candidate), b = wordSet(existing)
+        guard a.count >= 3, b.count >= 3 else { return candidate == existing }
+        let intersection = a.intersection(b).count
+        let union = a.union(b).count
+        if union > 0, Double(intersection) / Double(union) >= 0.8 { return true }
+        let smaller = a.count <= b.count ? a : b
+        let larger = a.count <= b.count ? b : a
+        return smaller.isSubset(of: larger)   // shorter draft entirely contained in the longer one
     }
 }

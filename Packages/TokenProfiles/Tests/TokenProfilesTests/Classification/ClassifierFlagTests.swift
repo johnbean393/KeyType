@@ -203,6 +203,59 @@ final class ClassifierFlagTests: XCTestCase {
         XCTAssertTrue(cls.flags.contains(.excluded))
     }
 
+    // MARK: - Reserved placeholders flagged by byte content (GGUF attribute missing)
+
+    func testGemmaUnusedPlaceholderExcludedByByteContent() {
+        // The real failure: Gemma's <unusedN> arrive as NORMAL (no .unused attr) and leaked as
+        // literal text. They must be classified special + excluded purely from their rendered bytes.
+        let cls = classify(u8("<unused56>"), attr: .normal)
+        XCTAssertTrue(cls.flags.contains(.special), "reserved placeholder must be special")
+        XCTAssertTrue(cls.flags.contains(.excluded), "reserved placeholder must be excluded from sampling")
+    }
+
+    func testOtherReservedPlaceholderFormsExcluded() {
+        for s in ["<unused0>", "<reserved_12>", "<extra_id_3>", "<pad>", "<mask>"] {
+            XCTAssertTrue(classify(u8(s), attr: .normal).flags.contains(.excluded), "\(s) should be excluded")
+        }
+    }
+
+    func testGenuineAngleBracketTextIsNotExcluded() {
+        // Don't over-reach: ordinary markup/text the user might type stays sampleable.
+        for s in ["<h2>", "</code>", "<div>", "<3"] {
+            XCTAssertFalse(classify(u8(s), attr: .normal).flags.contains(.excluded), "\(s) should NOT be excluded")
+        }
+    }
+
+    // MARK: - Markup-tag tokens (Gemma's single-token HTML-tag block, ids 168–237)
+
+    func testWholeTagTokensGetMarkupTagFlag() {
+        // The `</code>`-shown-in-prose failure: these arrive as NORMAL single tokens. They are
+        // flagged (for the prose bias penalty) but stay sampleable for code/terminal modes.
+        for s in ["<b>", "</code>", "<table>", "</blockquote>", "<br/>"] {
+            let cls = classify(u8(s), attr: .normal)
+            XCTAssertTrue(cls.flags.contains(.markupTag), "\(s) should be flagged markupTag")
+            XCTAssertFalse(cls.flags.contains(.excluded), "\(s) must NOT be excluded")
+        }
+    }
+
+    func testSentencePieceSpacePrefixedTagGetsMarkupTagFlag() {
+        XCTAssertTrue(classify(u8("\u{2581}<b>"), attr: .normal).flags.contains(.markupTag))
+    }
+
+    func testNonTagAngleBracketTextIsNotMarkupTag() {
+        for s in ["<3", "a<b", "code>", #"<a href="x">"#, "hello", "<", ">"] {
+            XCTAssertFalse(classify(u8(s), attr: .normal).flags.contains(.markupTag), "\(s) should NOT be markupTag")
+        }
+    }
+
+    func testReservedPlaceholderIsNotMarkupTag() {
+        // `<unused56>` matches the tag shape but is special/excluded — keep the flags disjoint so
+        // bias accounting stays single-purpose.
+        let cls = classify(u8("<unused56>"), attr: .normal)
+        XCTAssertTrue(cls.flags.contains(.excluded))
+        XCTAssertFalse(cls.flags.contains(.markupTag))
+    }
+
     // MARK: - Display width
 
     func testDisplayWidthOfASCII() {

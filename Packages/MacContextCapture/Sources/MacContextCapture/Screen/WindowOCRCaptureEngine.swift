@@ -19,8 +19,9 @@ public protocol ScreenWindowTextCapturing: Sendable {
     /// Capture the focused window for `pid` and return its OCR'd text, or `nil` if there's no
     /// suitable window / no recognised text. `fieldText` is the focused field's own text (already
     /// captured via Accessibility); lines matching it are stripped so screen context doesn't
-    /// duplicate the field.
-    func captureWindowText(pid: pid_t, fieldText: String, maxLines: Int, maxChars: Int) async throws -> String?
+    /// duplicate the field. `focusPoint` (caret location, global top-left screen coordinates)
+    /// disambiguates multiple windows of the same app so the correct one is read.
+    func captureWindowText(pid: pid_t, fieldText: String, focusPoint: CGPoint?, maxLines: Int, maxChars: Int) async throws -> String?
 }
 
 /// `ScreenTextProviding` cache fed by an out-of-band capturer. Main-actor isolated: the completion
@@ -49,10 +50,11 @@ public final class WindowOCRCaptureEngine: ScreenTextProviding {
     }
 
     /// Kick off a fresh capture for `pid`, superseding any in-flight one. `fieldText` is the focused
-    /// field's own text, stripped from the OCR so screen context doesn't echo it. Fire-and-forget:
-    /// the cache updates when the capture completes. A failed/empty capture clears the cache so a
-    /// stale reading can't outlive the window it came from.
-    public func refresh(pid: pid_t, fieldText: String) {
+    /// field's own text, stripped from the OCR so screen context doesn't echo it. `focusPoint` is the
+    /// caret location (global top-left screen coordinates) used to pick the right window when the app
+    /// has several. Fire-and-forget: the cache updates when the capture completes. A failed/empty
+    /// capture clears the cache so a stale reading can't outlive the window it came from.
+    public func refresh(pid: pid_t, fieldText: String, focusPoint: CGPoint? = nil) {
         inFlight?.cancel()
         let capturer = self.capturer
         let maxLines = self.maxLines
@@ -61,6 +63,7 @@ public final class WindowOCRCaptureEngine: ScreenTextProviding {
             let text = try? await capturer.captureWindowText(
                 pid: pid,
                 fieldText: fieldText,
+                focusPoint: focusPoint,
                 maxLines: maxLines,
                 maxChars: maxChars
             )
@@ -89,10 +92,14 @@ public struct ScreenCaptureKitWindowTextCapturer: ScreenWindowTextCapturing {
         self.maxCaptureDimension = maxCaptureDimension
     }
 
-    public func captureWindowText(pid: pid_t, fieldText: String, maxLines: Int, maxChars: Int) async throws -> String? {
+    public func captureWindowText(pid: pid_t, fieldText: String, focusPoint: CGPoint?, maxLines: Int, maxChars: Int) async throws -> String? {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let candidates = content.windows.map(ScreenWindowCandidate.init(window:))
-        guard let windowID = ScreenWindowSelector.selectWindowID(forPID: pid, from: candidates),
+        // `content.windows` is front-to-back; the index is the z-order the selector uses to break ties
+        // between windows that overlap the caret.
+        let candidates = content.windows.enumerated().map { index, window in
+            ScreenWindowCandidate(window: window, zOrder: index)
+        }
+        guard let windowID = ScreenWindowSelector.selectWindowID(forPID: pid, from: candidates, focusPoint: focusPoint),
               let window = content.windows.first(where: { $0.windowID == windowID }) else {
             return nil
         }
@@ -118,13 +125,14 @@ public struct ScreenCaptureKitWindowTextCapturer: ScreenWindowTextCapturing {
 }
 
 private extension ScreenWindowCandidate {
-    init(window: SCWindow) {
+    init(window: SCWindow, zOrder: Int) {
         self.init(
             windowID: window.windowID,
             processID: window.owningApplication?.processID ?? -1,
             frame: window.frame,
             isOnScreen: window.isOnScreen,
-            layer: window.windowLayer
+            layer: window.windowLayer,
+            zOrder: zOrder
         )
     }
 }
