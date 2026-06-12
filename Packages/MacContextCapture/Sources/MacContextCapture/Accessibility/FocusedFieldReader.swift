@@ -43,9 +43,7 @@ public struct FocusedFieldSnapshot: Equatable {
 
 @MainActor
 public struct FocusedFieldReader {
-    private static let appCaretGeometryFallbacks: [any AppCaretGeometryFallback.Type] = [
-        DiscordComposeTextContext.self
-    ]
+    private static let appCaretGeometryFallbacks: [any AppCaretGeometryFallback.Type] = []
 
     private let resolver: AXCaretGeometryResolver
     private nonisolated let webAppClassifier: AppBundleWebAppClassifier

@@ -327,7 +327,7 @@ final class CaretGeometryQualityTests: XCTestCase {
         XCTAssertEqual(repaired, current)
     }
 
-    func testLineMismatchedEstimatedCaretIsNotRepairedAgain() {
+    func testLineMismatchedAppEstimatedCaretIsNotRepairedAgain() {
         let field = CGRect(x: 520, y: 142, width: 712, height: 160)
         let beforeCursor = """
         Per-app overrides are currently quite difficult to adjust in development.
@@ -337,7 +337,7 @@ final class CaretGeometryQualityTests: XCTestCase {
         let estimatedCaret = CGRect(x: 992, y: 263, width: 2, height: 18)
         let current = CapturedCaretGeometry(
             rect: estimatedCaret,
-            source: "discordSoftWrapEstimate",
+            source: "appSoftWrapEstimate",
             quality: CaretGeometryQuality.estimated
         )
 

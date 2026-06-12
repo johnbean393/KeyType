@@ -300,7 +300,7 @@ final class CompletionUITests: XCTestCase {
     }
 
     @MainActor
-    func testDiscordMirrorLayoutSuppressesOverflowWithDerivedMultilineCaret() {
+    func testMirrorLayoutSuppressesOverflowWithDerivedMultilineCaret() {
         let font = NSFont.systemFont(ofSize: 15)
         let placement = OverlayPlacement(
             cursorRect: CGRect(x: 786, y: 111, width: 2, height: 44),
@@ -319,7 +319,7 @@ final class CompletionUITests: XCTestCase {
     }
 
     @MainActor
-    func testDiscordMirrorLayoutKeepsShortSuggestionOnCaretLine() {
+    func testMirrorLayoutKeepsShortSuggestionOnCaretLine() {
         let font = NSFont.systemFont(ofSize: 15)
         let placement = OverlayPlacement(
             cursorRect: CGRect(x: 786, y: 111, width: 2, height: 44),
@@ -344,7 +344,7 @@ final class CompletionUITests: XCTestCase {
     }
 
     @MainActor
-    func testDiscordMirrorLayoutSuppressesSingleLineToolbarCollision() {
+    func testMirrorLayoutSuppressesSingleLineToolbarCollision() {
         let font = NSFont.systemFont(ofSize: 15)
         let placement = OverlayPlacement(
             cursorRect: CGRect(x: 793, y: 111, width: 2, height: 44),

@@ -112,12 +112,6 @@ public extension AppCompatibilityStore {
                 customInstructions: "Continue the current message only. Keep it short and conversational."
             ),
             TargetOverride(
-                domain: "discord.com",
-                requiresPasteAndMatchStyle: true,
-                overlayPreference: .textMirror,
-                customInstructions: "Continue the current message only. Keep it short and conversational."
-            ),
-            TargetOverride(
                 bundleIdentifier: "com.apple.mail",
                 customInstructions: "Continue the current email draft. Prefer concise, natural prose."
             ),
@@ -156,12 +150,6 @@ public extension AppCompatibilityStore {
                 requiresPasteAndMatchStyle: true,
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Notion block only; do not include page chrome or database UI text."
-            ),
-            TargetOverride(
-                bundleIdentifier: "com.hnc.Discord",
-                stringInjectionChunkSize: 8,
-                overlayPreference: .textMirror,
-                customInstructions: "Continue the current Discord message only. Keep it short and conversational."
             )
         ]
 

@@ -50,11 +50,11 @@ A target is matched by **bundle identifier**, **domain** (for browser web fields
      `completionsDisabled` + `secureFieldExclusion` + `.hidden`.
    - *Code editors* (Xcode, VS Code, Cursor): `environmentContextDisabled` only — keep cursor-local
      text, drop biasing window-title metadata (ADR-017/030).
-   - *Web doc/chat surfaces* (Google Docs, Gmail, Notion, Slack, Discord, iMessage, WeChat):
+   - *Web doc/chat surfaces* (Google Docs, Gmail, Notion, Slack, iMessage, WeChat):
      `requiresPasteAndMatchStyle`, the right `overlayPreference`, and focused `customInstructions`.
 4. **Prefer a domain override** for web apps (works across Chrome/Safari/Arc/etc.); add a
-   bundle-id override too when the app ships a native Electron wrapper (e.g. Slack, Discord, Notion
-   all have both rows).
+   bundle-id override too when the app ships a native Electron wrapper (e.g. Slack and Notion both
+   have rows).
 5. **Test it.** `AppCompatibilityTests` cover matching/resolution; add a row asserting the new
    target resolves to the intended `CompletionPolicy`.
 6. **Log it** if the choice is non-obvious — append an ADR (prior art: ADR-022/027–033).

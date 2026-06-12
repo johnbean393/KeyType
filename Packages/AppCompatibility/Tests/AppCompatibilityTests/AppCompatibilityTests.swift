@@ -229,7 +229,7 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
-    func testDiscordNativeUsesTextMirrorWithoutNativeOffset() {
+    func testDiscordNativeFallsBackToDefaultPolicy() {
         let target = AppTarget(bundleIdentifier: "com.hnc.Discord", appName: "Discord")
         let context = TextFieldContext(beforeCursor: "This", target: target)
 
@@ -237,15 +237,13 @@ final class AppCompatibilityTests: XCTestCase {
 
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
-        XCTAssertEqual(policy.stringInjectionChunkSize, 8)
-        XCTAssertEqual(policy.overlayPreference, .textMirror)
+        XCTAssertNil(policy.stringInjectionChunkSize)
+        XCTAssertEqual(policy.overlayPreference, .inline)
         XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
-        XCTAssertEqual(policy.customInstructions, [
-            "Continue the current Discord message only. Keep it short and conversational."
-        ])
+        XCTAssertTrue(policy.customInstructions.isEmpty)
     }
 
-    func testDiscordDomainKeepsWebSurfacePolicyWithoutNativeOffset() {
+    func testDiscordDomainFallsBackToDefaultPolicy() {
         let target = AppTarget(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
@@ -256,12 +254,10 @@ final class AppCompatibilityTests: XCTestCase {
         let policy = AppCompatibilityStore().policy(for: context)
 
         XCTAssertTrue(policy.isCompletionEnabled)
-        XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
-        XCTAssertEqual(policy.overlayPreference, .textMirror)
+        XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
+        XCTAssertEqual(policy.overlayPreference, .inline)
         XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
-        XCTAssertEqual(policy.customInstructions, [
-            "Continue the current message only. Keep it short and conversational."
-        ])
+        XCTAssertTrue(policy.customInstructions.isEmpty)
     }
 
     func testPasswordManagerBundleIsSecureExcluded() {
