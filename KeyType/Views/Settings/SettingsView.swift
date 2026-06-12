@@ -16,6 +16,7 @@ struct SettingsView: View {
     let telemetry: CompletionTelemetryStore
     let modelSetup: ModelSetupCoordinator
     let contextCapture: ContextCaptureController
+    let developerOverrides: DeveloperOverrideController
     let permissions: PermissionsManager
     let clearPersonalData: () -> Void
     let runSetupAgain: () -> Void
@@ -27,6 +28,8 @@ struct SettingsView: View {
     let importModel: () -> Void
     /// Present the app-bundle picker with the same AX-pipeline quiescing used by model import.
     let addApp: () -> Void
+    /// Show the compact non-activating developer tuning HUD.
+    let openDeveloperOverridePanel: () -> Void
 
     @State private var selection: SettingsCategory = .general
 
@@ -71,7 +74,13 @@ struct SettingsView: View {
                 makeLatencyExport: { LatencyExportContext.makeExportData(telemetry: telemetry, settings: settings) }
             )
         case .developer:
-            DeveloperSettingsView(settings: settings, contextCapture: contextCapture, permissions: permissions)
+            DeveloperSettingsView(
+                settings: settings,
+                contextCapture: contextCapture,
+                developerOverrides: developerOverrides,
+                permissions: permissions,
+                openTuningPanel: openDeveloperOverridePanel
+            )
         case .setup:
             SetupSettingsView(runSetupAgain: runSetupAgain)
         }

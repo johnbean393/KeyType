@@ -370,7 +370,7 @@ public struct AXCaretGeometryResolver {
         in cocoaRect: CGRect,
         text: String,
         selection: NSRange,
-        widthBias: CGFloat = 0.95,
+        widthBias: CGFloat = 1,
         widthPointOffsetBias: CGFloat = 0
     ) -> CGFloat {
         let currentLinePrefix = Self.currentLinePrefix(in: text, selection: selection)
@@ -390,8 +390,10 @@ public struct AXCaretGeometryResolver {
         text: String,
         selection: NSRange,
         widthBias: CGFloat = 0.95,
+        unwrappedLineWidthBias: CGFloat = 1,
         widthPointOffsetBias: CGFloat = 0,
-        blankLineHeightBias: CGFloat = 0
+        blankLineHeightBias: CGFloat = 0,
+        paragraphBreakSpacingLineHeightMultiplier: CGFloat = 0
     ) -> CGRect {
         let font = NSFont.systemFont(ofSize: 15)
         let lineHeight = min(max(font.boundingRectForFont.height, 18), 24)
@@ -402,7 +404,7 @@ public struct AXCaretGeometryResolver {
                 in: cocoaRect,
                 text: text,
                 selection: selection,
-                widthBias: widthBias,
+                widthBias: unwrappedLineWidthBias,
                 widthPointOffsetBias: widthPointOffsetBias
             ), cocoaRect.maxX)
             return CGRect(x: x, y: cocoaRect.minY, width: 2, height: height)
@@ -413,15 +415,28 @@ public struct AXCaretGeometryResolver {
             selection: selection,
             availableWidth: cocoaRect.width,
             widthBias: widthBias,
+            unwrappedLineWidthBias: unwrappedLineWidthBias,
             widthPointOffsetBias: widthPointOffsetBias
         )
         let x = min(cocoaRect.minX + wrapped.xOffset, cocoaRect.maxX)
         let lineIndex = CGFloat(wrapped.lineIndex)
         let blankLineCount = CGFloat(Self.blankLogicalLineCountBeforeCaret(in: text, selection: selection))
+        let paragraphBreakCount = CGFloat(Self.logicalLineBreakCountBeforeCaret(in: text, selection: selection))
         let topPadding: CGFloat = 2
+        let paragraphBreakSpacing = Self.derivedParagraphBreakSpacing(
+            fieldHeight: cocoaRect.height,
+            lineHeight: lineHeight,
+            topPadding: topPadding,
+            lineIndex: lineIndex,
+            blankLineCount: blankLineCount,
+            blankLineHeightBias: blankLineHeightBias,
+            paragraphBreakCount: paragraphBreakCount,
+            lineHeightMultiplier: paragraphBreakSpacingLineHeightMultiplier
+        )
         let estimatedY = cocoaRect.maxY
             - topPadding
             - ((lineIndex + 1 + (blankLineCount * blankLineHeightBias)) * lineHeight)
+            - (paragraphBreakCount * paragraphBreakSpacing)
         let clampedY = min(max(estimatedY, cocoaRect.minY), cocoaRect.maxY - height)
 
         return CGRect(x: x, y: clampedY, width: 2, height: height)
@@ -433,6 +448,7 @@ public struct AXCaretGeometryResolver {
         availableWidth: CGFloat,
         font: NSFont = NSFont.systemFont(ofSize: 15),
         widthBias: CGFloat = 0.95,
+        unwrappedLineWidthBias: CGFloat = 1,
         widthPointOffsetBias: CGFloat = 0
     ) -> (lineIndex: Int, xOffset: CGFloat) {
         let nsText = text as NSString
@@ -451,15 +467,50 @@ public struct AXCaretGeometryResolver {
                 widthPointOffsetBias: widthPointOffsetBias
             )
             if index == logicalLines.count - 1 {
+                let xOffset = Self.currentLineXOffset(
+                    for: line,
+                    wrapped: wrapped,
+                    availableWidth: width,
+                    font: font,
+                    widthBias: widthBias,
+                    unwrappedLineWidthBias: unwrappedLineWidthBias,
+                    widthPointOffsetBias: widthPointOffsetBias
+                )
                 return (
                     lineIndex: visualLineBase + wrapped.lineIndex,
-                    xOffset: min(max(0, wrapped.xOffset), width)
+                    xOffset: min(max(0, xOffset), width)
                 )
             }
             visualLineBase += wrapped.lineIndex + 1
         }
 
         return (lineIndex: 0, xOffset: 0)
+    }
+
+    private nonisolated static func currentLineXOffset(
+        for line: String,
+        wrapped: (lineIndex: Int, xOffset: CGFloat),
+        availableWidth: CGFloat,
+        font: NSFont,
+        widthBias: CGFloat,
+        unwrappedLineWidthBias: CGFloat,
+        widthPointOffsetBias: CGFloat
+    ) -> CGFloat {
+        guard wrapped.lineIndex == 0, unwrappedLineWidthBias != widthBias else {
+            return wrapped.xOffset
+        }
+
+        let unwrapped = estimatedWrappedLineLayout(
+            for: line,
+            availableWidth: availableWidth,
+            font: font,
+            widthBias: unwrappedLineWidthBias,
+            widthPointOffsetBias: widthPointOffsetBias
+        )
+        guard unwrapped.lineIndex == 0 else {
+            return wrapped.xOffset
+        }
+        return unwrapped.xOffset
     }
 
     private nonisolated static func estimatedWrappedLineLayout(
@@ -554,6 +605,14 @@ public struct AXCaretGeometryResolver {
         return prefix.components(separatedBy: .newlines).last ?? prefix
     }
 
+    private nonisolated static func logicalLineBreakCountBeforeCaret(in text: String, selection: NSRange) -> Int {
+        let nsText = text as NSString
+        let safeLocation = min(max(selection.location, 0), nsText.length)
+        let prefix = nsText.substring(to: safeLocation)
+        let logicalLines = prefix.components(separatedBy: .newlines)
+        return max(0, logicalLines.count - 1)
+    }
+
     private nonisolated static func blankLogicalLineCountBeforeCaret(in text: String, selection: NSRange) -> Int {
         let nsText = text as NSString
         let safeLocation = min(max(selection.location, 0), nsText.length)
@@ -563,6 +622,28 @@ public struct AXCaretGeometryResolver {
         return logicalLines.dropLast().filter { line in
             line.trimmingCharacters(in: .whitespaces).isEmpty
         }.count
+    }
+
+    private nonisolated static func derivedParagraphBreakSpacing(
+        fieldHeight: CGFloat,
+        lineHeight: CGFloat,
+        topPadding: CGFloat,
+        lineIndex: CGFloat,
+        blankLineCount: CGFloat,
+        blankLineHeightBias: CGFloat,
+        paragraphBreakCount: CGFloat,
+        lineHeightMultiplier: CGFloat
+    ) -> CGFloat {
+        guard lineHeightMultiplier > 0, paragraphBreakCount > 0 else { return 0 }
+
+        let bottomPadding = max(8, lineHeight * 0.6)
+        let naturalHeight = topPadding
+            + ((lineIndex + 1 + (blankLineCount * blankLineHeightBias)) * lineHeight)
+            + bottomPadding
+        let extraHeight = max(0, fieldHeight - naturalHeight)
+        guard extraHeight > 0 else { return 0 }
+
+        return min(lineHeight * lineHeightMultiplier, extraHeight / paragraphBreakCount)
     }
 
     private func rectIsNearAnchor(_ cocoaRect: CGRect, anchor: CGRect?) -> Bool {

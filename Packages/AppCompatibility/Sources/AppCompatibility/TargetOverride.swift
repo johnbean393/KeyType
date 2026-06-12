@@ -14,6 +14,7 @@ public struct TargetOverride: Equatable {
     public var stringInjectionChunkSize: Int?
     public var requiresBackspaceAfterPaste: Bool
     public var fontSizeAdjustmentFactor: Double
+    public var horizontalAlignmentOffset: Double
     public var verticalAlignmentOffset: VerticalAlignmentOffsetResolver
     public var overlayPreference: OverlayPreference?
     public var completionMode: CompletionMode?
@@ -37,6 +38,7 @@ public struct TargetOverride: Equatable {
         stringInjectionChunkSize: Int? = nil,
         requiresBackspaceAfterPaste: Bool = false,
         fontSizeAdjustmentFactor: Double = 1,
+        horizontalAlignmentOffset: Double = 0,
         verticalAlignmentOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         overlayPreference: OverlayPreference? = nil,
         completionMode: CompletionMode? = nil,
@@ -56,6 +58,7 @@ public struct TargetOverride: Equatable {
         self.stringInjectionChunkSize = stringInjectionChunkSize
         self.requiresBackspaceAfterPaste = requiresBackspaceAfterPaste
         self.fontSizeAdjustmentFactor = fontSizeAdjustmentFactor
+        self.horizontalAlignmentOffset = horizontalAlignmentOffset
         self.verticalAlignmentOffset = verticalAlignmentOffset
         self.overlayPreference = overlayPreference
         self.completionMode = completionMode
@@ -77,6 +80,7 @@ public struct TargetOverride: Equatable {
             && lhs.stringInjectionChunkSize == rhs.stringInjectionChunkSize
             && lhs.requiresBackspaceAfterPaste == rhs.requiresBackspaceAfterPaste
             && lhs.fontSizeAdjustmentFactor == rhs.fontSizeAdjustmentFactor
+            && lhs.horizontalAlignmentOffset == rhs.horizontalAlignmentOffset
             && lhs.verticalAlignmentOffset(0) == rhs.verticalAlignmentOffset(0)
             && lhs.verticalAlignmentOffset(12) == rhs.verticalAlignmentOffset(12)
             && lhs.verticalAlignmentOffset(24) == rhs.verticalAlignmentOffset(24)

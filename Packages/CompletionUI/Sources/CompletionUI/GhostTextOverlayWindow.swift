@@ -97,7 +97,10 @@ public final class GhostTextOverlayWindow {
         }
 
         window.setFrame(
-            layout.frame.offsetBy(dx: 0, dy: -CGFloat(placement.verticalOffset(Double(layout.lineHeight)))),
+            layout.frame.offsetBy(
+                dx: CGFloat(placement.horizontalOffset),
+                dy: -CGFloat(placement.verticalOffset(Double(layout.lineHeight)))
+            ),
             display: true
         )
 

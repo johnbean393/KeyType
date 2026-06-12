@@ -148,14 +148,12 @@ public extension AppCompatibilityStore {
             TargetOverride(
                 bundleIdentifier: "com.tinyspeck.slackmacgap",
                 stringInjectionChunkSize: 8,
-                verticalAlignmentOffset: { lineHeight in lineHeight },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Slack message only. Keep it short and conversational."
             ),
             TargetOverride(
                 bundleIdentifier: "notion.id",
                 requiresPasteAndMatchStyle: true,
-                verticalAlignmentOffset: { lineHeight in lineHeight },
                 overlayPreference: .textMirror,
                 customInstructions: "Continue the current Notion block only; do not include page chrome or database UI text."
             ),

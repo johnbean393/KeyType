@@ -29,7 +29,7 @@ A target is matched by **bundle identifier**, **domain** (for browser web fields
 | `requiresNonBreakingSpaceWorkaround` | Use NBSP where a plain space gets eaten. |
 | `stringInjectionChunkSize` | Inject in N-char chunks (slow/flaky fields, e.g. WeChat). |
 | `requiresBackspaceAfterPaste` | Backspace once after paste (fields that add a stray char). |
-| `fontSizeAdjustmentFactor` / `verticalAlignmentOffset` | Nudge overlay size/position to match. |
+| `fontSizeAdjustmentFactor` / `horizontalAlignmentOffset` / `verticalAlignmentOffset` | Nudge overlay size/position to match. |
 | `overlayPreference` | `.inline` / `.textMirror` / `.hidden` — pick the overlay that renders right. |
 | `completionMode` | Force `.terminal` / `.code` / etc. for this surface. |
 | `customInstructions` | Per-app prompt steering ("continue the current message only", …). |
@@ -58,6 +58,31 @@ A target is matched by **bundle identifier**, **domain** (for browser web fields
 5. **Test it.** `AppCompatibilityTests` cover matching/resolution; add a row asserting the new
    target resolves to the intended `CompletionPolicy`.
 6. **Log it** if the choice is non-obvious — append an ADR (prior art: ADR-022/027–033).
+
+## Live developer tuning
+
+For placement tuning, enable **Developer → Enable live override tuning** and open the tuning HUD.
+The HUD is a compact non-activating panel and uses the last non-KeyType focused field, so it does
+not retarget tuning to KeyType when it is shown or clicked. Edits apply immediately to the saved
+override and redraw the visible ghost text/capsule against that preserved target snapshot. KeyType
+writes and watches:
+
+`~/Library/Application Support/KeyType/DeveloperOverrides.json`
+
+Those overrides are layered on top of built-in defaults while the toggle is enabled, then cleared as
+soon as the toggle is disabled. JSON placement fields use serializable numeric terms:
+
+- `fontSizeAdjustmentFactor`: multiplier applied to the resolved field font.
+- `horizontalOffsetPoints`: x-axis point offset applied to the rendered overlay.
+- `verticalOffsetPoints`: y-axis point offset.
+- `verticalOffsetLineHeightMultiplier`: extra y-axis offset expressed in line heights.
+
+When a code change still needs a new binary, run `Scripts/build-dev-app.sh` to install a stable
+`/Applications/KeyType Dev.app` bundle with bundle identifier `com.pattonium.KeyType.dev`. The
+installer verifies that both `Info.plist` and the code signature use that dev identifier, so System
+Settings keeps its Accessibility entry separate from production `KeyType.app`. Grant Accessibility
+to that dev app once, then rerun the script without going through archive/notarize/install for every
+local iteration.
 
 ## Principle
 

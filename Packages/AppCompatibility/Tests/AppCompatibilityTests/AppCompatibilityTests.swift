@@ -159,7 +159,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertFalse(policy.allowsMidLineCompletion)
     }
 
-    func testSlackNativeUsesTextMirrorWithVerticalAlignmentFix() {
+    func testSlackNativeUsesTextMirrorWithoutNativeOffset() {
         let target = AppTarget(bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack")
         let context = TextFieldContext(beforeCursor: "Let's", target: target)
 
@@ -169,7 +169,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.stringInjectionChunkSize, 8)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 24, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current Slack message only. Keep it short and conversational."
         ])
@@ -195,7 +195,7 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
-    func testNotionNativeUsesTextMirrorWithVerticalAlignmentFix() {
+    func testNotionNativeUsesTextMirrorWithoutNativeOffset() {
         let target = AppTarget(bundleIdentifier: "notion.id", appName: "Notion")
         let context = TextFieldContext(beforeCursor: "K", target: target)
 
@@ -204,7 +204,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 24, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current Notion block only; do not include page chrome or database UI text."
         ])
@@ -317,6 +317,81 @@ final class AppCompatibilityTests: XCTestCase {
         let other = AppTarget(bundleIdentifier: "com.apple.Notes", appName: "Notes")
         let context = TextFieldContext(beforeCursor: "hello there", target: other)
         XCTAssertTrue(store.policy(for: context).isCompletionEnabled)
+    }
+
+    func testRuntimeOverridesAreAppliedAndCanBeReplacedLive() {
+        let runtimeOverrides = RuntimeTargetOverrideStore()
+        let store = AppCompatibilityStore(overrides: [], runtimeOverrideStore: runtimeOverrides)
+        let target = AppTarget(bundleIdentifier: "com.example.editor", appName: "Editor")
+        let context = TextFieldContext(beforeCursor: "hello", target: target)
+
+        XCTAssertEqual(store.policy(for: context).horizontalAlignmentOffset, 0, accuracy: 0.001)
+        XCTAssertEqual(store.policy(for: context).verticalAlignmentOffset(18), 0, accuracy: 0.001)
+
+        runtimeOverrides.replace(overrides: [
+            TargetOverride(
+                bundleIdentifier: "com.example.editor",
+                fontSizeAdjustmentFactor: 1.1,
+                horizontalAlignmentOffset: 7,
+                verticalAlignmentOffset: { lineHeight in lineHeight + 2 },
+                overlayPreference: .textMirror
+            )
+        ])
+
+        var policy = store.policy(for: context)
+        XCTAssertEqual(policy.fontSizeAdjustmentFactor, 1.1, accuracy: 0.001)
+        XCTAssertEqual(policy.horizontalAlignmentOffset, 7, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), 20, accuracy: 0.001)
+        XCTAssertEqual(policy.overlayPreference, .textMirror)
+
+        runtimeOverrides.replace(overrides: [
+            TargetOverride(
+                bundleIdentifier: "com.example.editor",
+                horizontalAlignmentOffset: -3,
+                verticalAlignmentOffset: { _ in -4 },
+                overlayPreference: .inline
+            )
+        ])
+
+        policy = store.policy(for: context)
+        XCTAssertEqual(policy.horizontalAlignmentOffset, -3, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), -4, accuracy: 0.001)
+        XCTAssertEqual(policy.overlayPreference, .inline)
+    }
+
+    func testDeveloperOverrideJSONDecodesWithDefaultsAndBuildsTargetOverride() throws {
+        let json = """
+        {
+          "overrides": [
+            {
+              "bundleIdentifier": "com.example.editor",
+              "horizontalOffsetPoints": 5,
+              "verticalOffsetPoints": -2,
+              "verticalOffsetLineHeightMultiplier": 1,
+              "overlayPreference": "textMirror"
+            }
+          ]
+        }
+        """
+        let document = try JSONDecoder().decode(
+            DeveloperTargetOverrideDocument.self,
+            from: Data(json.utf8)
+        )
+        let runtimeOverrides = RuntimeTargetOverrideStore(
+            overrides: document.overrides.compactMap { $0.targetOverride() }
+        )
+        let store = AppCompatibilityStore(overrides: [], runtimeOverrideStore: runtimeOverrides)
+        let context = TextFieldContext(
+            beforeCursor: "hello",
+            target: AppTarget(bundleIdentifier: "com.example.editor", appName: "Editor")
+        )
+
+        let policy = store.policy(for: context)
+        XCTAssertEqual(document.version, 1)
+        XCTAssertEqual(policy.fontSizeAdjustmentFactor, 1, accuracy: 0.001)
+        XCTAssertEqual(policy.horizontalAlignmentOffset, 5, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), 16, accuracy: 0.001)
+        XCTAssertEqual(policy.overlayPreference, .textMirror)
     }
 
     func testEstimatedWebCaretKeepsInlineOverlayPreference() {

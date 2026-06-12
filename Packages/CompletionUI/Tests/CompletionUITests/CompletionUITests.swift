@@ -36,7 +36,11 @@ final class CompletionUITests: XCTestCase {
 
     func testPlacementCarriesGeometryAndPolicy() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: [
-            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, verticalAlignmentOffset: { _ in 3 })
+            TargetOverride(
+                bundleIdentifier: Self.target.bundleIdentifier,
+                horizontalAlignmentOffset: 4,
+                verticalAlignmentOffset: { _ in 3 }
+            )
         ]))
         let rect = CGRect(x: 10, y: 20, width: 1, height: 16)
         let fieldRect = CGRect(x: 0, y: 20, width: 120, height: 40)
@@ -52,6 +56,7 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(placement?.fieldRect, fieldRect)
         XCTAssertEqual(placement?.isRightToLeft, true)
         XCTAssertEqual(placement?.cursorRectQuality, .derived)
+        XCTAssertEqual(placement?.horizontalOffset, 4)
         XCTAssertEqual(placement?.verticalOffset(18), 3)
     }
 
@@ -428,6 +433,40 @@ final class CompletionUITests: XCTestCase {
 
         XCTAssertEqual(mirrorCaret.minX, targetCaret.minX, accuracy: 0.5)
         XCTAssertEqual(mirrorCaret.minY, targetCaret.minY, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testTextMirrorAlignsCapturedCaretInsideTallerLineBox() {
+        let font = NSFont.systemFont(ofSize: 15)
+        let lineHeight: CGFloat = 28
+        let field = CGRect(x: 100, y: 200, width: 360, height: 90)
+        let caret = CGRect(x: 174, y: 244, width: 2, height: 18)
+        let placement = OverlayPlacement(
+            cursorRect: caret,
+            fieldRect: field,
+            mode: .mirror
+        )
+        let view = TextMirrorCompletionNSView(
+            frame: CGRect(origin: .zero, size: field.size)
+        )
+        view.configure(
+            mirrorContext: TextMirrorOverlayContext(
+                beforeCursor: "Let's",
+                afterCursor: ""
+            ),
+            completion: " see what happens",
+            style: OverlayTextStyle(font: font, lineHeight: lineHeight),
+            placement: placement
+        )
+
+        let targetCaret = TextMirrorGeometry.localCaretRect(cursorRect: caret, fieldRect: field)
+        let mirrorCaret = view.caretRect(utf16Location: ("Let's" as NSString).length)
+        let origin = view.alignedDrawOrigin()
+
+        XCTAssertEqual(mirrorCaret.minY, (lineHeight - caret.height) / 2, accuracy: 0.5)
+        XCTAssertEqual(mirrorCaret.height, caret.height, accuracy: 0.5)
+        XCTAssertEqual(origin.y, targetCaret.minY - mirrorCaret.minY, accuracy: 0.5)
+        XCTAssertLessThan(origin.y, targetCaret.minY)
     }
 
     // MARK: - Advance past an accepted word

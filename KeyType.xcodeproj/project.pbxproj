@@ -67,6 +67,8 @@
 		4B5450012FC96000000002A3 /* CompletionReuseHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */; };
 		4B5450012FC9600000000301 /* LatencyExportContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000300 /* LatencyExportContext.swift */; };
 		4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000310 /* FullPromptLog.swift */; };
+		4B5450012FC9600000000401 /* DeveloperOverrideController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000400 /* DeveloperOverrideController.swift */; };
+		4B5450012FC9600000000404 /* DeveloperOverridePanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000403 /* DeveloperOverridePanelController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -137,6 +139,8 @@
 		4B5450012FC96000000002A2 /* CompletionReuseHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionReuseHistory.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000300 /* LatencyExportContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LatencyExportContext.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000310 /* FullPromptLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullPromptLog.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000400 /* DeveloperOverrideController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperOverrideController.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000403 /* DeveloperOverridePanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeveloperOverridePanelController.swift; sourceTree = "<group>"; };
 		B1C0BEF22FCB000000000001 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		B1C0BEF32FCB000000000001 /* core.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = core.jsonl; sourceTree = "<group>"; };
 		B1C0BEF42FCB000000000001 /* edge.jsonl */ = {isa = PBXFileReference; lastKnownFileType = text; path = edge.jsonl; sourceTree = "<group>"; };
@@ -267,6 +271,7 @@
 				4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */,
 				4B5450012FC9600000000100 /* Completion */,
 				4B5450012FC9600000000101 /* Context */,
+				4B5450012FC9600000000402 /* Developer */,
 				4B5450012FC9600000000102 /* Models */,
 				4B5450012FC96000000000C0 /* Permission */,
 				4B5450012FC9600000000103 /* Settings */,
@@ -308,6 +313,15 @@
 				4B5450012FC96000000000B1 /* ScreenContextController.swift */,
 			);
 			path = Context;
+			sourceTree = "<group>";
+		};
+		4B5450012FC9600000000402 /* Developer */ = {
+			isa = PBXGroup;
+			children = (
+				4B5450012FC9600000000400 /* DeveloperOverrideController.swift */,
+				4B5450012FC9600000000403 /* DeveloperOverridePanelController.swift */,
+			);
+			path = Developer;
 			sourceTree = "<group>";
 		};
 		4B5450012FC9600000000102 /* Models */ = {
@@ -626,6 +640,8 @@
 				4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */,
 				4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */,
 				4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */,
+				4B5450012FC9600000000401 /* DeveloperOverrideController.swift in Sources */,
+				4B5450012FC9600000000404 /* DeveloperOverridePanelController.swift in Sources */,
 				4B5450012FC9600000000055 /* PredictionLog.swift in Sources */,
 				4B5450012FC9600000000064 /* SettingsStore.swift in Sources */,
 				4B5450012FC9600000000066 /* WritingHistoryRecorder.swift in Sources */,

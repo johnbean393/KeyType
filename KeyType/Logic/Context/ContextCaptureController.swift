@@ -25,6 +25,9 @@ final class ContextCaptureController {
 
     private(set) var isRunning = false
     private(set) var lastSummary: String = ""
+    private(set) var latestSnapshot: FocusedFieldSnapshot?
+    private(set) var latestTunableSnapshot: FocusedFieldSnapshot?
+    private(set) var lastTunableSummary: String = ""
     var debugOverlayEnabled: Bool = false {
         didSet { applyOverlayVisibility() }
     }
@@ -66,11 +69,17 @@ final class ContextCaptureController {
         guard let snapshot else {
             overlay.hide()
             lastSummary = "(no focused field)"
+            latestSnapshot = nil
             log.debug("No focused field")
             return
         }
 
+        latestSnapshot = snapshot
         lastSummary = Self.summary(for: snapshot)
+        if !Self.isKeyTypeTarget(snapshot.context.target) {
+            latestTunableSnapshot = snapshot
+            lastTunableSummary = lastSummary
+        }
         // The tracker re-emits on caret-geometry repolls even when nothing the user cares about
         // changed; only log when the summary actually changes to keep the debug log readable.
         if lastSummary != lastLoggedSummary {
@@ -141,6 +150,18 @@ final class ContextCaptureController {
 
     private static func truncate(_ s: String, to max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max)) + "…"
+    }
+
+    private static func isKeyTypeTarget(_ target: AppTarget) -> Bool {
+        let bundleIdentifier = target.bundleIdentifier.lowercased()
+        if let ownBundleIdentifier = Bundle.main.bundleIdentifier?.lowercased(),
+           bundleIdentifier == ownBundleIdentifier {
+            return true
+        }
+        if bundleIdentifier.hasPrefix("com.pattonium.keytype") {
+            return true
+        }
+        return target.appName.localizedCaseInsensitiveContains("KeyType")
     }
     
 }

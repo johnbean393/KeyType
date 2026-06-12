@@ -112,6 +112,17 @@ row here.**
 | 090 | Re-enable mid-line FIM with conservative visible gating | generation/performance |
 | 091 | TextKit mirror overlay and richer AX text style | ui/context-capture |
 | 092 | Screenshot-assisted overlay calibration | ui/context-capture/privacy |
+| 093 | Repair wrapped-line caret rects before overlay placement | context-capture/ui |
+| 094 | Use near-neutral width bias for generic soft-wrap repair | context-capture |
+| 095 | Split soft-wrap width bias into multiplier and point offset | context-capture |
+| 096 | Repair web caret rects that land on the wrong visual line | context-capture/ui |
+| 097 | Account for blank-line paragraph spacing in web caret repair | context-capture/ui |
+| 098 | Layer live developer overrides on AppCompatibility | app-compatibility/developer |
+| 099 | Use a non-activating HUD for override tuning | developer/ui |
+| 100 | Derive paragraph spacing for web mirror caret repair | context-capture/ui |
+| 101 | Use neutral width and fuller paragraph gaps for web caret estimates | context-capture/ui |
+| 102 | Align mirror text to the target caret stroke | ui |
+| 103 | Convert screenshot calibration offsets into AppKit coordinates | ui/calibration |
 
 ---
 
@@ -3236,3 +3247,120 @@ text. Both are now closed:
 - Consequences: Web paragraph breaks now move repaired ghost-text placement down with the rendered
   passage spacing, including compounding across multiple blank lines. Native/default estimates keep
   their previous behavior.
+
+## ADR-098 — Layer live developer overrides on AppCompatibility
+
+- Date: 2026-06-08
+- Status: accepted
+- Context: Per-app placement and policy overrides are slow to tune when every adjustment requires a
+  new archive, notarization, and install of the app with Accessibility permission. The existing
+  override model also stores vertical alignment as closures, which are good for built-in defaults
+  but awkward for a hand-editable development file.
+- Decision: Add a runtime override store to `AppCompatibilityStore` and apply it after built-in and
+  user-disabled overrides. Developer overrides are serialized as JSON in Application Support with
+  numeric placement terms: font-size multiplier, horizontal point offset, vertical point offset, and
+  vertical line-height multiplier. The app target owns a developer-only controller and tuning window
+  that load, save, and hot-reload that JSON while a Settings toggle is enabled.
+- Consequences: Developers can tune app/domain placement without rebuilding or changing shipped
+  defaults, and the same compatibility policy reaches completion, insertion, prompt, history, and
+  overlay code. Runtime overrides remain local, opt-in, and additive; disabling the toggle clears the
+  runtime layer immediately. The dev install path uses `/Applications/KeyType Dev.app` with
+  `com.pattonium.KeyType.dev`, and the installer verifies both the bundle plist and the signed code
+  identifier so TCC stores separate Accessibility permissions from production `KeyType.app`.
+
+## ADR-099 — Use a non-activating HUD for override tuning
+
+- Date: 2026-06-08
+- Status: accepted
+- Context: A normal SwiftUI tuning window was too large for rapid placement work and, more
+  importantly, became the focused AX target. That made the "current focus" controls tune KeyType's
+  own settings window instead of the app being debugged.
+- Decision: Replace the normal tuning window with a compact AppKit `NSPanel` using
+  `.nonactivatingPanel` and `.utilityWindow`, shown with `orderFrontRegardless()` rather than app
+  activation. Keep the panel focused on placement controls only: scale, x offset, y point offset,
+  y line-height offset, overlay preference, and paste-style behavior. Context capture now preserves
+  the last non-KeyType focused field and the HUD uses that snapshot as its target. HUD edits save
+  automatically and ask `CompletionController` to redraw the currently visible suggestion against the
+  preserved target snapshot.
+- Consequences: Opening or clicking the HUD no longer retargets developer overrides to KeyType.
+  The visible overlay is held while focus is transiently on KeyType so placement changes can be
+  judged in place, while Tab acceptance remains disabled until a real target snapshot returns.
+  Arbitrary target names, custom instructions, and less common policy toggles remain editable in the
+  JSON file; the HUD is deliberately small and optimized for live visual alignment.
+
+## ADR-100 — Derive paragraph spacing for web mirror caret repair
+
+- Date: 2026-06-12
+- Status: accepted
+- Context: Slack exposed a broader class of web-renderer placement bugs: AX can provide only a
+  frame-derived estimated caret, and the generic estimate treated paragraph breaks as ordinary
+  newlines. Web composers often render paragraph breaks with extra vertical spacing, so mirror
+  ghost text landed on a neighboring visual line when drafts contained multiple paragraphs. A
+  Slack-only offset would hide one case while leaving the common renderer failure in place.
+- Decision: Extend the conservative caret estimator with an opt-in field-derived paragraph-break
+  spacing term. The web-field line-mismatch repair path enables a bounded extra spacing derived from
+  the available field height, while default/native estimates keep plain newline behavior. Allow
+  frame-estimated web carets from `AXFrameEstimate*` to be repaired once when the paragraph-aware
+  estimate disagrees vertically, but do not re-repair app-specific estimates such as Discord's tuned
+  fallback. Remove native Slack/Notion one-line overlay offsets so fixed policy nudges do not double
+  apply against corrected geometry.
+- Consequences: Text-mirror overlays in web-backed composers now follow paragraph rhythm more
+  closely without adding per-app code paths. The estimate remains conservative and bounded, so apps
+  with ordinary textarea line spacing should see little or no movement. Apps with highly custom
+  editors can still use AppCompatibility or developer overrides when their geometry genuinely
+  differs from the shared web pattern.
+
+## ADR-101 — Use neutral width and fuller paragraph gaps for web caret estimates
+
+- Date: 2026-06-12
+- Status: accepted
+- Context: Slack follow-up screenshots showed two remaining generic web-renderer failures. First,
+  the debug available-text rectangle started too far left. The captured X exactly matched the
+  estimator's measured line width multiplied by the old 0.95 bias, so the fallback was deliberately
+  under-measuring the current visual line. Second, paragraph suggestions still rendered too high
+  because the first paragraph-spacing repair capped each logical break at 0.75 line height, while
+  Slack/Electron composers expose enough field height to show a larger paragraph gap.
+- Decision: Keep the conservative width multiplier for soft-wrap detection, but use neutral measured
+  width (`1.0`) for the current line when that line does not wrap under the neutral measurement. Keep
+  app-specific fallbacks free to supply their own bias. In the web line-mismatch repair path, keep
+  deriving paragraph spacing from the captured field height but raise the cap to 1.5 line heights per
+  logical break.
+- Consequences: Web mirror placement now starts from the real measured current-line width instead of
+  a shrunken width when the caret is on an ordinary unwrapped line, so the available-text/debug
+  rectangle no longer begins before the typed text. Existing soft-wrap repairs keep the narrower
+  bias that prevents over-wrapping. Multi-paragraph web composers can consume the field's actual
+  vertical slack more fully, moving ghost text down to the intended visual line. Plain textareas with
+  no extra field height still receive no paragraph adjustment.
+
+## ADR-102 — Align mirror text to the target caret stroke
+
+- Date: 2026-06-12
+- Status: accepted
+- Context: After web caret X repair, Slack and other web-renderer fields still drew text-mirror
+  completions too low even when the captured first-line caret Y was correct. The mirror renderer
+  aligned TextKit's line-fragment top to the target caret top. Web and Electron editors commonly
+  expose an insertion caret that is vertically inset inside a taller CSS line box, so treating the
+  caret top as the line-box top double-counted that inset and lowered the ghost glyphs.
+- Decision: In the text-mirror renderer, model the mirrored insertion caret as a stroke centered
+  inside TextKit's current line fragment, using the captured caret height as the stroke height. Align
+  that synthetic caret stroke to the captured target caret, rather than aligning the line fragment
+  itself.
+- Consequences: Mirror overlays now preserve corrected horizontal placement while moving glyphs up
+  by the target line-box inset in web-backed composers. This avoids Slack-specific vertical offsets
+  and keeps the fix inside the renderer path that owns TextKit layout. Fields whose line fragment is
+  no taller than the captured caret keep the previous vertical anchor.
+
+## ADR-103 — Convert screenshot calibration offsets into AppKit coordinates
+
+- Date: 2026-06-12
+- Status: accepted
+- Context: Screenshot-assisted overlay calibration scores candidate vertical offsets in captured
+  image coordinates, where increasing Y draws text lower on screen. The overlay placement pipeline
+  stores caret rectangles in AppKit coordinates, where increasing Y moves the overlay higher. Applying
+  the scorer's value directly made cached calibration move ghost text in the opposite direction,
+  producing a consistent "too low" error across inline, native, web, and text-mirror targets.
+- Decision: Keep the calibrator's image-space scoring unchanged, but invert the vertical offset when
+  applying a `ScreenshotCalibrationResult` to an `OverlayPlacement` cursor rect.
+- Consequences: Negative calibration results now raise the AppKit placement instead of lowering it,
+  and positive results lower it. Font-size calibration remains unchanged. This fixes the shared
+  calibration layer rather than adding app-specific vertical offsets.

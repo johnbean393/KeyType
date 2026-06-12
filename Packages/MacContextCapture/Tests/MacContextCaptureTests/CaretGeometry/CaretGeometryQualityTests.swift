@@ -160,6 +160,24 @@ final class CaretGeometryQualityTests: XCTestCase {
         XCTAssertEqual(baseline.minY - shifted.minY, baseline.height * 2, accuracy: 0.001)
     }
 
+    func testEstimatedCaretRectUsesNeutralMeasuredWidthForCurrentLine() {
+        let field = CGRect(x: 511, y: 155, width: 832, height: 82)
+        let firstLine = "Let's see what the bounding box is on the first line."
+        let currentLine = "On the second line, the bounding box is too far to the left"
+        let beforeCursor = "\(firstLine)\n\(currentLine)"
+        let selection = NSRange(location: (beforeCursor as NSString).length, length: 0)
+        let rect = AXCaretGeometryResolver.conservativeEstimatedCaretRect(
+            in: field,
+            text: beforeCursor,
+            selection: selection,
+            paragraphBreakSpacingLineHeightMultiplier: 1.5
+        )
+        let font = NSFont.systemFont(ofSize: 15)
+        let measuredCurrentLineWidth = (currentLine as NSString).size(withAttributes: [.font: font]).width
+
+        XCTAssertEqual(rect.minX, field.minX + measuredCurrentLineWidth, accuracy: 0.001)
+    }
+
     func testWrappedLineTrailingEdgeCaretIsRepairedFromFieldEstimate() {
         let field = CGRect(x: 520, y: 142, width: 712, height: 44)
         let beforeCursor = """
@@ -229,7 +247,8 @@ final class CaretGeometryQualityTests: XCTestCase {
             in: field,
             text: beforeCursor,
             selection: selection,
-            blankLineHeightBias: 1
+            blankLineHeightBias: 1,
+            paragraphBreakSpacingLineHeightMultiplier: 1.5
         )
 
         let repaired = FocusedFieldReader.repairedCaretGeometry(
@@ -243,6 +262,46 @@ final class CaretGeometryQualityTests: XCTestCase {
         XCTAssertEqual(repaired.source, "AXFrameEstimateAfterInvalidCaret(AXBoundsForRange)")
         XCTAssertEqual(repaired.rect?.minY ?? 0, expected.minY, accuracy: 0.001)
         XCTAssertGreaterThan(abs(lineMismatchedCaret.midY - expected.midY), expected.height * 0.75)
+    }
+
+    func testWebEstimatedFrameCaretWithParagraphBreaksIsRepairedFromFieldSpacing() {
+        let field = CGRect(x: 511, y: 155, width: 832, height: 126)
+        let beforeCursor = """
+        I think we should try to see if we can reproduce the same issue herein Slack.
+        Let's start with a new chat.
+        The iss
+        """
+        let selection = NSRange(location: (beforeCursor as NSString).length, length: 0)
+        let plainEstimate = AXCaretGeometryResolver.conservativeEstimatedCaretRect(
+            in: field,
+            text: beforeCursor,
+            selection: selection,
+            blankLineHeightBias: 1
+        )
+        let paragraphEstimate = AXCaretGeometryResolver.conservativeEstimatedCaretRect(
+            in: field,
+            text: beforeCursor,
+            selection: selection,
+            blankLineHeightBias: 1,
+            paragraphBreakSpacingLineHeightMultiplier: 1.5
+        )
+        let current = CapturedCaretGeometry(
+            rect: plainEstimate,
+            source: "AXFrameEstimate",
+            quality: CaretGeometryQuality.estimated
+        )
+
+        let repaired = FocusedFieldReader.repairedCaretGeometry(
+            beforeCursor: beforeCursor,
+            fieldRect: field,
+            current: current,
+            repairLineMismatchedCaret: true
+        )
+
+        XCTAssertEqual(repaired.quality, .estimated)
+        XCTAssertEqual(repaired.source, "AXFrameEstimateAfterInvalidCaret(AXFrameEstimate)")
+        XCTAssertEqual(repaired.rect?.minY ?? 0, paragraphEstimate.minY, accuracy: 0.001)
+        XCTAssertLessThan(repaired.rect?.minY ?? .greatestFiniteMagnitude, plainEstimate.minY - 30)
     }
 
     func testLineMismatchedCaretIsNotRepairedByDefault() {

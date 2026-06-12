@@ -397,7 +397,8 @@ public struct FocusedFieldReader {
             in: fieldRect,
             text: beforeCursor,
             selection: selection,
-            blankLineHeightBias: repairLineMismatchedCaret ? 1 : 0
+            blankLineHeightBias: repairLineMismatchedCaret ? 1 : 0,
+            paragraphBreakSpacingLineHeightMultiplier: repairLineMismatchedCaret ? 1.5 : 0
         )
 
         let looksLikeContainer = AXCaretGeometryResolver.rectLooksLikeTextContainer(
@@ -419,8 +420,17 @@ public struct FocusedFieldReader {
             && caretSized
             && horizontallyNearField
             && !verticallyCompatible
+        let estimatedFrameCaretNeedsParagraphRepair = repairLineMismatchedCaret
+            && current.quality == .estimated
+            && Self.canRepairEstimatedFrameSource(current.source)
+            && caretSized
+            && horizontallyNearField
+            && !verticallyCompatible
 
-        guard looksLikeContainer || (stuckAtTrailingEdge && verticallyCompatible) || lineMismatchedCaret else {
+        guard looksLikeContainer
+            || (stuckAtTrailingEdge && verticallyCompatible)
+            || lineMismatchedCaret
+            || estimatedFrameCaretNeedsParagraphRepair else {
             return current
         }
 
@@ -429,6 +439,11 @@ public struct FocusedFieldReader {
             source: "AXFrameEstimateAfterInvalidCaret(\(current.source ?? "unknown"))",
             quality: .estimated
         )
+    }
+
+    private nonisolated static func canRepairEstimatedFrameSource(_ source: String?) -> Bool {
+        guard let source else { return true }
+        return source.hasPrefix("AXFrameEstimate")
     }
 
     private static func fieldRect(for element: AXUIElement) -> CGRect? {

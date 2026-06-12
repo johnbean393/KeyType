@@ -29,6 +29,7 @@ public struct OverlayPlacement: Equatable {
     public var presentation: OverlayPresentation
     public var isRightToLeft: Bool
     public var cursorRectQuality: CaretGeometryQuality
+    public var horizontalOffset: Double
     public var verticalOffset: VerticalAlignmentOffsetResolver
     public var fontSizeAdjustmentFactor: Double
 
@@ -39,6 +40,7 @@ public struct OverlayPlacement: Equatable {
         presentation: OverlayPresentation = .inlineGhost,
         isRightToLeft: Bool = false,
         cursorRectQuality: CaretGeometryQuality = .unknown,
+        horizontalOffset: Double = 0,
         verticalOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         fontSizeAdjustmentFactor: Double = 1
     ) {
@@ -48,6 +50,7 @@ public struct OverlayPlacement: Equatable {
         self.presentation = presentation
         self.isRightToLeft = isRightToLeft
         self.cursorRectQuality = cursorRectQuality
+        self.horizontalOffset = horizontalOffset
         self.verticalOffset = verticalOffset
         self.fontSizeAdjustmentFactor = fontSizeAdjustmentFactor
     }
@@ -59,6 +62,7 @@ public struct OverlayPlacement: Equatable {
             && lhs.presentation == rhs.presentation
             && lhs.isRightToLeft == rhs.isRightToLeft
             && lhs.cursorRectQuality == rhs.cursorRectQuality
+            && lhs.horizontalOffset == rhs.horizontalOffset
             && lhs.verticalOffset(0) == rhs.verticalOffset(0)
             && lhs.verticalOffset(12) == rhs.verticalOffset(12)
             && lhs.verticalOffset(24) == rhs.verticalOffset(24)
@@ -159,6 +163,7 @@ public struct OverlayPlacementResolver {
             mode: resolvedMode,
             isRightToLeft: context.geometry.isRightToLeft,
             cursorRectQuality: context.geometry.cursorRectQuality,
+            horizontalOffset: policy.horizontalAlignmentOffset,
             verticalOffset: policy.verticalAlignmentOffset,
             fontSizeAdjustmentFactor: policy.fontSizeAdjustmentFactor
         )

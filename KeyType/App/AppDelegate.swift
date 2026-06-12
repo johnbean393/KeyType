@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import AppCompatibility
 import MacContextCapture
 import Personalization
 import SwiftUI
@@ -36,10 +37,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let history: WritingHistoryStoring
     let telemetry: CompletionTelemetryStore
     let contextCapture: ContextCaptureController
+    let developerOverrides: DeveloperOverrideController
     let screenContext: ScreenContextController
     let completion: CompletionController
     let historyRecorder: WritingHistoryRecorder
     private let acceptance = CompletionAcceptanceController()
+    private lazy var developerOverridePanel = DeveloperOverridePanelController(
+        settings: settings,
+        developerOverrides: developerOverrides,
+        contextCapture: contextCapture,
+        completion: completion
+    )
     private var permissionSyncTimer: Timer?
     /// Set once the user has confirmed quitting and the async model teardown is under way, so the
     /// confirmation alert isn't shown twice and `applicationShouldTerminate` doesn't re-prompt.
@@ -68,8 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let telemetry = CompletionTelemetryStore()
         self.history = history
         self.telemetry = telemetry
+        let developerOverrides = DeveloperOverrideController()
+        self.developerOverrides = developerOverrides
         let compatibilityStore = KeyTypeModuleGraph.makeCompatibilityStore(
-            userDisabledBundleIdentifiers: settings.perAppDisabled
+            userDisabledBundleIdentifiers: settings.perAppDisabled,
+            runtimeOverrideStore: developerOverrides.runtimeOverrideStore
         )
         self.contextCapture = ContextCaptureController(tracker: tracker)
         let screenContext = ScreenContextController(
@@ -110,6 +121,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func presentDeveloperOverridePanel() {
+        developerOverridePanel.show()
+    }
+
     /// Present an import failure as an app-modal `NSAlert` the user has to explicitly dismiss. The
     /// app is an accessory (no dock icon), so we activate first to make sure the alert comes to the
     /// front rather than appearing behind whatever the user is typing into.
@@ -136,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         AppBundleWebAppClassifier.shared.primeRunningApplications()
+        developerOverrides.setEnabled(settings.developerOverrideTuningEnabled)
         permissions.startMonitoring()
         syncContextCaptureWithPermission()
         startObservingPermissionChanges()

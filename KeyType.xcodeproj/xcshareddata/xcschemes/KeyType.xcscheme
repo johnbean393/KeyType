@@ -6,6 +6,24 @@
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
       buildArchitectures = "Automatic">
+      <PostActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Install KeyType Dev.app"
+               scriptText = "if [ &quot;${KEYTYPE_SKIP_DEV_APP_INSTALL:-0}&quot; = &quot;1&quot; ]; then&#10;  exit 0&#10;fi&#10;&#10;&quot;${PROJECT_DIR}/Scripts/install-dev-app-from-build.sh&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "20DD9A4D2FC95AA900BE1F8C"
+                     BuildableName = "KeyType.app"
+                     BlueprintName = "KeyType"
+                     ReferencedContainer = "container:KeyType.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PostActions>
       <BuildActionEntries>
          <BuildActionEntry
             buildForTesting = "YES"
@@ -65,16 +83,10 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES"
       queueDebuggingEnableBacktraceRecording = "Yes">
-      <BuildableProductRunnable
-         runnableDebuggingMode = "0">
-         <BuildableReference
-            BuildableIdentifier = "primary"
-            BlueprintIdentifier = "20DD9A4D2FC95AA900BE1F8C"
-            BuildableName = "KeyType.app"
-            BlueprintName = "KeyType"
-            ReferencedContainer = "container:KeyType.xcodeproj">
-         </BuildableReference>
-      </BuildableProductRunnable>
+      <PathRunnable
+         runnableDebuggingMode = "0"
+         FilePath = "/Applications/KeyType Dev.app">
+      </PathRunnable>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

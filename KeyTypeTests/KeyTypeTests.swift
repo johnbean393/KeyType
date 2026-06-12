@@ -207,6 +207,37 @@ struct KeyTypeTests {
         #expect(effective.color == .labelColor)
     }
 
+    @Test func screenshotCalibrationOffsetConvertsFromImageToAppKitCoordinates() {
+        let font = NSFont.systemFont(ofSize: 16)
+        let style = ResolvedFieldStyle(font: font, lineHeight: 18)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 20, y: 100, width: 2, height: 18),
+            fieldRect: CGRect(x: 10, y: 80, width: 240, height: 44)
+        )
+        let result = ScreenshotCalibrationResult(
+            detectedFontSize: 16,
+            bestSize: 17.6,
+            rmse: 0.1,
+            confidence: 0.9,
+            fontSizeAdjustmentFactor: 1.1,
+            verticalAlignmentOffset: -6,
+            actualLineLength: 12,
+            recognizedText: "hello world",
+            usesInvertedLuminance: false,
+            meetsQualityThresholds: true
+        )
+
+        let calibrated = CompletionController.applyOverlayCalibration(
+            result,
+            style: style,
+            placement: placement
+        )
+
+        #expect(calibrated.placement.cursorRect.minY == 106)
+        #expect(calibrated.style.font?.pointSize == 17.6)
+        #expect(calibrated.style.lineHeight == 19.8)
+    }
+
     @Test func capsulePresentationIsNotUsedAtEndOfLineForNewWordWrapping() {
         let context = TextFieldContext(
             beforeCursor: "This is a test ",

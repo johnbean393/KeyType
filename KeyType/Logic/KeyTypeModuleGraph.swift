@@ -41,10 +41,14 @@ enum KeyTypeModuleGraph {
         return PromptBuilder(tokenCounter: counter, maxPromptTokens: maxPromptTokens)
     }
 
-    static func makeCompatibilityStore(
-        userDisabledBundleIdentifiers: Set<String> = []
+    nonisolated static func makeCompatibilityStore(
+        userDisabledBundleIdentifiers: Set<String> = [],
+        runtimeOverrideStore: RuntimeTargetOverrideStore? = nil
     ) -> AppCompatibilityStore {
-        AppCompatibilityStore(userDisabledBundleIdentifiers: userDisabledBundleIdentifiers)
+        AppCompatibilityStore(
+            userDisabledBundleIdentifiers: userDisabledBundleIdentifiers,
+            runtimeOverrideStore: runtimeOverrideStore
+        )
     }
 
     /// System-dictionary word recogniser for the decoder's current-word typo guard (ADR-015).

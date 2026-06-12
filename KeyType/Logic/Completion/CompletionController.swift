@@ -287,6 +287,7 @@ final class CompletionController {
     /// The most recent focused-field context seen — the live caret the suggestion is reconciled to.
     private var latestContext: TextFieldContext?
     private var latestSnapshot: FocusedFieldSnapshot?
+    private var lastRenderedStyle: ResolvedFieldStyle?
     private var frozenSideContext: FrozenPromptSideContext?
     private var lastGenerationLatencyMs: Double?
     /// Set when the user accepts a word with Tab: keep the *rest* of the same suggestion in place and
@@ -298,6 +299,7 @@ final class CompletionController {
     /// overlay is preserved through transient capture focus changes, but acceptance is disabled until
     /// a real non-Screenshot focused-field snapshot revalidates the text/caret context.
     private var screenCaptureHold: ScreenCaptureHold?
+    private var developerTuningHold = false
 
     private struct ScreenCaptureHold {
         var originalBundleIdentifier: String?
@@ -470,11 +472,14 @@ final class CompletionController {
         guard completionsEnabled, loadState == .ready, let engine else { reset(); return }
         guard let snapshot else {
             latestSnapshot = nil
+            if preserveDeveloperTuningOverlayForMissingSnapshot() { return }
             if preserveScreenCaptureHoldForMissingSnapshot() { return }
             reset()
             return
         }
         latestSnapshot = snapshot
+        if preserveDeveloperTuningOverlay(for: snapshot.context) { return }
+        developerTuningHold = false
         if preserveScreenCaptureHold(for: snapshot.context) { return }
         guard let caretRect = snapshot.caretRect, !caretRect.isEmpty else {
             if preserveHeldCompletion(for: snapshot.context) { return }
@@ -662,6 +667,21 @@ final class CompletionController {
                 self.finishLatencyTrace(latencyTrace, outcome: "generation-error")
             }
         }
+    }
+
+    func refreshVisibleSuggestion(using snapshot: FocusedFieldSnapshot?) {
+        guard let snapshot,
+              !Self.isKeyTypeTarget(snapshot.context.target),
+              visibleCandidate != nil || anchorText != nil else {
+            return
+        }
+
+        latestSnapshot = snapshot
+        latestContext = snapshot.context
+        lastContextKey = Self.contextKey(for: snapshot.context)
+        lastCaretRect = snapshot.caretRect
+        let style = lastRenderedStyle ?? FieldFontResolver.currentStyle()
+        _ = renderSuggestion(for: snapshot.context, style: style)
     }
 
     private func present(
@@ -1049,6 +1069,7 @@ final class CompletionController {
         }
         let candidate = CompletionCandidate(text: shown, mode: .prose)
         let effectiveStyle = Self.effectiveOverlayStyle(style, for: live)
+        lastRenderedStyle = effectiveStyle
         let calibrated = calibratedOverlayInputs(
             style: effectiveStyle,
             placement: placement,
@@ -1175,6 +1196,14 @@ final class CompletionController {
             return (style, placement)
         }
 
+        return Self.applyOverlayCalibration(result, style: style, placement: placement)
+    }
+
+    nonisolated static func applyOverlayCalibration(
+        _ result: ScreenshotCalibrationResult,
+        style: ResolvedFieldStyle,
+        placement: OverlayPlacement
+    ) -> (style: ResolvedFieldStyle, placement: OverlayPlacement) {
         var calibratedStyle = style
         if let font = style.font {
             let calibratedSize = min(72, max(6, font.pointSize * result.fontSizeAdjustmentFactor))
@@ -1187,9 +1216,11 @@ final class CompletionController {
 
         var calibratedPlacement = placement
         if result.verticalAlignmentOffset != 0 {
+            // Screenshot calibration is scored in top-left image coordinates, where positive Y draws
+            // lower. Overlay placements are AppKit rects, where positive Y moves up.
             calibratedPlacement.cursorRect = calibratedPlacement.cursorRect.offsetBy(
                 dx: 0,
-                dy: result.verticalAlignmentOffset
+                dy: -result.verticalAlignmentOffset
             )
         }
         return (calibratedStyle, calibratedPlacement)
@@ -1260,6 +1291,8 @@ final class CompletionController {
         anchorContext = nil
         holdAnchor = false
         screenCaptureHold = nil
+        developerTuningHold = false
+        lastRenderedStyle = nil
     }
 
     private func finishLatencyTrace(_ trace: CompletionLatencyTrace?, outcome: String) {
@@ -1288,6 +1321,33 @@ final class CompletionController {
             reuseHistory.removeAll()
         }
         clearCompletion()
+    }
+
+    private func preserveDeveloperTuningOverlay(for context: TextFieldContext) -> Bool {
+        guard settings.developerOverrideTuningEnabled,
+              visibleCandidate != nil,
+              Self.isKeyTypeTarget(context.target) else {
+            return false
+        }
+        holdOverlayForDeveloperTuning()
+        return true
+    }
+
+    private func preserveDeveloperTuningOverlayForMissingSnapshot() -> Bool {
+        guard settings.developerOverrideTuningEnabled,
+              visibleCandidate != nil else {
+            return false
+        }
+        holdOverlayForDeveloperTuning()
+        return true
+    }
+
+    private func holdOverlayForDeveloperTuning() {
+        developerTuningHold = true
+        debounceTask?.cancel()
+        generationTask?.cancel()
+        warmupTask?.cancel()
+        finishActiveLatencyTrace(outcome: "developer-tuning-hold")
     }
 
     private func preserveScreenCaptureHold(for context: TextFieldContext) -> Bool {
@@ -1323,6 +1383,18 @@ final class CompletionController {
 
     private static func isScreenCaptureBundleIdentifier(_ bundleIdentifier: String) -> Bool {
         screenCaptureBundleIdentifiers.contains(bundleIdentifier)
+    }
+
+    private static func isKeyTypeTarget(_ target: AppTarget) -> Bool {
+        let bundleIdentifier = target.bundleIdentifier.lowercased()
+        if let ownBundleIdentifier = Bundle.main.bundleIdentifier?.lowercased(),
+           bundleIdentifier == ownBundleIdentifier {
+            return true
+        }
+        if bundleIdentifier.hasPrefix("com.pattonium.keytype") {
+            return true
+        }
+        return target.appName.localizedCaseInsensitiveContains("KeyType")
     }
 
     private static func contextKey(for context: TextFieldContext) -> String {
@@ -1429,6 +1501,7 @@ final class CompletionController {
     /// True when there is a visible completion the user is allowed to accept with Tab.
     var canAcceptCompletion: Bool {
         guard screenCaptureHold == nil else { return false }
+        guard !developerTuningHold else { return false }
         guard visibleCandidate != nil, let context = latestContext ?? anchorContext else { return false }
         return compatibilityStore.policy(for: context).allowsTabAcceptance
     }

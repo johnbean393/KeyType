@@ -2,17 +2,21 @@
 //  DeveloperSettingsView.swift
 //  KeyType
 //
-//  The "Developer" Settings pane: diagnostics that aren't part of the everyday flow. Currently the
-//  caret debug overlay (moved here from the menu bar), which draws captured caret and field geometry
-//  to verify context capture. Gated on Accessibility, like the capture pipeline it visualizes.
+//  The "Developer" Settings pane: diagnostics and local-only tuning controls that aren't part of
+//  the everyday flow. Gated features stay opt-in because prompt logs, screenshots, and screen-derived
+//  override calibration can contain sensitive local context.
 //
 
+import AppCompatibility
+import Foundation
 import SwiftUI
 
 struct DeveloperSettingsView: View {
     @Bindable var settings: SettingsStore
     @Bindable var contextCapture: ContextCaptureController
+    @Bindable var developerOverrides: DeveloperOverrideController
     let permissions: PermissionsManager
+    let openTuningPanel: () -> Void
 
     var body: some View {
         Form {
@@ -44,7 +48,73 @@ struct DeveloperSettingsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            Section {
+                Toggle(isOn: developerOverrideEnabledBinding) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable live override tuning")
+                        Text("Loads per-app compatibility overrides from DeveloperOverrides.json and watches it for changes.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack {
+                    Button("Open Tuning HUD") {
+                        openTuningPanel()
+                    }
+                    .disabled(!settings.developerOverrideTuningEnabled)
+
+                    Button("Open JSON") {
+                        developerOverrides.openOverridesFile()
+                    }
+                    .disabled(!settings.developerOverrideTuningEnabled)
+
+                    Button("Reload") {
+                        developerOverrides.reloadFromDisk()
+                    }
+                    .disabled(!settings.developerOverrideTuningEnabled)
+                }
+
+                LabeledContent("Last target") {
+                    Text(contextCapture.lastTunableSummary.isEmpty ? "(none captured)" : contextCapture.lastTunableSummary)
+                        .font(.footnote.monospaced())
+                        .lineLimit(2)
+                        .textSelection(.enabled)
+                }
+                LabeledContent("File") {
+                    Text(developerOverrides.overridesURL.path)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                }
+                LabeledContent("Loaded") {
+                    Text("\(developerOverrides.document.overrides.count) override\(developerOverrides.document.overrides.count == 1 ? "" : "s")")
+                }
+                if let lastLoadedAt = developerOverrides.lastLoadedAt {
+                    LabeledContent("Updated") {
+                        Text(lastLoadedAt.formatted(date: .abbreviated, time: .standard))
+                    }
+                }
+                if let lastError = developerOverrides.lastError {
+                    Text(lastError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Per-App Overrides")
+            }
         }
         .formStyle(.grouped)
+    }
+
+    private var developerOverrideEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { settings.developerOverrideTuningEnabled },
+            set: { isEnabled in
+                settings.developerOverrideTuningEnabled = isEnabled
+                developerOverrides.setEnabled(isEnabled)
+            }
+        )
     }
 }

@@ -12,6 +12,7 @@ public struct CompletionPolicy: Equatable {
     public var stringInjectionChunkSize: Int?
     public var insertionRequiresBackspaceAfterPaste: Bool
     public var fontSizeAdjustmentFactor: Double
+    public var horizontalAlignmentOffset: Double
     public var verticalAlignmentOffset: VerticalAlignmentOffsetResolver
     public var overlayPreference: OverlayPreference
     public var completionMode: CompletionMode
@@ -31,6 +32,7 @@ public struct CompletionPolicy: Equatable {
         stringInjectionChunkSize: Int? = nil,
         insertionRequiresBackspaceAfterPaste: Bool = false,
         fontSizeAdjustmentFactor: Double = 1,
+        horizontalAlignmentOffset: Double = 0,
         verticalAlignmentOffset: @escaping VerticalAlignmentOffsetResolver = { _ in 0 },
         overlayPreference: OverlayPreference = .inline,
         completionMode: CompletionMode = .prose,
@@ -47,6 +49,7 @@ public struct CompletionPolicy: Equatable {
         self.stringInjectionChunkSize = stringInjectionChunkSize
         self.insertionRequiresBackspaceAfterPaste = insertionRequiresBackspaceAfterPaste
         self.fontSizeAdjustmentFactor = fontSizeAdjustmentFactor
+        self.horizontalAlignmentOffset = horizontalAlignmentOffset
         self.verticalAlignmentOffset = verticalAlignmentOffset
         self.overlayPreference = overlayPreference
         self.completionMode = completionMode
@@ -65,6 +68,7 @@ public struct CompletionPolicy: Equatable {
             && lhs.stringInjectionChunkSize == rhs.stringInjectionChunkSize
             && lhs.insertionRequiresBackspaceAfterPaste == rhs.insertionRequiresBackspaceAfterPaste
             && lhs.fontSizeAdjustmentFactor == rhs.fontSizeAdjustmentFactor
+            && lhs.horizontalAlignmentOffset == rhs.horizontalAlignmentOffset
             && lhs.verticalAlignmentOffset(0) == rhs.verticalAlignmentOffset(0)
             && lhs.verticalAlignmentOffset(12) == rhs.verticalAlignmentOffset(12)
             && lhs.verticalAlignmentOffset(24) == rhs.verticalAlignmentOffset(24)

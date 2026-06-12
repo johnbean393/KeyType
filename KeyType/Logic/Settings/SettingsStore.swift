@@ -108,6 +108,7 @@ final class SettingsStore {
         static let ocrEnabled = "KeyType.settings.ocrEnabled"
         static let screenshotCalibrationEnabled = "KeyType.settings.screenshotCalibrationEnabled"
         static let fullPromptLoggingEnabled = "KeyType.settings.fullPromptLoggingEnabled"
+        static let developerOverrideTuningEnabled = "KeyType.settings.developerOverrideTuningEnabled"
         static let completionLength = "KeyType.settings.completionLength"
         static let selectedModelFilename = "KeyType.settings.selectedModelFilename"
         static let perAppDisabled = "KeyType.settings.perAppDisabledBundleIDs"
@@ -147,6 +148,11 @@ final class SettingsStore {
         didSet { defaults.set(fullPromptLoggingEnabled, forKey: Key.fullPromptLoggingEnabled) }
     }
 
+    /// Developer opt-in: hot-load local per-app compatibility overrides from Application Support.
+    var developerOverrideTuningEnabled: Bool {
+        didSet { defaults.set(developerOverrideTuningEnabled, forKey: Key.developerOverrideTuningEnabled) }
+    }
+
     var completionLength: CompletionLength {
         didSet { defaults.set(completionLength.rawValue, forKey: Key.completionLength) }
     }
@@ -183,6 +189,7 @@ final class SettingsStore {
         self.ocrEnabled = defaults.bool(forKey: Key.ocrEnabled)
         self.screenshotCalibrationEnabled = defaults.bool(forKey: Key.screenshotCalibrationEnabled)
         self.fullPromptLoggingEnabled = defaults.bool(forKey: Key.fullPromptLoggingEnabled)
+        self.developerOverrideTuningEnabled = defaults.bool(forKey: Key.developerOverrideTuningEnabled)
         self.completionLength = (defaults.string(forKey: Key.completionLength))
             .flatMap(CompletionLength.init(rawValue:)) ?? .medium
         self.selectedModelFilename = defaults.string(forKey: Key.selectedModelFilename)

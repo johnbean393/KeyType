@@ -2,9 +2,14 @@ import AutocompleteCore
 
 public struct AppCompatibilityStore {
     private var overrides: [TargetOverride]
+    private var runtimeOverrideStore: RuntimeTargetOverrideStore?
 
-    public init(overrides: [TargetOverride] = AppCompatibilityStore.defaultOverrides) {
+    public init(
+        overrides: [TargetOverride] = AppCompatibilityStore.defaultOverrides,
+        runtimeOverrideStore: RuntimeTargetOverrideStore? = nil
+    ) {
         self.overrides = overrides
+        self.runtimeOverrideStore = runtimeOverrideStore
     }
 
     /// Builds a store from the built-in `overrides` plus user-chosen per-app disables (from
@@ -13,7 +18,8 @@ public struct AppCompatibilityStore {
     /// so a user disable always wins. See ADR-023.
     public init(
         overrides: [TargetOverride] = AppCompatibilityStore.defaultOverrides,
-        userDisabledBundleIdentifiers: Set<String>
+        userDisabledBundleIdentifiers: Set<String>,
+        runtimeOverrideStore: RuntimeTargetOverrideStore? = nil
     ) {
         self.overrides = overrides + userDisabledBundleIdentifiers.map { bundleID in
             TargetOverride(
@@ -23,12 +29,13 @@ public struct AppCompatibilityStore {
                 trainingDataCollectionDisabled: true
             )
         }
+        self.runtimeOverrideStore = runtimeOverrideStore
     }
 
     public func policy(for target: AppTarget) -> CompletionPolicy {
         var policy = CompletionPolicy()
 
-        for override in overrides where override.matches(target) {
+        for override in activeOverrides where override.matches(target) {
             if override.secureFieldExclusion {
                 policy.excludesSecureField = true
             }
@@ -56,6 +63,7 @@ public struct AppCompatibilityStore {
             policy.stringInjectionChunkSize = override.stringInjectionChunkSize ?? policy.stringInjectionChunkSize
             policy.insertionRequiresBackspaceAfterPaste = policy.insertionRequiresBackspaceAfterPaste || override.requiresBackspaceAfterPaste
             policy.fontSizeAdjustmentFactor *= override.fontSizeAdjustmentFactor
+            policy.horizontalAlignmentOffset += override.horizontalAlignmentOffset
             let currentVerticalAlignmentOffset = policy.verticalAlignmentOffset
             let overrideVerticalAlignmentOffset = override.verticalAlignmentOffset
             policy.verticalAlignmentOffset = { lineHeight in
@@ -70,6 +78,10 @@ public struct AppCompatibilityStore {
         }
 
         return policy
+    }
+
+    private var activeOverrides: [TargetOverride] {
+        overrides + (runtimeOverrideStore?.overrides ?? [])
     }
 
     public func policy(for context: TextFieldContext) -> CompletionPolicy {

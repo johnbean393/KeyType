@@ -227,12 +227,28 @@ public final class TextMirrorCompletionNSView: NSView {
         } else {
             x = isRightToLeft ? glyphRect.minX : glyphRect.maxX
         }
+        let mirroredCaretHeight = mirroredCaretHeight(lineRect: lineRect)
         return CGRect(
             x: x,
-            y: lineRect.minY,
+            y: lineRect.minY + mirroredCaretVerticalInset(lineRect: lineRect),
             width: 1,
-            height: max(1, resolvedFont.ascender - resolvedFont.descender + resolvedFont.leading)
+            height: mirroredCaretHeight
         )
+    }
+
+    private func mirroredCaretVerticalInset(lineRect: CGRect) -> CGFloat {
+        let targetHeight = targetCaretRect.height
+        guard targetHeight > 0 else { return 0 }
+        return max(0, (lineRect.height - targetHeight) / 2)
+    }
+
+    private func mirroredCaretHeight(lineRect: CGRect) -> CGFloat {
+        let targetHeight = targetCaretRect.height
+        let fallback = resolvedFont.ascender - resolvedFont.descender + resolvedFont.leading
+        guard targetHeight > 0 else {
+            return max(1, fallback)
+        }
+        return max(1, min(lineRect.height, targetHeight))
     }
 
     private func setupTextSystem() {
