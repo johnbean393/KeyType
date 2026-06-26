@@ -86,7 +86,7 @@ public extension AppCompatibilityStore {
             TargetOverride(
                 bundleIdentifier: "com.apple.Safari",
                 fontSizeAdjustmentFactor: 0.98,
-                verticalAlignmentOffset: { _ in 22 }
+                verticalAlignmentOffset: { _ in 28 }
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
@@ -103,6 +103,12 @@ public extension AppCompatibilityStore {
                 domain: "google.com",
                 matchesSubdomains: false,
                 verticalAlignmentOffset: { _ in -22 }
+            ),
+            TargetOverride(
+                bundleIdentifier: "com.apple.Safari",
+                domain: "google.com",
+                matchesSubdomains: false,
+                verticalAlignmentOffset: { _ in -6 }
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
