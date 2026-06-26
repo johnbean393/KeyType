@@ -87,6 +87,10 @@ public struct AppCompatibilityStore {
     public func policy(for context: TextFieldContext) -> CompletionPolicy {
         var policy = policy(for: context.target)
 
+        if isBrowserChromeField(context) {
+            applyBrowserChromeExclusion(to: &policy)
+        }
+
         if context.traits.isTerminalLike {
             applyTerminalSafety(to: &policy)
         }
@@ -99,6 +103,13 @@ public struct AppCompatibilityStore {
         }
 
         return policy
+    }
+
+    private func applyBrowserChromeExclusion(to policy: inout CompletionPolicy) {
+        policy.isCompletionEnabled = false
+        policy.allowsTabAcceptance = false
+        policy.allowsTrainingDataCollection = false
+        policy.overlayPreference = .hidden
     }
 
     private func applySecureExclusion(to policy: inout CompletionPolicy) {
@@ -134,4 +145,13 @@ public struct AppCompatibilityStore {
         ]
         return sensitiveTerms.contains { haystack.contains($0) }
     }
+
+    private func isBrowserChromeField(_ context: TextFieldContext) -> Bool {
+        Self.browserBundleIdentifiers.contains(context.target.bundleIdentifier)
+            && context.target.domain == nil
+    }
+
+    private static let browserBundleIdentifiers: Set<String> = [
+        "com.google.Chrome"
+    ]
 }

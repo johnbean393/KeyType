@@ -98,8 +98,37 @@ final class AppCompatibilityTests: XCTestCase {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
+            domain: "example.com",
+            isWebField: true,
             expectedOffset: 15
         )
+    }
+
+    func testChromeBrowserChromeSuppressesGhostText() {
+        assertBrowserChromeSuppressesGhostText(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome"
+        )
+    }
+
+    func testChromeWebFieldKeepsBrowserPlacementPolicy() {
+        let target = AppTarget(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome",
+            domain: "github.com"
+        )
+        let context = TextFieldContext(
+            beforeCursor: "hello",
+            target: target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertEqual(policy.overlayPreference, .inline)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), 15, accuracy: 0.001)
     }
 
     func testChromeGoogleDocsKeepsDomainPolicyWithBrowserVerticalNudge() {
@@ -472,15 +501,42 @@ final class AppCompatibilityTests: XCTestCase {
     private func assertInlineGhostTextOffset(
         bundleIdentifier: String,
         appName: String,
+        domain: String? = nil,
+        isWebField: Bool = false,
         expectedOffset: Double,
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let target = AppTarget(bundleIdentifier: bundleIdentifier, appName: appName)
-        let context = TextFieldContext(beforeCursor: "hello", target: target)
+        let target = AppTarget(bundleIdentifier: bundleIdentifier, appName: appName, domain: domain)
+        let context = TextFieldContext(
+            beforeCursor: "hello",
+            target: target,
+            traits: TextFieldTraits(isWebField: isWebField)
+        )
         let policy = AppCompatibilityStore().policy(for: context)
 
         XCTAssertEqual(policy.overlayPreference, .inline, appName, file: file, line: line)
         XCTAssertEqual(policy.verticalAlignmentOffset(18), expectedOffset, accuracy: 0.001, appName, file: file, line: line)
+    }
+
+    private func assertBrowserChromeSuppressesGhostText(
+        bundleIdentifier: String,
+        appName: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let target = AppTarget(bundleIdentifier: bundleIdentifier, appName: appName)
+        let context = TextFieldContext(
+            beforeCursor: "search query",
+            target: target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertFalse(policy.isCompletionEnabled, appName, file: file, line: line)
+        XCTAssertFalse(policy.allowsTabAcceptance, appName, file: file, line: line)
+        XCTAssertFalse(policy.allowsTrainingDataCollection, appName, file: file, line: line)
+        XCTAssertEqual(policy.overlayPreference, .hidden, appName, file: file, line: line)
     }
 }
