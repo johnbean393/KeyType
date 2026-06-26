@@ -75,11 +75,11 @@ final class AppCompatibilityTests: XCTestCase {
         )
     }
 
-    func testChromeLowersInlineGhostText() {
+    func testChromeUsesDefaultInlineGhostTextBaseline() {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
-            expectedOffset: 15
+            expectedOffset: 0
         )
     }
 
@@ -102,7 +102,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.insertionRequiresBackspaceAfterPaste)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
         XCTAssertEqual(policy.fontSizeAdjustmentFactor, 0.9216, accuracy: 0.001)
-        XCTAssertEqual(policy.verticalAlignmentOffset(18), 17, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), 2, accuracy: 0.001)
     }
 
     func testWeChatUsesChatSurfacePolicy() {
@@ -221,7 +221,7 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
-    func testSlackDomainKeepsWebSurfacePolicyWithChromeBaselineOffset() {
+    func testSlackDomainKeepsWebSurfacePolicyWithoutChromeBaselineOffset() {
         let target = AppTarget(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
@@ -235,7 +235,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertNil(policy.stringInjectionChunkSize)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 15, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current message only. Keep it short and conversational."
         ])
@@ -256,7 +256,7 @@ final class AppCompatibilityTests: XCTestCase {
         ])
     }
 
-    func testNotionDomainKeepsWebSurfacePolicyWithChromeBaselineOffset() {
+    func testNotionDomainKeepsWebSurfacePolicyWithoutChromeBaselineOffset() {
         let target = AppTarget(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
@@ -269,7 +269,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 15, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current Notion block only; do not include page chrome or database UI text."
         ])
@@ -289,7 +289,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.customInstructions.isEmpty)
     }
 
-    func testDiscordDomainUsesChromeBaselineOffset() {
+    func testDiscordDomainUsesDefaultBaselineOffset() {
         let target = AppTarget(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
@@ -302,7 +302,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.overlayPreference, .inline)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 15, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 0, accuracy: 0.001)
         XCTAssertTrue(policy.customInstructions.isEmpty)
     }
 
