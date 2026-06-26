@@ -6,7 +6,6 @@ public extension AppCompatibilityStore {
 
         let terminalInstructions = "Treat this as a terminal prompt. Do not generate prose, chatty explanations, or text that would interfere with shell/TUI Tab completion."
         let terminalBundles = [
-            "com.apple.Terminal",
             "com.googlecode.iterm2",
             "dev.warp.Warp-Stable",
             "com.mitchellh.ghostty",
@@ -51,6 +50,17 @@ public extension AppCompatibilityStore {
         }
 
         result += [
+            TargetOverride(
+                bundleIdentifier: "com.apple.Terminal",
+                completionsDisabled: true,
+                midLineCompletionsDisabled: true,
+                tabShortcutsDisabled: true,
+                trainingDataCollectionDisabled: true,
+                overlayPreference: .hidden,
+                completionMode: .terminal,
+                customInstructions: terminalInstructions,
+                environmentContextDisabled: true
+            ),
             // Code editors: the window title / app metadata biases a base model toward code and
             // numbers, so we strip environment context and keep only the cursor-local text. ADR-017.
             TargetOverride(

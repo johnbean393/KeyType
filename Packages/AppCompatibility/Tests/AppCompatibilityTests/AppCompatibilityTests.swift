@@ -46,6 +46,25 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertEqual(policy.completionMode, .terminal)
     }
 
+    func testAppleTerminalSuppressesInvisibleOverlayWithTerminalSafeguards() {
+        let target = AppTarget(bundleIdentifier: "com.apple.Terminal", appName: "Terminal")
+        let context = TextFieldContext(
+            beforeCursor: "git sta",
+            target: target,
+            traits: TextFieldTraits(isTerminalLike: true)
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertFalse(policy.isCompletionEnabled)
+        XCTAssertFalse(policy.allowsMidLineCompletion)
+        XCTAssertFalse(policy.allowsTabAcceptance)
+        XCTAssertFalse(policy.allowsTrainingDataCollection)
+        XCTAssertFalse(policy.includesEnvironmentContext)
+        XCTAssertEqual(policy.overlayPreference, .hidden)
+        XCTAssertEqual(policy.completionMode, .terminal)
+    }
+
     func testCursorUsesCodeEditorPolicy() {
         let target = AppTarget(bundleIdentifier: "com.todesktop.230313mzl4w4u92", appName: "Cursor")
         let context = TextFieldContext(beforeCursor: "let value = cur", target: target)

@@ -114,7 +114,9 @@ public struct AppCompatibilityStore {
         policy.allowsMidLineCompletion = false
         policy.allowsTabAcceptance = false
         policy.allowsTrainingDataCollection = false
-        policy.overlayPreference = .textMirror
+        if policy.overlayPreference != .hidden {
+            policy.overlayPreference = .textMirror
+        }
         policy.completionMode = .terminal
         policy.includesEnvironmentContext = false
     }
