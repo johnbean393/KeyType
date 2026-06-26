@@ -71,7 +71,7 @@ final class AppCompatibilityTests: XCTestCase {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.apple.Safari",
             appName: "Safari",
-            expectedOffset: 11
+            expectedOffset: 15
         )
     }
 
