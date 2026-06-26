@@ -79,7 +79,7 @@ final class AppCompatibilityTests: XCTestCase {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome",
-            expectedOffset: 11
+            expectedOffset: 15
         )
     }
 
@@ -102,7 +102,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.insertionRequiresBackspaceAfterPaste)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
         XCTAssertEqual(policy.fontSizeAdjustmentFactor, 0.9216, accuracy: 0.001)
-        XCTAssertEqual(policy.verticalAlignmentOffset(18), 13, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), 17, accuracy: 0.001)
     }
 
     func testWeChatUsesChatSurfacePolicy() {
@@ -235,7 +235,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertNil(policy.stringInjectionChunkSize)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 11, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 15, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current message only. Keep it short and conversational."
         ])
@@ -269,7 +269,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertTrue(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.overlayPreference, .textMirror)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 11, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 15, accuracy: 0.001)
         XCTAssertEqual(policy.customInstructions, [
             "Continue the current Notion block only; do not include page chrome or database UI text."
         ])
@@ -302,7 +302,7 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertTrue(policy.isCompletionEnabled)
         XCTAssertFalse(policy.insertionRequiresPasteAndMatchStyle)
         XCTAssertEqual(policy.overlayPreference, .inline)
-        XCTAssertEqual(policy.verticalAlignmentOffset(24), 11, accuracy: 0.001)
+        XCTAssertEqual(policy.verticalAlignmentOffset(24), 15, accuracy: 0.001)
         XCTAssertTrue(policy.customInstructions.isEmpty)
     }
 
