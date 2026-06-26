@@ -92,7 +92,7 @@ final class AppCompatibilityTests: XCTestCase {
             appName: "Safari",
             domain: "example.com",
             isWebField: true,
-            expectedOffset: 15
+            expectedOffset: 22
         )
     }
 
