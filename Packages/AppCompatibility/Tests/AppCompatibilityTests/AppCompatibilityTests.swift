@@ -113,6 +113,26 @@ final class AppCompatibilityTests: XCTestCase {
         )
     }
 
+    func testExcelSuppressesGhostTextBecauseCellCaretGeometryIsUnreliable() {
+        let target = AppTarget(bundleIdentifier: "com.microsoft.Excel", appName: "Excel")
+        let context = TextFieldContext(
+            beforeCursor: "First line\nSecond line",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 78, y: 649, width: 2, height: 31),
+                fieldRect: CGRect(x: 78, y: 649, width: 64, height: 31),
+                cursorRectQuality: .exact
+            ),
+            target: target
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertFalse(policy.isCompletionEnabled)
+        XCTAssertFalse(policy.allowsTabAcceptance)
+        XCTAssertFalse(policy.allowsTrainingDataCollection)
+        XCTAssertEqual(policy.overlayPreference, .hidden)
+    }
+
     func testSafariBrowserChromeSuppressesGhostText() {
         assertBrowserChromeSuppressesGhostText(
             bundleIdentifier: "com.apple.Safari",

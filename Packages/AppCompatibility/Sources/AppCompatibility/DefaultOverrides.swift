@@ -93,6 +93,13 @@ public extension AppCompatibilityStore {
                 verticalAlignmentOffset: { _ in 22 }
             ),
             TargetOverride(
+                bundleIdentifier: "com.microsoft.Excel",
+                completionsDisabled: true,
+                tabShortcutsDisabled: true,
+                trainingDataCollectionDisabled: true,
+                overlayPreference: .hidden
+            ),
+            TargetOverride(
                 domain: "google.com",
                 matchesSubdomains: false,
                 verticalAlignmentOffset: { _ in -22 }
