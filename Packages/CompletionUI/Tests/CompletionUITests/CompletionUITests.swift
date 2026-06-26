@@ -109,6 +109,25 @@ final class CompletionUITests: XCTestCase {
         XCTAssertNil(resolver.placement(for: context))
     }
 
+    func testPlacementSuppressesTallWebEditorWithTextBelowCaret() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 199, y: 529, width: 786, height: 206)
+        let rect = CGRect(x: 501, y: 699, width: 2, height: 21)
+        let context = TextFieldContext(
+            beforeCursor: "First line checks baseline alignment.",
+            afterCursor: "\nSecond line is where the caret should sit",
+            geometry: TextFieldGeometry(
+                cursorRect: rect,
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        XCTAssertNil(resolver.placement(for: context))
+    }
+
     func testPlacementKeepsTopLineWebEditorSnapshot() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
         let field = CGRect(x: 32, y: 407, width: 810, height: 200)

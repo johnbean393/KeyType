@@ -186,7 +186,7 @@ public struct OverlayPlacementResolver {
             return false
         }
 
-        if context.beforeCursor.contains("\n") {
+        if context.beforeCursor.contains("\n") || context.afterCursor.contains("\n") {
             return true
         }
 
