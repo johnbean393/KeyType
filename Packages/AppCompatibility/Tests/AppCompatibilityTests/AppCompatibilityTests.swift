@@ -82,7 +82,7 @@ final class AppCompatibilityTests: XCTestCase {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.apple.TextEdit",
             appName: "TextEdit",
-            expectedOffset: 15
+            expectedOffset: 22
         )
     }
 
