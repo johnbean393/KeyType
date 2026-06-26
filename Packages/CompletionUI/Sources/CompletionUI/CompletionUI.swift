@@ -163,7 +163,7 @@ public struct OverlayPlacementResolver {
             return nil
         }
 
-        let verticalOffset = Self.shouldUseNativeWebSingleLineBaseline(context: context, cursorRect: cursorRect)
+        let verticalOffset = Self.shouldUseNativeWebCompactBaseline(context: context, cursorRect: cursorRect)
             ? { (_: Double) in 0 }
             : policy.verticalAlignmentOffset
 
@@ -179,13 +179,11 @@ public struct OverlayPlacementResolver {
         )
     }
 
-    private static func shouldUseNativeWebSingleLineBaseline(
+    private static func shouldUseNativeWebCompactBaseline(
         context: TextFieldContext,
         cursorRect: CGRect
     ) -> Bool {
         guard context.traits.isWebField,
-              !context.beforeCursor.contains("\n"),
-              !context.afterCursor.contains("\n"),
               let fieldRect = context.geometry.fieldRect,
               !fieldRect.isEmpty else {
             return false

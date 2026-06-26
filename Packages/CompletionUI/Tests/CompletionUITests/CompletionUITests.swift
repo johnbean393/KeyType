@@ -91,6 +91,24 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(placement.verticalOffset(17), 0, accuracy: 0.001)
     }
 
+    func testPlacementUsesNativeBaselineForCompactMultilineWebField() throws {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
+        let context = TextFieldContext(
+            beforeCursor: "First line\nSecond line",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 466, y: 156, width: 2, height: 17),
+                fieldRect: CGRect(x: 388, y: 154, width: 656, height: 42),
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome", domain: "aistudio.google.com"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let placement = try XCTUnwrap(resolver.placement(for: context))
+
+        XCTAssertEqual(placement.verticalOffset(17), 0, accuracy: 0.001)
+    }
+
     func testPlacementKeepsBrowserOffsetForTallWebEditor() throws {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
         let context = TextFieldContext(
