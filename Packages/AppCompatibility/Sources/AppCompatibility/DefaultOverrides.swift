@@ -80,6 +80,10 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
+                verticalAlignmentOffset: { _ in 4 }
+            ),
+            TargetOverride(
+                bundleIdentifier: "com.google.Chrome",
                 domain: "docs.google.com",
                 requiresPasteAndMatchStyle: true,
                 requiresBackspaceAfterPaste: true,
