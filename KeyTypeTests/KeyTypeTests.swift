@@ -87,6 +87,18 @@ struct KeyTypeTests {
         #expect(overlaySnapshot?.availableTextRect == CGRect(x: 44, y: 20, width: 66, height: 18))
     }
 
+    @Test @MainActor func missingSnapshotPreservesTunableTargetOnlyForKeyTypeFocus() {
+        #expect(ContextCaptureController.shouldPreserveLatestTunableSnapshotOnMissingSnapshot(
+            frontmostBundleIdentifier: "com.pattonium.KeyType.dev"
+        ))
+        #expect(!ContextCaptureController.shouldPreserveLatestTunableSnapshotOnMissingSnapshot(
+            frontmostBundleIdentifier: "com.apple.Pages"
+        ))
+        #expect(!ContextCaptureController.shouldPreserveLatestTunableSnapshotOnMissingSnapshot(
+            frontmostBundleIdentifier: nil
+        ))
+    }
+
     @Test @MainActor func manualAppEntriesPersistWithPerAppDisable() {
         let (defaults, suiteName) = Self.temporaryDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }

@@ -70,6 +70,12 @@ final class ContextCaptureController {
             overlay.hide()
             lastSummary = "(no focused field)"
             latestSnapshot = nil
+            if !Self.shouldPreserveLatestTunableSnapshotOnMissingSnapshot(
+                frontmostBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            ) {
+                latestTunableSnapshot = nil
+                lastTunableSummary = ""
+            }
             log.debug("No focused field")
             return
         }
@@ -150,6 +156,17 @@ final class ContextCaptureController {
 
     private static func truncate(_ s: String, to max: Int) -> String {
         s.count <= max ? s : String(s.prefix(max)) + "…"
+    }
+
+    static func shouldPreserveLatestTunableSnapshotOnMissingSnapshot(frontmostBundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier = frontmostBundleIdentifier?.lowercased() else {
+            return false
+        }
+        if let ownBundleIdentifier = Bundle.main.bundleIdentifier?.lowercased(),
+           bundleIdentifier == ownBundleIdentifier {
+            return true
+        }
+        return bundleIdentifier.hasPrefix("com.pattonium.keytype")
     }
 
     private static func isKeyTypeTarget(_ target: AppTarget) -> Bool {
