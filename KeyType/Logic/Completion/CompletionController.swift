@@ -1216,11 +1216,13 @@ final class CompletionController {
 
         var calibratedPlacement = placement
         if result.verticalAlignmentOffset != 0 {
-            // Screenshot calibration is scored in top-left image coordinates, where positive Y draws
-            // lower. Overlay placements are AppKit rects, where positive Y moves up.
+            // Apply the scorer's signed correction directly to the caret rect. The calibration
+            // scorer compares rendered overlay text against the captured line prefix; in practice
+            // inverting that signed correction over-raises inline ghost text in native and browser
+            // fields after font-size calibration has been applied.
             calibratedPlacement.cursorRect = calibratedPlacement.cursorRect.offsetBy(
                 dx: 0,
-                dy: -result.verticalAlignmentOffset
+                dy: result.verticalAlignmentOffset
             )
         }
         return (calibratedStyle, calibratedPlacement)

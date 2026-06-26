@@ -207,7 +207,7 @@ struct KeyTypeTests {
         #expect(effective.color == .labelColor)
     }
 
-    @Test func screenshotCalibrationOffsetConvertsFromImageToAppKitCoordinates() {
+    @Test func screenshotCalibrationOffsetAppliesSignedOverlayCorrection() {
         let font = NSFont.systemFont(ofSize: 16)
         let style = ResolvedFieldStyle(font: font, lineHeight: 18)
         let placement = OverlayPlacement(
@@ -233,7 +233,7 @@ struct KeyTypeTests {
             placement: placement
         )
 
-        #expect(calibrated.placement.cursorRect.minY == 106)
+        #expect(calibrated.placement.cursorRect.minY == 94)
         #expect(calibrated.style.font?.pointSize == 17.6)
         #expect(calibrated.style.lineHeight == 19.8)
     }

@@ -3364,3 +3364,20 @@ text. Both are now closed:
 - Consequences: Negative calibration results now raise the AppKit placement instead of lowering it,
   and positive results lower it. Font-size calibration remains unchanged. This fixes the shared
   calibration layer rather than adding app-specific vertical offsets.
+
+## ADR-104 — Apply screenshot vertical calibration as a signed overlay correction
+
+- Date: 2026-06-26
+- Status: accepted
+- Context: A fresh placement pass in TextEdit, Safari, and Chrome showed the same visual failure:
+  inline ghost text rendered vertically too high after screenshot calibration accepted negative
+  offsets. ADR-103 inverted the scorer's vertical offset when applying it to AppKit caret geometry,
+  so those negative calibration results raised the overlay even further. The issue was shared across
+  native and browser fields, so per-app compatibility offsets would only hide a common calibration
+  error.
+- Decision: Keep screenshot scoring unchanged, but apply `ScreenshotCalibrationResult`'s
+  `verticalAlignmentOffset` directly to the overlay caret rect as the signed correction used by the
+  renderer. Font-size calibration remains unchanged.
+- Consequences: Negative calibration results now lower the inline overlay instead of raising it,
+  correcting the too-high placement observed in TextEdit, Safari, and Chrome. Apps that need
+  target-specific residual tuning can still use `AppCompatibility` or live developer overrides.
