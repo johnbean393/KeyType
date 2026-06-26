@@ -127,6 +127,54 @@ final class CompletionUITests: XCTestCase {
         XCTAssertNotNil(resolver.placement(for: context))
     }
 
+    func testPlacementSuppressesCodeEditorLineOriginCaret() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 277, y: 802, width: 975, height: 27)
+        let context = TextFieldContext(
+            beforeCursor: "",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 277, y: 802, width: 2, height: 27),
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.microsoft.VSCode", appName: "Code")
+        )
+
+        XCTAssertNil(resolver.placement(for: context))
+    }
+
+    func testPlacementKeepsCodeEditorRepairedCaretAwayFromLineOrigin() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 277, y: 802, width: 975, height: 27)
+        let context = TextFieldContext(
+            beforeCursor: "Second line is where the caret should sit",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 650, y: 802, width: 2, height: 27),
+                fieldRect: field,
+                cursorRectQuality: .estimated
+            ),
+            target: AppTarget(bundleIdentifier: "com.microsoft.VSCode", appName: "Code")
+        )
+
+        XCTAssertNotNil(resolver.placement(for: context))
+    }
+
+    func testPlacementKeepsLineOriginCaretForOtherApps() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 277, y: 802, width: 975, height: 27)
+        let context = TextFieldContext(
+            beforeCursor: "",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 277, y: 802, width: 2, height: 27),
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.apple.dt.Xcode", appName: "Xcode")
+        )
+
+        XCTAssertNotNil(resolver.placement(for: context))
+    }
+
     func testPlacementNilForHiddenOverlayPolicy() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: [
             TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, overlayPreference: .hidden)

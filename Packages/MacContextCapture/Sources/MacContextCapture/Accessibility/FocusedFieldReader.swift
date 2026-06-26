@@ -43,7 +43,9 @@ public struct FocusedFieldSnapshot: Equatable {
 
 @MainActor
 public struct FocusedFieldReader {
-    private static let appCaretGeometryFallbacks: [any AppCaretGeometryFallback.Type] = []
+    private static let appCaretGeometryFallbacks: [any AppCaretGeometryFallback.Type] = [
+        CodeEditorCaretGeometryFallback.self
+    ]
 
     private let resolver: AXCaretGeometryResolver
     private nonisolated let webAppClassifier: AppBundleWebAppClassifier

@@ -144,6 +144,9 @@ public struct OverlayPlacementResolver {
         if Self.shouldSuppressUnreliableWebParagraphPlacement(context: context, cursorRect: cursorRect) {
             return nil
         }
+        if Self.shouldSuppressUnreliableCodeEditorLineOriginPlacement(context: context, cursorRect: cursorRect) {
+            return nil
+        }
 
         let policy = compatibilityStore.policy(for: context)
         if policy.overlayPreference == .hidden {
@@ -190,6 +193,29 @@ public struct OverlayPlacementResolver {
         let lineHeight = max(12, min(24, max(18, cursorRect.height)))
         let distanceFromFieldTop = fieldRect.maxY - cursorRect.midY
         return distanceFromFieldTop > max(32, lineHeight * 1.75)
+    }
+
+    private static func shouldSuppressUnreliableCodeEditorLineOriginPlacement(
+        context: TextFieldContext,
+        cursorRect: CGRect
+    ) -> Bool {
+        let codeEditorBundles: Set<String> = [
+            "com.microsoft.VSCode",
+            "com.microsoft.VSCodeInsiders",
+            "com.todesktop.230313mzl4w4u92"
+        ]
+        guard codeEditorBundles.contains(context.target.bundleIdentifier),
+              let fieldRect = context.geometry.fieldRect,
+              !fieldRect.isEmpty,
+              fieldRect.height >= 16,
+              fieldRect.height <= 44,
+              cursorRect.width <= 8,
+              cursorRect.height <= max(36, fieldRect.height * 1.5),
+              abs(cursorRect.minX - fieldRect.minX) <= 6 else {
+            return false
+        }
+
+        return true
     }
 }
 
