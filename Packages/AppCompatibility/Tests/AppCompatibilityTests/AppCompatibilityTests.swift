@@ -78,6 +78,27 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertEqual(policy.completionMode, .prose)
     }
 
+    func testSublimeTextSuppressesGhostTextBecauseCaretGeometryIsUnreliable() {
+        let target = AppTarget(bundleIdentifier: "com.sublimetext.4", appName: "Sublime Text")
+        let context = TextFieldContext(
+            beforeCursor: "First line\nSecond line",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 418, y: 965, width: 2, height: 27),
+                fieldRect: CGRect(x: 186, y: 82, width: 1598, height: 1084),
+                cursorRectQuality: .exact
+            ),
+            target: target
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertFalse(policy.isCompletionEnabled)
+        XCTAssertFalse(policy.allowsTabAcceptance)
+        XCTAssertFalse(policy.allowsTrainingDataCollection)
+        XCTAssertFalse(policy.includesEnvironmentContext)
+        XCTAssertEqual(policy.overlayPreference, .hidden)
+    }
+
     func testTextEditLowersInlineGhostText() {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.apple.TextEdit",

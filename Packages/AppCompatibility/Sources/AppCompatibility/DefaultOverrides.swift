@@ -80,6 +80,14 @@ public extension AppCompatibilityStore {
                 environmentContextDisabled: true
             ),
             TargetOverride(
+                bundleIdentifier: "com.sublimetext.4",
+                completionsDisabled: true,
+                tabShortcutsDisabled: true,
+                trainingDataCollectionDisabled: true,
+                overlayPreference: .hidden,
+                environmentContextDisabled: true
+            ),
+            TargetOverride(
                 bundleIdentifier: "com.apple.TextEdit",
                 verticalAlignmentOffset: { _ in 6 }
             ),
