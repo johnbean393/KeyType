@@ -67,11 +67,11 @@ final class AppCompatibilityTests: XCTestCase {
         )
     }
 
-    func testSafariLowersInlineGhostText() {
+    func testSafariUsesDefaultInlineGhostTextBaseline() {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.apple.Safari",
             appName: "Safari",
-            expectedOffset: 15
+            expectedOffset: 0
         )
     }
 
