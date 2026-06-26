@@ -93,6 +93,11 @@ public extension AppCompatibilityStore {
                 verticalAlignmentOffset: { _ in 22 }
             ),
             TargetOverride(
+                domain: "google.com",
+                matchesSubdomains: false,
+                verticalAlignmentOffset: { _ in -22 }
+            ),
+            TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
                 domain: "docs.google.com",
                 requiresPasteAndMatchStyle: true,

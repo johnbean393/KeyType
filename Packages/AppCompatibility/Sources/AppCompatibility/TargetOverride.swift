@@ -4,6 +4,7 @@ import Foundation
 public struct TargetOverride: Equatable {
     public var bundleIdentifier: String?
     public var domain: String?
+    public var matchesSubdomains: Bool
     public var completionsDisabled: Bool
     public var midLineCompletionsEnabled: Bool
     public var midLineCompletionsDisabled: Bool
@@ -28,6 +29,7 @@ public struct TargetOverride: Equatable {
     public init(
         bundleIdentifier: String? = nil,
         domain: String? = nil,
+        matchesSubdomains: Bool = true,
         completionsDisabled: Bool = false,
         midLineCompletionsEnabled: Bool = false,
         midLineCompletionsDisabled: Bool = false,
@@ -48,6 +50,7 @@ public struct TargetOverride: Equatable {
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.domain = domain.map(Self.normalizedDomain)
+        self.matchesSubdomains = matchesSubdomains
         self.completionsDisabled = completionsDisabled
         self.midLineCompletionsEnabled = midLineCompletionsEnabled
         self.midLineCompletionsDisabled = midLineCompletionsDisabled
@@ -70,6 +73,7 @@ public struct TargetOverride: Equatable {
     public static func == (lhs: TargetOverride, rhs: TargetOverride) -> Bool {
         lhs.bundleIdentifier == rhs.bundleIdentifier
             && lhs.domain == rhs.domain
+            && lhs.matchesSubdomains == rhs.matchesSubdomains
             && lhs.completionsDisabled == rhs.completionsDisabled
             && lhs.midLineCompletionsEnabled == rhs.midLineCompletionsEnabled
             && lhs.midLineCompletionsDisabled == rhs.midLineCompletionsDisabled
@@ -97,7 +101,7 @@ public struct TargetOverride: Equatable {
         }
         if let domain {
             guard let targetDomain = target.domain.map(Self.normalizedDomain),
-                  targetDomain == domain || targetDomain.hasSuffix(".\(domain)") else {
+                  targetDomain == domain || (matchesSubdomains && targetDomain.hasSuffix(".\(domain)")) else {
                 return false
             }
         }

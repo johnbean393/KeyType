@@ -120,6 +120,33 @@ final class AppCompatibilityTests: XCTestCase {
         )
     }
 
+    func testGoogleSearchRootKeepsInlineGhostTextInSearchField() {
+        assertInlineGhostTextOffset(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome",
+            domain: "www.google.com",
+            isWebField: true,
+            expectedOffset: 0
+        )
+        assertInlineGhostTextOffset(
+            bundleIdentifier: "com.apple.Safari",
+            appName: "Safari",
+            domain: "www.google.com",
+            isWebField: true,
+            expectedOffset: 0
+        )
+    }
+
+    func testGoogleSubdomainsKeepBrowserVerticalOffset() {
+        assertInlineGhostTextOffset(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome",
+            domain: "colab.research.google.com",
+            isWebField: true,
+            expectedOffset: 22
+        )
+    }
+
     func testChromeWebFieldKeepsBrowserPlacementPolicy() {
         let target = AppTarget(
             bundleIdentifier: "com.google.Chrome",
