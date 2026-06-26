@@ -90,7 +90,7 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
-                verticalAlignmentOffset: { _ in 22 }
+                verticalAlignmentOffset: { _ in 28 }
             ),
             TargetOverride(
                 bundleIdentifier: "com.microsoft.Excel",
@@ -106,6 +106,12 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.apple.Safari",
+                domain: "google.com",
+                matchesSubdomains: false,
+                verticalAlignmentOffset: { _ in -6 }
+            ),
+            TargetOverride(
+                bundleIdentifier: "com.google.Chrome",
                 domain: "google.com",
                 matchesSubdomains: false,
                 verticalAlignmentOffset: { _ in -6 }
