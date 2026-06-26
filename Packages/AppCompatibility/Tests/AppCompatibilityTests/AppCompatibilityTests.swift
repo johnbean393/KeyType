@@ -59,11 +59,11 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertEqual(policy.completionMode, .prose)
     }
 
-    func testTextEditLowersInlineGhostText() {
+    func testTextEditUsesDefaultInlineGhostTextBaseline() {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.apple.TextEdit",
             appName: "TextEdit",
-            expectedOffset: 15
+            expectedOffset: 0
         )
     }
 
