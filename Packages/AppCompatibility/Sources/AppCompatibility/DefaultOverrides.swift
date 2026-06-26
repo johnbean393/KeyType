@@ -90,7 +90,7 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
-                verticalAlignmentOffset: { _ in 15 }
+                verticalAlignmentOffset: { _ in 22 }
             ),
             TargetOverride(
                 bundleIdentifier: "com.google.Chrome",
