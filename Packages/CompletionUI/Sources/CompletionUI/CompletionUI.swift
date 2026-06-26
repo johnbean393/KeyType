@@ -163,6 +163,10 @@ public struct OverlayPlacementResolver {
             return nil
         }
 
+        let verticalOffset = Self.shouldUseNativeWebSingleLineBaseline(context: context, cursorRect: cursorRect)
+            ? { (_: Double) in 0 }
+            : policy.verticalAlignmentOffset
+
         return OverlayPlacement(
             cursorRect: cursorRect,
             fieldRect: context.geometry.fieldRect,
@@ -170,9 +174,25 @@ public struct OverlayPlacementResolver {
             isRightToLeft: context.geometry.isRightToLeft,
             cursorRectQuality: context.geometry.cursorRectQuality,
             horizontalOffset: policy.horizontalAlignmentOffset,
-            verticalOffset: policy.verticalAlignmentOffset,
+            verticalOffset: verticalOffset,
             fontSizeAdjustmentFactor: policy.fontSizeAdjustmentFactor
         )
+    }
+
+    private static func shouldUseNativeWebSingleLineBaseline(
+        context: TextFieldContext,
+        cursorRect: CGRect
+    ) -> Bool {
+        guard context.traits.isWebField,
+              !context.beforeCursor.contains("\n"),
+              !context.afterCursor.contains("\n"),
+              let fieldRect = context.geometry.fieldRect,
+              !fieldRect.isEmpty else {
+            return false
+        }
+
+        let lineHeight = max(12, min(48, cursorRect.height > 0 ? cursorRect.height : 18))
+        return fieldRect.height < max(80, lineHeight * 2.5)
     }
 
     private static func shouldSuppressUnreliableWebParagraphPlacement(
