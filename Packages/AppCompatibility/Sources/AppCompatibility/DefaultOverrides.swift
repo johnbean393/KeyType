@@ -71,7 +71,7 @@ public extension AppCompatibilityStore {
             ),
             TargetOverride(
                 bundleIdentifier: "com.apple.TextEdit",
-                verticalAlignmentOffset: { _ in 0 }
+                verticalAlignmentOffset: { _ in 15 }
             ),
             TargetOverride(
                 bundleIdentifier: "com.apple.Safari",
