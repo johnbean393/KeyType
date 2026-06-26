@@ -59,20 +59,28 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertEqual(policy.completionMode, .prose)
     }
 
-    func testCommonNativeAndBrowserAppsLowerInlineGhostText() {
-        let targets = [
-            AppTarget(bundleIdentifier: "com.apple.TextEdit", appName: "TextEdit"),
-            AppTarget(bundleIdentifier: "com.apple.Safari", appName: "Safari"),
-            AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome")
-        ]
+    func testTextEditLowersInlineGhostText() {
+        assertInlineGhostTextOffset(
+            bundleIdentifier: "com.apple.TextEdit",
+            appName: "TextEdit",
+            expectedOffset: 7
+        )
+    }
 
-        for target in targets {
-            let context = TextFieldContext(beforeCursor: "hello", target: target)
-            let policy = AppCompatibilityStore().policy(for: context)
+    func testSafariLowersInlineGhostText() {
+        assertInlineGhostTextOffset(
+            bundleIdentifier: "com.apple.Safari",
+            appName: "Safari",
+            expectedOffset: 4
+        )
+    }
 
-            XCTAssertEqual(policy.overlayPreference, .inline, target.appName)
-            XCTAssertEqual(policy.verticalAlignmentOffset(18), 4, accuracy: 0.001, target.appName)
-        }
+    func testChromeLowersInlineGhostText() {
+        assertInlineGhostTextOffset(
+            bundleIdentifier: "com.google.Chrome",
+            appName: "Chrome",
+            expectedOffset: 4
+        )
     }
 
     func testChromeGoogleDocsKeepsDomainPolicyWithBrowserVerticalNudge() {
@@ -440,5 +448,20 @@ final class AppCompatibilityTests: XCTestCase {
         let policy = AppCompatibilityStore(overrides: []).policy(for: context)
 
         XCTAssertEqual(policy.overlayPreference, .inline)
+    }
+
+    private func assertInlineGhostTextOffset(
+        bundleIdentifier: String,
+        appName: String,
+        expectedOffset: Double,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let target = AppTarget(bundleIdentifier: bundleIdentifier, appName: appName)
+        let context = TextFieldContext(beforeCursor: "hello", target: target)
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertEqual(policy.overlayPreference, .inline, appName, file: file, line: line)
+        XCTAssertEqual(policy.verticalAlignmentOffset(18), expectedOffset, accuracy: 0.001, appName, file: file, line: line)
     }
 }
