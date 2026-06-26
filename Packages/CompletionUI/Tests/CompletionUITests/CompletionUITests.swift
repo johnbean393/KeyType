@@ -73,6 +73,60 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(resolver.placement(for: context)?.mode, .inline)
     }
 
+    func testPlacementSuppressesTallWebEditorWhenTextSnapshotOmitsPreviousParagraphs() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 32, y: 407, width: 810, height: 200)
+        let rect = CGRect(x: 338, y: 475, width: 2, height: 18)
+        let context = TextFieldContext(
+            beforeCursor: "Second paragraph is where the caret should",
+            geometry: TextFieldGeometry(
+                cursorRect: rect,
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: Self.target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        XCTAssertNil(resolver.placement(for: context))
+    }
+
+    func testPlacementSuppressesTallWebEditorAfterLineBreak() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 32, y: 407, width: 810, height: 200)
+        let rect = CGRect(x: 338, y: 475, width: 2, height: 18)
+        let context = TextFieldContext(
+            beforeCursor: "First paragraph checks baseline alignment.\n\nSecond paragraph is where the caret should",
+            geometry: TextFieldGeometry(
+                cursorRect: rect,
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: Self.target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        XCTAssertNil(resolver.placement(for: context))
+    }
+
+    func testPlacementKeepsTopLineWebEditorSnapshot() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
+        let field = CGRect(x: 32, y: 407, width: 810, height: 200)
+        let rect = CGRect(x: 338, y: 570, width: 2, height: 18)
+        let context = TextFieldContext(
+            beforeCursor: "First paragraph is where the caret should",
+            geometry: TextFieldGeometry(
+                cursorRect: rect,
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: Self.target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        XCTAssertNotNil(resolver.placement(for: context))
+    }
+
     func testPlacementNilForHiddenOverlayPolicy() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: [
             TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, overlayPreference: .hidden)

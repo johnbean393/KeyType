@@ -141,6 +141,9 @@ public struct OverlayPlacementResolver {
         guard let cursorRect = context.geometry.cursorRect else {
             return nil
         }
+        if Self.shouldSuppressUnreliableWebParagraphPlacement(context: context, cursorRect: cursorRect) {
+            return nil
+        }
 
         let policy = compatibilityStore.policy(for: context)
         if policy.overlayPreference == .hidden {
@@ -167,6 +170,26 @@ public struct OverlayPlacementResolver {
             verticalOffset: policy.verticalAlignmentOffset,
             fontSizeAdjustmentFactor: policy.fontSizeAdjustmentFactor
         )
+    }
+
+    private static func shouldSuppressUnreliableWebParagraphPlacement(
+        context: TextFieldContext,
+        cursorRect: CGRect
+    ) -> Bool {
+        guard context.traits.isWebField,
+              let fieldRect = context.geometry.fieldRect,
+              !fieldRect.isEmpty,
+              fieldRect.height >= 80 else {
+            return false
+        }
+
+        if context.beforeCursor.contains("\n") {
+            return true
+        }
+
+        let lineHeight = max(12, min(24, max(18, cursorRect.height)))
+        let distanceFromFieldTop = fieldRect.maxY - cursorRect.midY
+        return distanceFromFieldTop > max(32, lineHeight * 1.75)
     }
 }
 
