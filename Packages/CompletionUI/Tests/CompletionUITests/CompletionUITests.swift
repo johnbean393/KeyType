@@ -390,7 +390,7 @@ final class CompletionUITests: XCTestCase {
     }
 
     @MainActor
-    func testTrailingEdgeInlineCompletionWrapsInsteadOfUsingCapsule() {
+    func testTrailingEdgeSingleLineCompletionDoesNotWrapBelowField() {
         let font = NSFont.systemFont(ofSize: 24)
         let placement = OverlayPlacement(
             cursorRect: CGRect(x: 1221, y: 512, width: 2, height: 37),
@@ -399,9 +399,43 @@ final class CompletionUITests: XCTestCase {
 
         let layout = GhostTextOverlayWindow.layout(for: "Chinese.", font: font, placement: placement)
 
-        XCTAssertEqual(layout.frame.minX, 524)
-        XCTAssertEqual(layout.frame.width, 704)
-        XCTAssertEqual(layout.lines.map(\.text), ["", "Chinese."])
+        XCTAssertEqual(layout.frame.minX, placement.cursorRect.maxX)
+        XCTAssertEqual(layout.frame.width, placement.fieldRect!.maxX - placement.cursorRect.maxX)
+        XCTAssertEqual(layout.lines.map(\.text), ["Chinese."])
+    }
+
+    @MainActor
+    func testSingleLineFieldSuppressesOverflowingInlineGhostText() {
+        let font = NSFont.systemFont(ofSize: 20)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 714, y: 523, width: 2, height: 20),
+            fieldRect: CGRect(x: 460, y: 508, width: 487, height: 50)
+        )
+
+        XCTAssertTrue(
+            GhostTextOverlayWindow.shouldSuppressInlineSingleLineOverflow(
+                text: " ghost text probe chrome google search after wrap fix sample",
+                font: font,
+                placement: placement
+            )
+        )
+    }
+
+    @MainActor
+    func testSingleLineFieldKeepsFittingInlineGhostText() {
+        let font = NSFont.systemFont(ofSize: 20)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 714, y: 523, width: 2, height: 20),
+            fieldRect: CGRect(x: 460, y: 508, width: 487, height: 50)
+        )
+
+        XCTAssertFalse(
+            GhostTextOverlayWindow.shouldSuppressInlineSingleLineOverflow(
+                text: " now",
+                font: font,
+                placement: placement
+            )
+        )
     }
 
     @MainActor

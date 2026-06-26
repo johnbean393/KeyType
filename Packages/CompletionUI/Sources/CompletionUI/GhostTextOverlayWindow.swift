@@ -56,6 +56,10 @@ public final class GhostTextOverlayWindow {
             hide()
             return
         }
+        guard canUseTextMirror || !Self.shouldSuppressInlineSingleLineOverflow(text: text, font: font, placement: placement) else {
+            hide()
+            return
+        }
 
         let layout = canUseTextMirror
             ? Self.textMirrorLayout(for: style, placement: placement)
@@ -244,6 +248,27 @@ public final class GhostTextOverlayWindow {
         return requiredWidth > max(0, floor(availableWidth))
     }
 
+    public static func shouldSuppressInlineSingleLineOverflow(text: String, font: NSFont, placement: OverlayPlacement) -> Bool {
+        guard placement.presentation == .inlineGhost,
+              placement.mode != .mirror,
+              let field = placement.fieldRect,
+              !field.isEmpty else {
+            return false
+        }
+
+        let fontLineHeight = ceil(font.ascender - font.descender)
+        let lineHeight = max(trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
+        guard field.height < max(80, lineHeight * 2.5) else {
+            return false
+        }
+
+        let requiredWidth = ceil(measuredWidth(text, font: font)) + 2
+        let availableWidth = placement.isRightToLeft
+            ? placement.cursorRect.minX - field.minX
+            : field.maxX - placement.cursorRect.maxX
+        return requiredWidth > max(0, floor(availableWidth))
+    }
+
     struct Layout: Equatable {
         var frame: CGRect
         var lines: [GhostTextLine]
@@ -259,14 +284,12 @@ public final class GhostTextOverlayWindow {
         let lineHeight = max(Self.trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
         let visualCaretHeight = Self.visualCaretHeight(for: placement, lineHeight: lineHeight)
         let singleLineWidth = ceil(measuredWidth(text, font: font)) + 2
-        let canWrapInsideField = placement.mode != .mirror
-            || !isApproximateCaretQuality(placement.cursorRectQuality)
-
         guard
-            canWrapInsideField,
             !placement.isRightToLeft,
             let field = placement.fieldRect,
             !field.isEmpty,
+            field.height >= max(80, lineHeight * 2.5),
+            (placement.mode != .mirror || !isApproximateCaretQuality(placement.cursorRectQuality)),
             caret.maxX < field.maxX
         else {
             let width = availableTextWidth(for: placement, singleLineWidth: singleLineWidth)
