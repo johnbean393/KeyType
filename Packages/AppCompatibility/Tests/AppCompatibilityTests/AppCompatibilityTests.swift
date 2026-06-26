@@ -90,6 +90,8 @@ final class AppCompatibilityTests: XCTestCase {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.apple.Safari",
             appName: "Safari",
+            domain: "example.com",
+            isWebField: true,
             expectedOffset: 15
         )
     }
@@ -108,6 +110,13 @@ final class AppCompatibilityTests: XCTestCase {
         assertBrowserChromeSuppressesGhostText(
             bundleIdentifier: "com.google.Chrome",
             appName: "Chrome"
+        )
+    }
+
+    func testSafariBrowserChromeSuppressesGhostText() {
+        assertBrowserChromeSuppressesGhostText(
+            bundleIdentifier: "com.apple.Safari",
+            appName: "Safari"
         )
     }
 

@@ -152,6 +152,7 @@ public struct AppCompatibilityStore {
     }
 
     private static let browserBundleIdentifiers: Set<String> = [
+        "com.apple.Safari",
         "com.google.Chrome"
     ]
 }
