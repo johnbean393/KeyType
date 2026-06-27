@@ -149,6 +149,7 @@ public struct AppCompatibilityStore {
     private func isBrowserChromeField(_ context: TextFieldContext) -> Bool {
         Self.browserBundleIdentifiers.contains(context.target.bundleIdentifier)
             && context.target.domain == nil
+            && !context.traits.isWebField
     }
 
     private static let browserBundleIdentifiers: Set<String> = [

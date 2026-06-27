@@ -189,6 +189,10 @@ public struct OverlayPlacementResolver {
             return false
         }
 
+        if context.target.bundleIdentifier == "com.google.Chrome" {
+            return true
+        }
+
         let lineHeight = max(12, min(48, cursorRect.height > 0 ? cursorRect.height : 18))
         return fieldRect.height < max(80, lineHeight * 2.5)
     }
@@ -197,6 +201,10 @@ public struct OverlayPlacementResolver {
         context: TextFieldContext,
         cursorRect: CGRect
     ) -> Bool {
+        if context.target.bundleIdentifier == "com.google.Chrome" {
+            return false
+        }
+
         guard context.traits.isWebField,
               let fieldRect = context.geometry.fieldRect,
               !fieldRect.isEmpty,

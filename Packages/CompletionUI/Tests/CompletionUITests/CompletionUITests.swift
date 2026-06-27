@@ -109,7 +109,25 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(placement.verticalOffset(17), 0, accuracy: 0.001)
     }
 
-    func testPlacementKeepsBrowserOffsetForTallWebEditor() throws {
+    func testPlacementKeepsBrowserOffsetForTallSafariWebEditor() throws {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
+        let context = TextFieldContext(
+            beforeCursor: "First paragraph is where the caret should",
+            geometry: TextFieldGeometry(
+                cursorRect: CGRect(x: 338, y: 570, width: 2, height: 18),
+                fieldRect: CGRect(x: 32, y: 407, width: 810, height: 200),
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.apple.Safari", appName: "Safari", domain: "example.com"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let placement = try XCTUnwrap(resolver.placement(for: context))
+
+        XCTAssertEqual(placement.verticalOffset(18), 28, accuracy: 0.001)
+    }
+
+    func testPlacementUsesNativeBaselineForTallChromeWebEditor() throws {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
         let context = TextFieldContext(
             beforeCursor: "First paragraph is where the caret should",
@@ -124,7 +142,44 @@ final class CompletionUITests: XCTestCase {
 
         let placement = try XCTUnwrap(resolver.placement(for: context))
 
-        XCTAssertEqual(placement.verticalOffset(18), 22, accuracy: 0.001)
+        XCTAssertEqual(placement.verticalOffset(18), 0, accuracy: 0.001)
+    }
+
+    func testPlacementKeepsChromeTallWebEditorAfterLineBreak() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
+        let field = CGRect(x: 32, y: 407, width: 810, height: 200)
+        let rect = CGRect(x: 338, y: 475, width: 2, height: 18)
+        let context = TextFieldContext(
+            beforeCursor: "First paragraph checks baseline alignment.\n\nSecond paragraph is where the caret should",
+            geometry: TextFieldGeometry(
+                cursorRect: rect,
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome", domain: "example.com"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        XCTAssertNotNil(resolver.placement(for: context))
+    }
+
+    func testPlacementKeepsChromeTallWebEditorWithTextBelowCaret() {
+        let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
+        let field = CGRect(x: 199, y: 529, width: 786, height: 206)
+        let rect = CGRect(x: 501, y: 699, width: 2, height: 21)
+        let context = TextFieldContext(
+            beforeCursor: "First line checks baseline alignment.",
+            afterCursor: "\nSecond line is where the caret should sit",
+            geometry: TextFieldGeometry(
+                cursorRect: rect,
+                fieldRect: field,
+                cursorRectQuality: .exact
+            ),
+            target: AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome", domain: "example.com"),
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        XCTAssertNotNil(resolver.placement(for: context))
     }
 
     func testPlacementSuppressesTallWebEditorWhenTextSnapshotOmitsPreviousParagraphs() {
@@ -175,7 +230,7 @@ final class CompletionUITests: XCTestCase {
                 fieldRect: field,
                 cursorRectQuality: .exact
             ),
-            target: AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome"),
+            target: AppTarget(bundleIdentifier: "com.test.browser", appName: "Browser"),
             traits: TextFieldTraits(isWebField: true)
         )
 

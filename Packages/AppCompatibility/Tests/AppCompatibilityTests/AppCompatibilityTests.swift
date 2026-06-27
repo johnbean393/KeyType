@@ -161,6 +161,21 @@ final class AppCompatibilityTests: XCTestCase {
         )
     }
 
+    func testChromeNoDomainWebFieldKeepsGhostText() {
+        let target = AppTarget(bundleIdentifier: "com.google.Chrome", appName: "Chrome")
+        let context = TextFieldContext(
+            beforeCursor: "First line\nSecond line",
+            target: target,
+            traits: TextFieldTraits(isWebField: true)
+        )
+
+        let policy = AppCompatibilityStore().policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertEqual(policy.overlayPreference, .inline)
+    }
+
     func testGoogleSearchRootKeepsInlineGhostTextInSearchField() {
         assertInlineGhostTextOffset(
             bundleIdentifier: "com.google.Chrome",
@@ -605,8 +620,7 @@ final class AppCompatibilityTests: XCTestCase {
         let target = AppTarget(bundleIdentifier: bundleIdentifier, appName: appName)
         let context = TextFieldContext(
             beforeCursor: "search query",
-            target: target,
-            traits: TextFieldTraits(isWebField: true)
+            target: target
         )
 
         let policy = AppCompatibilityStore().policy(for: context)
