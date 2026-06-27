@@ -104,6 +104,12 @@ final class CompletionAcceptanceController {
             return Unmanaged.passUnretained(event)
         }
 
+        if settings?.developerOverrideTuningEnabled == true,
+           Self.isDeveloperPlacementProbeShortcut(keyCode: keyCode, flags: flags) {
+            _ = completionController?.showDeveloperPlacementProbeAtLatestSnapshot()
+            return nil
+        }
+
         let acceptWord = settings?.acceptWordShortcut ?? .defaultAcceptWord
         let acceptFull = settings?.acceptFullShortcut ?? .defaultAcceptFull
 
@@ -184,5 +190,13 @@ final class CompletionAcceptanceController {
             option: flags.contains(.maskAlternate),
             command: flags.contains(.maskCommand)
         )
+    }
+
+    nonisolated static func isDeveloperPlacementProbeShortcut(keyCode: Int64, flags: CGEventFlags) -> Bool {
+        keyCode == 5 // G
+            && flags.contains(.maskCommand)
+            && flags.contains(.maskControl)
+            && flags.contains(.maskAlternate)
+            && !flags.contains(.maskShift)
     }
 }

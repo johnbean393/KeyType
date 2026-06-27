@@ -56,7 +56,12 @@ struct KeyTypeApp: App {
                 reloadModel: { appDelegate.completion.reloadModel() },
                 importModel: { appDelegate.presentModelImportPanel() },
                 addApp: { appDelegate.presentAppAddPanel() },
-                openDeveloperOverridePanel: { appDelegate.presentDeveloperOverridePanel() }
+                openDeveloperOverridePanel: { appDelegate.presentDeveloperOverridePanel() },
+                showDeveloperPlacementProbe: {
+                    appDelegate.completion.showDeveloperPlacementProbe(
+                        using: appDelegate.contextCapture.latestTunableSnapshot
+                    )
+                }
             )
             // Promote KeyType to a dock-visible app while Settings is open so it's easy to switch
             // back to, then drop back to the menu-bar-only agent policy on close. See ADR-058.

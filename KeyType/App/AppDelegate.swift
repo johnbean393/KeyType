@@ -49,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         completion: completion
     )
     private var permissionSyncTimer: Timer?
+    private var developerProbePollTimer: Timer?
+    private var lastDeveloperProbeTriggerDate: Date?
     /// Set once the user has confirmed quitting and the async model teardown is under way, so the
     /// confirmation alert isn't shown twice and `applicationShouldTerminate` doesn't re-prompt.
     private var isTerminating = false
@@ -155,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         permissions.startMonitoring()
         syncContextCaptureWithPermission()
         startObservingPermissionChanges()
+        startObservingDeveloperProbeTriggerFile()
 
         if shouldShowOnboardingOnLaunch {
             // The always-present `MenuBarLabel` observes this and calls `openWindow(id:)`. Defer one
@@ -164,6 +167,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.requestOpenOnboarding()
             }
         }
+    }
+
+    private func startObservingDeveloperProbeTriggerFile() {
+        let timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.pollDeveloperProbeTriggerFile()
+            }
+        }
+        timer.tolerance = 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        developerProbePollTimer = timer
+    }
+
+    private func pollDeveloperProbeTriggerFile() {
+        guard settings.developerOverrideTuningEnabled else { return }
+        let url = Self.developerProbeTriggerURL
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let modificationDate = attributes[.modificationDate] as? Date,
+              modificationDate != lastDeveloperProbeTriggerDate else {
+            return
+        }
+        lastDeveloperProbeTriggerDate = modificationDate
+        let text = (try? String(contentsOf: url, encoding: .utf8))?
+            .trimmingCharacters(in: .newlines)
+        let probeText = text.flatMap { $0.isEmpty ? nil : $0 } ?? " ghost text probe"
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var snapshot = self.contextCapture.latestTunableSnapshot
+                ?? self.contextCapture.latestSnapshot
+            if snapshot == nil {
+                snapshot = try? await MacContextCaptureService().captureFocusedFieldSnapshot()
+            }
+            _ = self.completion.showDeveloperPlacementProbe(
+                using: snapshot,
+                text: probeText
+            )
+        }
+    }
+
+    private static var developerProbeTriggerURL: URL {
+        URL(fileURLWithPath: "/tmp/KeyTypeDeveloperPlacementProbe.txt")
     }
 
     /// Start/stop the context tracker so it only runs when AX is actually granted. We poll the

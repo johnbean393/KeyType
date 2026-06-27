@@ -10,6 +10,7 @@
 
 import AppCompatibility
 import AppKit
+import ApplicationServices
 import AutocompleteCore
 import CompletionUI
 import ConstrainedGeneration
@@ -232,6 +233,7 @@ final class CompletionController {
     private let overlayCalibrator: ScreenshotOverlayCalibrator
     private let inserter: PasteboardCompletionInserter
     private let filter: DefaultCandidateFilter
+    private let frontmostBundleIdentifier: () -> String?
     private let predictionLog = PredictionLog()
     private let fullPromptLog = FullPromptLog()
     private let log = Logger(subsystem: "com.pattonium.KeyType", category: "completion")
@@ -351,7 +353,10 @@ final class CompletionController {
         screenTextProvider: ScreenTextProviding = NullScreenTextProvider(),
         telemetry: CompletionTelemetryStore = CompletionTelemetryStore(url: nil),
         compatibilityStore: AppCompatibilityStore = KeyTypeModuleGraph.makeCompatibilityStore(),
-        overlayCalibrator: ScreenshotOverlayCalibrator = ScreenshotOverlayCalibrator()
+        overlayCalibrator: ScreenshotOverlayCalibrator = ScreenshotOverlayCalibrator(),
+        frontmostBundleIdentifier: @escaping () -> String? = {
+            NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        }
     ) {
         self.tracker = tracker
         self.settings = settings
@@ -362,6 +367,7 @@ final class CompletionController {
         self.presenter = InlineGhostTextPresenter()
         self.placementResolver = OverlayPlacementResolver(compatibilityStore: compatibilityStore)
         self.overlayCalibrator = overlayCalibrator
+        self.frontmostBundleIdentifier = frontmostBundleIdentifier
         self.inserter = PasteboardCompletionInserter(
             planner: InsertionPlanner(compatibilityStore: compatibilityStore)
         )
@@ -682,6 +688,70 @@ final class CompletionController {
         lastCaretRect = snapshot.caretRect
         let style = lastRenderedStyle ?? FieldFontResolver.currentStyle()
         _ = renderSuggestion(for: snapshot.context, style: style)
+    }
+
+    @discardableResult
+    func showDeveloperPlacementProbeAtLatestSnapshot(text: String = " ghost text probe") -> Bool {
+        showDeveloperPlacementProbe(using: latestSnapshot, text: text)
+    }
+
+    @discardableResult
+    func showDeveloperPlacementProbe(using snapshot: FocusedFieldSnapshot?, text: String = " ghost text probe") -> Bool {
+        guard settings.developerOverrideTuningEnabled else {
+            predictionLog.append("PROBE suppress=developerTuningDisabled")
+            return false
+        }
+        guard let snapshot else {
+            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
+            predictionLog.append("PROBE suppress=noSnapshot axTrusted=\(AXIsProcessTrusted()) frontmost=\(frontmost)")
+            clearCompletion()
+            return false
+        }
+        guard !Self.isKeyTypeTarget(snapshot.context.target) else {
+            predictionLog.append("PROBE suppress=keyTypeTarget")
+            clearCompletion()
+            return false
+        }
+        guard !text.isEmpty else {
+            predictionLog.append("PROBE suppress=emptyText target=\(snapshot.context.target.bundleIdentifier)")
+            clearCompletion()
+            return false
+        }
+        guard let caretRect = snapshot.caretRect, !caretRect.isEmpty else {
+            predictionLog.append("PROBE suppress=noCaret target=\(snapshot.context.target.bundleIdentifier)")
+            clearCompletion()
+            return false
+        }
+        guard placementResolver.placement(for: snapshot.context) != nil else {
+            predictionLog.append("PROBE suppress=noPlacement target=\(snapshot.context.target.bundleIdentifier)")
+            clearCompletion()
+            return false
+        }
+
+        debounceTask?.cancel()
+        generationTask?.cancel()
+        warmupTask?.cancel()
+        finishActiveLatencyTrace(outcome: "developer-probe")
+
+        latestSnapshot = snapshot
+        latestContext = snapshot.context
+        lastContextKey = Self.contextKey(for: snapshot.context)
+        lastCaretRect = caretRect
+        anchorText = text
+        anchorContext = snapshot.context
+        holdAnchor = false
+        screenCaptureHold = nil
+        developerTuningHold = true
+
+        let style = FieldFontResolver.currentStyle()
+        refreshOverlayCalibration(for: snapshot, style: style)
+        let shown = renderSuggestion(for: snapshot.context, style: style)
+        if shown {
+            predictionLog.append(
+                "PROBE target=\(snapshot.context.target.bundleIdentifier) text=\"\(PredictionLog.escape(text))\""
+            )
+        }
+        return shown
     }
 
     private func present(
@@ -1336,12 +1406,31 @@ final class CompletionController {
     }
 
     private func preserveDeveloperTuningOverlayForMissingSnapshot() -> Bool {
-        guard settings.developerOverrideTuningEnabled,
-              visibleCandidate != nil else {
+        guard Self.shouldPreserveDeveloperTuningOverlayForMissingSnapshot(
+            settingsEnabled: settings.developerOverrideTuningEnabled,
+            hasVisibleCandidate: visibleCandidate != nil,
+            developerTuningHold: developerTuningHold,
+            frontmostBundleIdentifier: frontmostBundleIdentifier()
+        ) else {
             return false
         }
         holdOverlayForDeveloperTuning()
         return true
+    }
+
+    nonisolated static func shouldPreserveDeveloperTuningOverlayForMissingSnapshot(
+        settingsEnabled: Bool,
+        hasVisibleCandidate: Bool,
+        developerTuningHold: Bool,
+        frontmostBundleIdentifier: String?
+    ) -> Bool {
+        guard settingsEnabled,
+              hasVisibleCandidate,
+              developerTuningHold,
+              let frontmostBundleIdentifier else {
+            return false
+        }
+        return isKeyTypeBundleIdentifier(frontmostBundleIdentifier)
     }
 
     private func holdOverlayForDeveloperTuning() {
@@ -1388,15 +1477,19 @@ final class CompletionController {
     }
 
     private static func isKeyTypeTarget(_ target: AppTarget) -> Bool {
-        let bundleIdentifier = target.bundleIdentifier.lowercased()
-        if let ownBundleIdentifier = Bundle.main.bundleIdentifier?.lowercased(),
-           bundleIdentifier == ownBundleIdentifier {
-            return true
-        }
-        if bundleIdentifier.hasPrefix("com.pattonium.keytype") {
+        if isKeyTypeBundleIdentifier(target.bundleIdentifier) {
             return true
         }
         return target.appName.localizedCaseInsensitiveContains("KeyType")
+    }
+
+    private nonisolated static func isKeyTypeBundleIdentifier(_ bundleIdentifier: String) -> Bool {
+        let normalized = bundleIdentifier.lowercased()
+        if let ownBundleIdentifier = Bundle.main.bundleIdentifier?.lowercased(),
+           normalized == ownBundleIdentifier {
+            return true
+        }
+        return normalized.hasPrefix("com.pattonium.keytype")
     }
 
     private static func contextKey(for context: TextFieldContext) -> String {

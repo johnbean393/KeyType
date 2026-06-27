@@ -164,6 +164,78 @@ struct KeyTypeTests {
         #expect(reloaded.acceptFullShortcut.matches(keyCode: 48, flags: CGEventFlags()))
     }
 
+    @Test @MainActor func developerPlacementProbeRequiresOptInAndUsableCaretGeometry() {
+        let (defaults, suiteName) = Self.temporaryDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = SettingsStore(defaults: defaults)
+        let controller = CompletionController(
+            tracker: AccessibilityContextTracker(),
+            settings: settings
+        )
+        let context = TextFieldContext(
+            beforeCursor: "Testing",
+            geometry: TextFieldGeometry(cursorRect: nil),
+            target: Self.target
+        )
+        let snapshot = FocusedFieldSnapshot(
+            context: context,
+            caretRect: nil,
+            caretSource: "test",
+            caretQuality: "missing"
+        )
+
+        #expect(!controller.showDeveloperPlacementProbe(using: snapshot))
+        settings.developerOverrideTuningEnabled = true
+        #expect(!controller.showDeveloperPlacementProbe(using: snapshot))
+        #expect(controller.visibleCandidate == nil)
+    }
+
+    @Test func developerTuningMissingSnapshotOnlyPreservesOverlayForKeyTypeItself() {
+        #expect(CompletionController.shouldPreserveDeveloperTuningOverlayForMissingSnapshot(
+            settingsEnabled: true,
+            hasVisibleCandidate: true,
+            developerTuningHold: true,
+            frontmostBundleIdentifier: "com.pattonium.KeyType.dev"
+        ))
+        #expect(!CompletionController.shouldPreserveDeveloperTuningOverlayForMissingSnapshot(
+            settingsEnabled: true,
+            hasVisibleCandidate: true,
+            developerTuningHold: true,
+            frontmostBundleIdentifier: "com.tencent.xinWeChat"
+        ))
+        #expect(!CompletionController.shouldPreserveDeveloperTuningOverlayForMissingSnapshot(
+            settingsEnabled: true,
+            hasVisibleCandidate: true,
+            developerTuningHold: false,
+            frontmostBundleIdentifier: "com.pattonium.KeyType.dev"
+        ))
+    }
+
+    @Test @MainActor func missingDeveloperPlacementProbeSnapshotClearsWithoutRendering() {
+        let (defaults, suiteName) = Self.temporaryDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = SettingsStore(defaults: defaults)
+        settings.developerOverrideTuningEnabled = true
+        let controller = CompletionController(
+            tracker: AccessibilityContextTracker(),
+            settings: settings
+        )
+
+        #expect(!controller.showDeveloperPlacementProbe(using: nil, text: " probe"))
+        #expect(controller.visibleCandidate == nil)
+    }
+
+    @Test func developerPlacementProbeShortcutRequiresCommandControlOptionGOnly() {
+        let flags: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate]
+
+        #expect(CompletionAcceptanceController.isDeveloperPlacementProbeShortcut(keyCode: 5, flags: flags))
+        #expect(!CompletionAcceptanceController.isDeveloperPlacementProbeShortcut(keyCode: 5, flags: flags.union(.maskShift)))
+        #expect(!CompletionAcceptanceController.isDeveloperPlacementProbeShortcut(keyCode: 6, flags: flags))
+        #expect(!CompletionAcceptanceController.isDeveloperPlacementProbeShortcut(keyCode: 5, flags: [.maskCommand, .maskControl]))
+    }
+
     @Test func capsulePresentationIsUsedForVisibleCurrentLineSuffix() {
         let context = TextFieldContext(
             beforeCursor: "This is ",

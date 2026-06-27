@@ -46,24 +46,43 @@ public final class MacContextCaptureService: FocusedTextContextCapturing, Contex
         return await MainActor.run { Self.captureOnMain() }
     }
 
+    public func captureFocusedFieldSnapshot() async throws -> FocusedFieldSnapshot? {
+        guard permissionChecker.status() == .trusted else {
+            return nil
+        }
+        return await MainActor.run { Self.captureSnapshotOnMain() }
+    }
+
     @MainActor
     private static func captureOnMain() -> TextFieldContext? {
+        if let snapshot = captureSnapshotOnMain() {
+            return snapshot.context
+        }
+
+        let system = AXUIElementCreateSystemWide()
+        guard AXCaretHelper.focusedElement(systemElement: system) == nil else { return nil }
+
+        // Fall back to the bundle-id-only context we used to return so callers that just want
+        // to know which app is frontmost still get an answer.
+        let app = NSWorkspace.shared.frontmostApplication
+        return TextFieldContext(
+            beforeCursor: "",
+            target: AppTarget(
+                bundleIdentifier: app?.bundleIdentifier ?? "unknown",
+                appName: app?.localizedName ?? "Unknown"
+            ),
+            typingContext: "focused macOS app (no AX text field)"
+        )
+    }
+
+    @MainActor
+    private static func captureSnapshotOnMain() -> FocusedFieldSnapshot? {
         let system = AXUIElementCreateSystemWide()
         guard let element = AXCaretHelper.focusedElement(systemElement: system) else {
-            // Fall back to the bundle-id-only context we used to return so callers that just want
-            // to know which app is frontmost still get an answer.
-            let app = NSWorkspace.shared.frontmostApplication
-            return TextFieldContext(
-                beforeCursor: "",
-                target: AppTarget(
-                    bundleIdentifier: app?.bundleIdentifier ?? "unknown",
-                    appName: app?.localizedName ?? "Unknown"
-                ),
-                typingContext: "focused macOS app (no AX text field)"
-            )
+            return nil
         }
 
         let reader = FocusedFieldReader()
-        return reader.snapshot(of: element)?.context
+        return reader.snapshot(of: element)
     }
 }

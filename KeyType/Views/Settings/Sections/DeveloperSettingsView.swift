@@ -17,6 +17,7 @@ struct DeveloperSettingsView: View {
     @Bindable var developerOverrides: DeveloperOverrideController
     let permissions: PermissionsManager
     let openTuningPanel: () -> Void
+    let showPlacementProbe: () -> Bool
 
     var body: some View {
         Form {
@@ -64,6 +65,11 @@ struct DeveloperSettingsView: View {
                         openTuningPanel()
                     }
                     .disabled(!settings.developerOverrideTuningEnabled)
+
+                    Button("Show Probe") {
+                        _ = showPlacementProbe()
+                    }
+                    .disabled(!settings.developerOverrideTuningEnabled || contextCapture.latestTunableSnapshot == nil)
 
                     Button("Open JSON") {
                         developerOverrides.openOverridesFile()

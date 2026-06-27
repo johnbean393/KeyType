@@ -30,6 +30,8 @@ struct SettingsView: View {
     let addApp: () -> Void
     /// Show the compact non-activating developer tuning HUD.
     let openDeveloperOverridePanel: () -> Void
+    /// Draw a synthetic ghost-text sample at the last tunable target for placement testing.
+    let showDeveloperPlacementProbe: () -> Bool
 
     @State private var selection: SettingsCategory = .general
 
@@ -79,7 +81,8 @@ struct SettingsView: View {
                 contextCapture: contextCapture,
                 developerOverrides: developerOverrides,
                 permissions: permissions,
-                openTuningPanel: openDeveloperOverridePanel
+                openTuningPanel: openDeveloperOverridePanel,
+                showPlacementProbe: showDeveloperPlacementProbe
             )
         case .setup:
             SetupSettingsView(runSetupAgain: runSetupAgain)

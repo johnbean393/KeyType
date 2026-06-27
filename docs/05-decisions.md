@@ -123,6 +123,8 @@ row here.**
 | 101 | Use neutral width and fuller paragraph gaps for web caret estimates | context-capture/ui |
 | 102 | Align mirror text to the target caret stroke | ui |
 | 103 | Convert screenshot calibration offsets into AppKit coordinates | ui/calibration |
+| 104 | Apply screenshot vertical calibration as a signed overlay correction | ui/calibration |
+| 105 | Add a developer-only placement probe trigger | developer/ui |
 
 ---
 
@@ -3381,3 +3383,22 @@ text. Both are now closed:
 - Consequences: Negative calibration results now lower the inline overlay instead of raising it,
   correcting the too-high placement observed in TextEdit, Safari, and Chrome. Apps that need
   target-specific residual tuning can still use `AppCompatibility` or live developer overrides.
+
+## ADR-105 — Add a developer-only placement probe trigger
+
+- Date: 2026-06-27
+- Status: accepted
+- Context: App-compatibility placement work needs repeatable visual checks in target apps, but
+  waiting for the local model to produce a visible candidate makes many Safari, Chrome, and native
+  app tests inconclusive. The live override HUD can redraw an existing suggestion, but it cannot
+  create one while preserving focus in the target app.
+- Decision: Add a developer-only placement probe that seeds a synthetic anchored completion for the
+  last non-KeyType focused field and renders it through the production overlay path. Expose it both
+  from Developer settings and through a `Control-Option-Command-G` global developer hotkey so
+  compatibility sweeps can keep the target app focused. In debug builds, also poll
+  `/tmp/KeyTypeDeveloperPlacementProbe.txt` as a scriptable trigger for automated sweeps. The
+  controller still requires live override tuning to be enabled and still uses the normal
+  compatibility placement resolver.
+- Consequences: Placement testing can now distinguish overlay geometry failures from generation
+  suppression/no-candidate cases without changing insertion behavior. The probe is intentionally
+  local to developer diagnostics; normal users never see it unless they enable live override tuning.

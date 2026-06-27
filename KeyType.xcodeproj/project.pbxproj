@@ -315,15 +315,6 @@
 			path = Context;
 			sourceTree = "<group>";
 		};
-		4B5450012FC9600000000402 /* Developer */ = {
-			isa = PBXGroup;
-			children = (
-				4B5450012FC9600000000400 /* DeveloperOverrideController.swift */,
-				4B5450012FC9600000000403 /* DeveloperOverridePanelController.swift */,
-			);
-			path = Developer;
-			sourceTree = "<group>";
-		};
 		4B5450012FC9600000000102 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -417,6 +408,15 @@
 				4B5450012FC9600000000210 /* UpdaterController.swift */,
 			);
 			path = Updates;
+			sourceTree = "<group>";
+		};
+		4B5450012FC9600000000402 /* Developer */ = {
+			isa = PBXGroup;
+			children = (
+				4B5450012FC9600000000400 /* DeveloperOverrideController.swift */,
+				4B5450012FC9600000000403 /* DeveloperOverridePanelController.swift */,
+			);
+			path = Developer;
 			sourceTree = "<group>";
 		};
 		B1C0BEF02FCB000000000001 /* KeyTypeBench-20260603 */ = {
@@ -833,7 +833,7 @@
 				CODE_SIGN_ENTITLEMENTS = KeyType/KeyType.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -846,7 +846,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -867,7 +867,7 @@
 				CODE_SIGN_ENTITLEMENTS = KeyType/KeyType.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = KM2C4ZAVPJ;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -880,7 +880,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pattonium.KeyType;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

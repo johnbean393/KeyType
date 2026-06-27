@@ -7,6 +7,7 @@ CONFIGURATION="${KEYTYPE_CONFIGURATION:-Debug}"
 APP_NAME="${KEYTYPE_DEV_APP_NAME:-KeyType Dev}"
 BUNDLE_IDENTIFIER="${KEYTYPE_DEV_BUNDLE_ID:-com.pattonium.KeyType.dev}"
 INSTALL_PATH="${KEYTYPE_DEV_APP_PATH:-/Applications/$APP_NAME.app}"
+BUILD_PRODUCT_NAME="${KEYTYPE_BUILD_PRODUCT_NAME:-KeyType}"
 SHOULD_LAUNCH=1
 
 usage() {
@@ -47,14 +48,10 @@ KEYTYPE_SKIP_DEV_APP_INSTALL=1 xcodebuild \
   -configuration "$CONFIGURATION" \
   -destination "platform=macOS" \
   -derivedDataPath "$DERIVED_DATA_PATH" \
-  PRODUCT_NAME="$APP_NAME" \
   PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_IDENTIFIER" \
   build
 
-BUILT_APP="$DERIVED_DATA_PATH/Build/Products/$CONFIGURATION/$APP_NAME.app"
-if [[ ! -d "$BUILT_APP" ]]; then
-  BUILT_APP="$DERIVED_DATA_PATH/Build/Products/$CONFIGURATION/KeyType.app"
-fi
+BUILT_APP="$DERIVED_DATA_PATH/Build/Products/$CONFIGURATION/$BUILD_PRODUCT_NAME.app"
 
 if [[ ! -d "$BUILT_APP" ]]; then
   echo "Built app was not found under $DERIVED_DATA_PATH/Build/Products/$CONFIGURATION" >&2
