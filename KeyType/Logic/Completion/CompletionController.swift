@@ -734,14 +734,7 @@ final class CompletionController {
             prefixBeforeWord: target.prefixBeforeWord,
             suffixWindow: suffixWindow,
             priorPredictionReplacement: prior,
-            thresholds: settings.aggressiveCorrectionsEnabled
-                ? CorrectionValidationThresholds(
-                    minimumMeanLogProbability: -6.4,
-                    minimumMargin: 0.12,
-                    minimumSuffixMeanLogProbability: -7.4,
-                    priorPredictionConfidence: 0.97
-                )
-                : CorrectionValidationThresholds()
+            thresholds: CorrectionValidationThresholds()
         )
     }
 

@@ -121,7 +121,6 @@ final class SettingsStore {
         static let acceptFullLabel = "KeyType.settings.acceptFullLabel"
         static let autocorrectSuggestionsEnabled = "KeyType.settings.autocorrectSuggestionsEnabled"
         static let showSuggestedFixes = "KeyType.settings.showSuggestedFixes"
-        static let aggressiveCorrectionsEnabled = "KeyType.settings.aggressiveCorrectionsEnabled"
         static let perAppCorrectionDisabled = "KeyType.settings.perAppCorrectionDisabledBundleIDs"
         static let acceptCorrectionKeyCode = "KeyType.settings.acceptCorrectionKeyCode"
         static let acceptCorrectionModifiers = "KeyType.settings.acceptCorrectionModifiers"
@@ -197,10 +196,6 @@ final class SettingsStore {
         didSet { defaults.set(showSuggestedFixes, forKey: Key.showSuggestedFixes) }
     }
 
-    var aggressiveCorrectionsEnabled: Bool {
-        didSet { defaults.set(aggressiveCorrectionsEnabled, forKey: Key.aggressiveCorrectionsEnabled) }
-    }
-
     var perAppCorrectionDisabled: Set<String> {
         didSet { defaults.set(Array(perAppCorrectionDisabled).sorted(), forKey: Key.perAppCorrectionDisabled) }
     }
@@ -239,7 +234,6 @@ final class SettingsStore {
         )
         self.autocorrectSuggestionsEnabled = Self.bool(defaults, forKey: Key.autocorrectSuggestionsEnabled, defaultValue: true)
         self.showSuggestedFixes = Self.bool(defaults, forKey: Key.showSuggestedFixes, defaultValue: true)
-        self.aggressiveCorrectionsEnabled = defaults.bool(forKey: Key.aggressiveCorrectionsEnabled)
         self.perAppCorrectionDisabled = Set(defaults.stringArray(forKey: Key.perAppCorrectionDisabled) ?? [])
         self.acceptCorrectionShortcut = Self.loadShortcut(
             defaults: defaults,

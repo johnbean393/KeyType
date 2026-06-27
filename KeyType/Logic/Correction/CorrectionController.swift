@@ -152,7 +152,7 @@ final class CorrectionController {
             guard let self else { return }
             let started = DispatchTime.now()
             do {
-                let detector = SystemSpellcheckCorrectionDetector(aggressive: settings.aggressiveCorrectionsEnabled)
+                let detector = SystemSpellcheckCorrectionDetector()
                 let grammarDetector = SystemGrammarCorrectionDetector()
                 let detection = try await detector.detectCorrection(for: context)
                 let rawCandidates: [CorrectionCandidate]
@@ -234,7 +234,7 @@ final class CorrectionController {
             clear()
             return
         }
-        guard best.confidence >= (settings.aggressiveCorrectionsEnabled ? 0.68 : 0.76) else {
+        guard best.confidence >= 0.76 else {
             telemetry.recordCorrectionSuppressed(reason: "lowSpellcheckConfidence")
             predictionLog.append("CORRECT word=\"\(PredictionLog.escape(best.original))\" -> SUPPRESS(lowSpellcheckConfidence)")
             clear()

@@ -13,7 +13,6 @@ struct GrammarCorrectionDetection {
 
 @MainActor
 struct SystemSpellcheckCorrectionDetector: CorrectionDetecting {
-    var aggressive: Bool = false
     var maximumCandidates: Int = 5
 
     func correctionCandidates(for context: TextFieldContext) async throws -> [CorrectionCandidate] {
@@ -73,12 +72,11 @@ struct SystemSpellcheckCorrectionDetector: CorrectionDetecting {
     }
 
     private func maximumAllowedDistance(for word: String) -> Int {
-        if aggressive { return max(2, min(4, word.count / 3)) }
         return word.count <= 8 ? 2 : 3
     }
 
     private func confidenceForSpellcheck(distance: Int, originalLength: Int) -> Double {
-        let base = aggressive ? 0.72 : 0.78
+        let base = 0.78
         let penalty = Double(max(0, distance - 1)) * 0.08
         let lengthBoost = min(0.08, Double(max(0, originalLength - 5)) * 0.01)
         return max(0.55, min(0.9, base + lengthBoost - penalty))

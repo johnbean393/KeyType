@@ -134,6 +134,7 @@ row here.**
 | 112 | Use system grammar checking for grammar candidate generation | correction/grammar |
 | 113 | Route prefix-only spellcheck replacements to completion | correction/completion |
 | 114 | Lower spellcheck correction model margin | correction/model-runtime |
+| 115 | Remove aggressive correction mode | correction/settings |
 
 ---
 
@@ -3575,3 +3576,16 @@ text. Both are now closed:
 - Consequences: More close-runner-up spelling corrections can be shown, while implausible
   replacements are still suppressed by the absolute model score, original preference veto, suffix
   join check, and spellcheck candidate gates.
+
+## ADR-115 — Remove aggressive correction mode
+
+- Date: 2026-06-28
+- Status: accepted
+- Context: Autocorrect needs predictable behavior and should not expose a second, looser
+  validation profile now that the default model margin has been tuned down. Keeping a visible
+  aggressive mode also complicates debugging reports because the same text can follow different
+  spellcheck distance, confidence, and model-margin paths.
+- Decision: Remove the aggressive corrections setting and always use the default spellcheck
+  detector and correction validation thresholds.
+- Consequences: Correction behavior is simpler to reason about and the Settings UI has one fewer
+  safety-related toggle. Previously stored user defaults for the removed key are ignored.
