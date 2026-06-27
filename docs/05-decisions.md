@@ -3402,3 +3402,21 @@ text. Both are now closed:
 - Consequences: Placement testing can now distinguish overlay geometry failures from generation
   suppression/no-candidate cases without changing insertion behavior. The probe is intentionally
   local to developer diagnostics; normal users never see it unless they enable live override tuning.
+
+## ADR-106 — Offset Messages caret geometry by captured attachment height
+
+- Date: 2026-06-27
+- Status: accepted
+- Context: Apple Messages exposes rich compose previews, such as URL cards and pasted images, inside
+  the same AX text element frame as the typed message. When that happens, AX can report a caret rect
+  offset upward by the preview/media stack height, so inline ghost text renders over the attachment
+  instead of beside the actual compose-line cursor.
+- Decision: Add a Messages-specific caret-geometry fallback in `MacContextCapture` that preserves
+  inline placement and first tries to measure large non-text attachment frames from the compose AX
+  subtree. For single-line, end-of-message compose contexts, subtract that captured attachment stack
+  height from the reported caret Y while preserving AX's X and caret size. If Messages does not
+  expose a usable attachment frame, fall back to a bounded bottom-compose-line estimate.
+- Consequences: Inline suggestions remain available in Messages with URL cards and image
+  attachments, but are anchored to the typed line rather than the rich preview. The fallback is
+  limited to native Messages, single-line append contexts, and tall compose fields, so normal
+  compose fields and mid-message editing keep native AX geometry.

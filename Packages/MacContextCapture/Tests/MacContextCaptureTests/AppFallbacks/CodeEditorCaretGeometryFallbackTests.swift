@@ -15,6 +15,8 @@ final class CodeEditorCaretGeometryFallbackTests: XCTestCase {
         let repaired = CodeEditorCaretGeometryFallback.caretGeometry(
             target: AppTarget(bundleIdentifier: "com.microsoft.VSCode", appName: "Code"),
             beforeCursor: "First line checks baseline alignment.\nSecond line is where the caret should sit",
+            afterCursor: "",
+            element: nil,
             fieldRect: field,
             current: current
         )
@@ -36,6 +38,8 @@ final class CodeEditorCaretGeometryFallbackTests: XCTestCase {
         let repaired = CodeEditorCaretGeometryFallback.caretGeometry(
             target: AppTarget(bundleIdentifier: "com.todesktop.230313mzl4w4u92", appName: "Cursor"),
             beforeCursor: "Second line is where the caret should sit",
+            afterCursor: "",
+            element: nil,
             fieldRect: field,
             current: current
         )
@@ -55,6 +59,8 @@ final class CodeEditorCaretGeometryFallbackTests: XCTestCase {
         let repaired = CodeEditorCaretGeometryFallback.caretGeometry(
             target: AppTarget(bundleIdentifier: "com.microsoft.VSCode", appName: "Code"),
             beforeCursor: "First line checks baseline alignment.\n",
+            afterCursor: "",
+            element: nil,
             fieldRect: field,
             current: current
         )
@@ -73,6 +79,8 @@ final class CodeEditorCaretGeometryFallbackTests: XCTestCase {
         let repaired = CodeEditorCaretGeometryFallback.caretGeometry(
             target: AppTarget(bundleIdentifier: "com.apple.TextEdit", appName: "TextEdit"),
             beforeCursor: "Second line is where the caret should sit",
+            afterCursor: "",
+            element: nil,
             fieldRect: field,
             current: current
         )

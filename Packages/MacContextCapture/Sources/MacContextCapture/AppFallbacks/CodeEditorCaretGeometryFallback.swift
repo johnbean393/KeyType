@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import AutocompleteCore
 import CoreGraphics
 import Foundation
@@ -13,6 +14,8 @@ enum CodeEditorCaretGeometryFallback: AppCaretGeometryFallback {
     static func caretGeometry(
         target: AppTarget,
         beforeCursor: String,
+        afterCursor: String,
+        element: AXUIElement?,
         fieldRect: CGRect?,
         current: CapturedCaretGeometry
     ) -> CapturedCaretGeometry? {

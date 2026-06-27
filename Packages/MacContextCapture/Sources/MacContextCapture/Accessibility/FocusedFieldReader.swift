@@ -44,6 +44,7 @@ public struct FocusedFieldSnapshot: Equatable {
 @MainActor
 public struct FocusedFieldReader {
     private static let appCaretGeometryFallbacks: [any AppCaretGeometryFallback.Type] = [
+        MessagesRichPreviewCaretGeometryFallback.self,
         CodeEditorCaretGeometryFallback.self
     ]
 
@@ -129,8 +130,10 @@ public struct FocusedFieldReader {
             fieldRect: fieldRect
         )
         let resolvedCaret = Self.resolvedCaretGeometry(
+            element: textElement,
             target: target,
             beforeCursor: split.beforeCursor,
+            afterCursor: split.afterCursor,
             fieldRect: fieldRect,
             current: CapturedCaretGeometry(caretGeometry),
             repairLineMismatchedCaret: traits.isWebField
@@ -340,8 +343,10 @@ public struct FocusedFieldReader {
     }
 
     private static func resolvedCaretGeometry(
+        element: AXUIElement,
         target: AppTarget,
         beforeCursor: String,
+        afterCursor: String,
         fieldRect: CGRect?,
         current: CapturedCaretGeometry,
         repairLineMismatchedCaret: Bool
@@ -351,6 +356,8 @@ public struct FocusedFieldReader {
             if let override = fallback.caretGeometry(
                 target: target,
                 beforeCursor: beforeCursor,
+                afterCursor: afterCursor,
+                element: element,
                 fieldRect: fieldRect,
                 current: current
             ) {

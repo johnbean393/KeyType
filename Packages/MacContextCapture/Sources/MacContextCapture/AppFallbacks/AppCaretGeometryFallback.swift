@@ -1,4 +1,5 @@
 import AutocompleteCore
+import ApplicationServices
 import CoreGraphics
 
 struct CapturedCaretGeometry: Equatable {
@@ -25,6 +26,8 @@ protocol AppCaretGeometryFallback {
     static func caretGeometry(
         target: AppTarget,
         beforeCursor: String,
+        afterCursor: String,
+        element: AXUIElement?,
         fieldRect: CGRect?,
         current: CapturedCaretGeometry
     ) -> CapturedCaretGeometry?
