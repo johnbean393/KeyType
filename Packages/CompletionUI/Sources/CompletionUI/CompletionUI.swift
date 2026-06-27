@@ -350,17 +350,20 @@ public struct CapsuleCompletionView: View {
     public var font: NSFont
     public var horizontalPadding: CGFloat
     public var verticalPadding: CGFloat
+    public var textColor: NSColor
 
     public init(
         text: String,
         font: NSFont = .systemFont(ofSize: NSFont.systemFontSize),
         horizontalPadding: CGFloat = CapsuleCompletionView.defaultHorizontalPadding,
-        verticalPadding: CGFloat = CapsuleCompletionView.defaultVerticalPadding
+        verticalPadding: CGFloat = CapsuleCompletionView.defaultVerticalPadding,
+        textColor: NSColor = .labelColor
     ) {
         self.text = text
         self.font = font
         self.horizontalPadding = horizontalPadding
         self.verticalPadding = verticalPadding
+        self.textColor = textColor
     }
 
     public static let defaultHorizontalPadding: CGFloat = 10
@@ -376,7 +379,7 @@ public struct CapsuleCompletionView: View {
                 )
             Text(text)
                 .font(Font(font as CTFont))
-                .foregroundStyle(Color(nsColor: .labelColor))
+                .foregroundStyle(Color(nsColor: textColor))
                 .lineLimit(1)
                 .fixedSize()
                 .padding(.horizontal, horizontalPadding)
@@ -461,12 +464,15 @@ public struct AnchoredCorrectionView: View {
                         x: lineRect.midX,
                         y: proxy.size.height - lineRect.midY
                     )
-                Text(replacement)
-                    .font(Font(font as CTFont))
-                    .foregroundStyle(Color(nsColor: .systemGreen))
-                    .shadow(color: Color(nsColor: .textBackgroundColor).opacity(0.8), radius: 0.8, x: 0, y: 0)
-                    .lineLimit(1)
-                    .fixedSize()
+                CapsuleCompletionView(
+                    text: replacement,
+                    font: font,
+                    horizontalPadding: CapsuleCompletionView.defaultHorizontalPadding,
+                    verticalPadding: CapsuleCompletionView.defaultVerticalPadding,
+                    textColor: .systemGreen
+                )
+                    .shadow(color: Color.black.opacity(0.18), radius: 5, x: 0, y: 2)
+                    .frame(width: replacementRect.width, height: replacementRect.height)
                     .position(
                         x: replacementRect.midX,
                         y: proxy.size.height - replacementRect.midY

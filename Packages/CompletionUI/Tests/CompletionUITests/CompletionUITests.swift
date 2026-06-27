@@ -114,7 +114,7 @@ final class CompletionUITests: XCTestCase {
     }
 
     @MainActor
-    func testAnchoredCorrectionPlacesReplacementBesideWord() {
+    func testAnchoredCorrectionPlacesReplacementCapsuleBelowCaret() {
         let font = NSFont.systemFont(ofSize: 14)
         let word = CGRect(x: 80, y: 100, width: 46, height: 18)
         let placement = OverlayPlacement(
@@ -131,11 +131,14 @@ final class CompletionUITests: XCTestCase {
         )
 
         XCTAssertEqual(layout.lineRect.minX + layout.frame.minX, word.minX, accuracy: 0.5)
-        XCTAssertGreaterThan(layout.replacementRect.minX + layout.frame.minX, word.maxX)
+        let replacement = layout.replacementRect.offsetBy(dx: layout.frame.minX, dy: layout.frame.minY)
+        XCTAssertLessThan(replacement.maxY, placement.cursorRect.minY)
+        XCTAssertEqual(replacement.midX, placement.cursorRect.midX, accuracy: 0.5)
+        XCTAssertGreaterThan(replacement.height, layout.lineHeight)
     }
 
     @MainActor
-    func testAnchoredCorrectionFallsBelowWhenInlineWouldOverflow() {
+    func testAnchoredCorrectionCapsuleClampsToFieldWidth() {
         let font = NSFont.systemFont(ofSize: 14)
         let word = CGRect(x: 320, y: 120, width: 50, height: 18)
         let field = CGRect(x: 40, y: 80, width: 340, height: 90)
@@ -153,7 +156,7 @@ final class CompletionUITests: XCTestCase {
         )
         let replacement = layout.replacementRect.offsetBy(dx: layout.frame.minX, dy: layout.frame.minY)
 
-        XCTAssertLessThan(replacement.maxY, word.minY)
+        XCTAssertLessThan(replacement.maxY, placement.cursorRect.minY)
         XCTAssertGreaterThanOrEqual(replacement.minX, field.minX)
         XCTAssertLessThanOrEqual(replacement.maxX, field.maxX)
     }

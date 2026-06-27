@@ -133,6 +133,7 @@ row here.**
 | 111 | Treat grammar validation as a model veto, not spellcheck reranking | correction/grammar |
 | 112 | Use system grammar checking for grammar candidate generation | correction/grammar |
 | 113 | Route prefix-only spellcheck replacements to completion | correction/completion |
+| 114 | Lower spellcheck correction model margin | correction/model-runtime |
 
 ---
 
@@ -3560,3 +3561,17 @@ text. Both are now closed:
 - Consequences: True typo edits such as `displayd` -> `displayed` and `suggestionss` ->
   `suggestions` remain eligible for correction, while incomplete words that only need appended
   characters are no longer rendered as red/green correction overlays.
+
+## ADR-114 — Lower spellcheck correction model margin
+
+- Date: 2026-06-28
+- Status: accepted
+- Context: Spellcheck can identify clear typo fixes such as `pankakes` -> `pancakes`, but the local
+  model reranker suppressed them when the top spellcheck candidates were close together. That made
+  the correction lane too brittle for ordinary misspellings even though absolute likelihood,
+  original-veto, suffix-join, dictionary, and edit-distance gates still applied.
+- Decision: Lower the default spellcheck candidate margin from `0.35` to `0.20`, and lower the
+  aggressive-corrections margin from `0.25` to `0.12`. Keep all other validation gates unchanged.
+- Consequences: More close-runner-up spelling corrections can be shown, while implausible
+  replacements are still suppressed by the absolute model score, original preference veto, suffix
+  join check, and spellcheck candidate gates.

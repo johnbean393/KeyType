@@ -30,7 +30,6 @@ public final class GhostTextOverlayWindow {
     static let correctionBadgeHorizontalPadding: CGFloat = 8
     static let correctionBadgeVerticalPadding: CGFloat = 4
     static let correctionBadgeInterItemSpacing: CGFloat = 6
-    static let anchoredCorrectionGap: CGFloat = 6
     static let anchoredCorrectionPadding: CGFloat = 3
 
     public nonisolated init() {}
@@ -520,31 +519,26 @@ public final class GhostTextOverlayWindow {
         font: NSFont,
         placement: OverlayPlacement
     ) -> AnchoredCorrectionLayout {
+        let caret = placement.cursorRect
         let fontLineHeight = ceil(font.ascender - font.descender)
         let lineHeight = max(trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
-        let replacementWidth = ceil(measuredWidth(replacement, font: font)) + 3
-        let replacementHeight = lineHeight
+        let replacementWidth = ceil(measuredWidth(replacement, font: font)) + capsuleHorizontalPadding * 2
+        let replacementHeight = lineHeight + capsuleVerticalPadding * 2
         let field = placement.fieldRect
-        let gap = anchoredCorrectionGap
+        let gap = capsuleGapBelowCaret
 
         var replacementRect = CGRect(
-            x: placement.isRightToLeft ? wordRect.minX - gap - replacementWidth : wordRect.maxX + gap,
-            y: wordRect.minY + (wordRect.height - replacementHeight) / 2,
+            x: caret.midX - replacementWidth / 2,
+            y: caret.minY - gap - replacementHeight,
             width: replacementWidth,
             height: replacementHeight
         )
 
         if let field, !field.isEmpty {
-            let fitsInline = placement.isRightToLeft
-                ? replacementRect.minX >= field.minX
-                : replacementRect.maxX <= field.maxX
-            if !fitsInline {
-                let belowY = wordRect.minY - gap - replacementHeight
-                let centeredX = wordRect.midX - replacementWidth / 2
-                replacementRect.origin = CGPoint(
-                    x: min(max(centeredX, field.minX), max(field.minX, field.maxX - replacementWidth)),
-                    y: max(field.minY, belowY)
-                )
+            if replacementWidth >= field.width {
+                replacementRect.origin.x = field.minX
+            } else {
+                replacementRect.origin.x = min(max(replacementRect.minX, field.minX), field.maxX - replacementWidth)
             }
         }
 

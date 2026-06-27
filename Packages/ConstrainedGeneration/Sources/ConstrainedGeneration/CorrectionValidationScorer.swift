@@ -10,7 +10,7 @@ public struct CorrectionValidationThresholds: Equatable, Sendable {
 
     public init(
         minimumMeanLogProbability: Double = -6.0,
-        minimumMargin: Double = 0.35,
+        minimumMargin: Double = 0.20,
         minimumSuffixMeanLogProbability: Double = -7.0,
         priorPredictionConfidence: Double = 0.97
     ) {

@@ -38,6 +38,21 @@ final class CorrectionValidationScorerTests: XCTestCase {
         XCTAssertEqual(result.first?.validation.method, .modelScore)
     }
 
+    func testDefaultMarginAllowsCloseSpellcheckRunnerUp() async throws {
+        let scorer = CorrectionValidationScorer(runtime: Runtime(logitsByPath: [
+            [1]: [makeLogit(10, 3.0), makeLogit(11, 2.76), makeLogit(12, 0)]
+        ]))
+
+        let result = try await scorer.validate(
+            candidates: [makeCandidate("middle"), makeCandidate("muddle")],
+            prefixBeforeWord: "in the "
+        )
+
+        XCTAssertEqual(result.map { $0.replacement }, ["middle"])
+        XCTAssertGreaterThanOrEqual(result.first?.validation.margin ?? 0, 0.20)
+        XCTAssertLessThan(result.first?.validation.margin ?? .infinity, 0.35)
+    }
+
     func testMisspelledOriginalDoesNotVetoClearSingleCandidate() async throws {
         let scorer = CorrectionValidationScorer(runtime: Runtime(logitsByPath: [
             [1]: [makeLogit(10, 4.0), makeLogit(12, 4.4), makeLogit(30, 0)]
