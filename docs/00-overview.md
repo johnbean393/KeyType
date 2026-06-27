@@ -27,8 +27,9 @@ These come straight from the reconstruction research and define the product's ch
    *model-plausible* and *UI-plausible*.
 3. **Base-model continuation, not chat.** The prompt ends exactly at the cursor so the model
   continues the user's text rather than answering as an assistant.
-4. **On-device & private.** Completion runs locally. Clipboard, screen/OCR, and writing-history
-  context are local, optional, and off by default where sensitive.
+4. **On-device & private.** Completion runs locally. Writing-history and clipboard context are
+   local, user-controllable, and on by default; screen/OCR context remains opt-in because it
+   requires Screen Recording.
 5. **App-aware insertion.** A good suggestion still fails if paste/styling/cursor/Tab behavior is
   wrong in the target app. Insertion and overlay are per-app concerns.
 

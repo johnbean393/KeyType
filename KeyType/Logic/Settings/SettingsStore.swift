@@ -4,9 +4,9 @@
 //
 //  User-facing settings backed by UserDefaults: model selection, completion length, per-app
 //  toggles, and the privacy switches that gate sensitive context (writing history, clipboard,
-//  screen/OCR). History/clipboard/OCR default to OFF — KeyType only uses sensitive context the
-//  user has explicitly opted into. The pipeline (CompletionController / WritingHistoryRecorder /
-//  AppCompatibility wiring) reads these; SettingsView writes them. See ADR-023.
+//  screen/OCR). History/clipboard default to ON for fresh installs, while OCR remains OFF because
+//  it requires Screen Recording. The pipeline (CompletionController / WritingHistoryRecorder /
+//  AppCompatibility wiring) reads these; SettingsView writes them. See ADR-023/107.
 //
 
 import AutocompleteCore
@@ -123,12 +123,12 @@ final class SettingsStore {
 
     private let defaults: UserDefaults
 
-    /// Opt-in: persist recent typing locally (encrypted) to personalize completions. OFF by default.
+    /// Persist recent typing locally (encrypted) to personalize completions. ON by default.
     var historyEnabled: Bool {
         didSet { defaults.set(historyEnabled, forKey: Key.historyEnabled) }
     }
 
-    /// Opt-in: include clipboard text in the prompt. OFF by default.
+    /// Include clipboard text in the prompt. ON by default.
     var clipboardEnabled: Bool {
         didSet { defaults.set(clipboardEnabled, forKey: Key.clipboardEnabled) }
     }
@@ -184,8 +184,8 @@ final class SettingsStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.historyEnabled = defaults.bool(forKey: Key.historyEnabled)
-        self.clipboardEnabled = defaults.bool(forKey: Key.clipboardEnabled)
+        self.historyEnabled = Self.bool(defaults, forKey: Key.historyEnabled, defaultValue: true)
+        self.clipboardEnabled = Self.bool(defaults, forKey: Key.clipboardEnabled, defaultValue: true)
         self.ocrEnabled = defaults.bool(forKey: Key.ocrEnabled)
         self.screenshotCalibrationEnabled = defaults.bool(forKey: Key.screenshotCalibrationEnabled)
         self.fullPromptLoggingEnabled = defaults.bool(forKey: Key.fullPromptLoggingEnabled)
@@ -210,6 +210,10 @@ final class SettingsStore {
             labelKey: Key.acceptFullLabel,
             fallback: .defaultAcceptFull
         )
+    }
+
+    private static func bool(_ defaults: UserDefaults, forKey key: String, defaultValue: Bool) -> Bool {
+        defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
     }
 
     func addManualApp(bundleIdentifier: String, name: String) {

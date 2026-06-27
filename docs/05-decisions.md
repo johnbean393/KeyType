@@ -125,6 +125,8 @@ row here.**
 | 103 | Convert screenshot calibration offsets into AppKit coordinates | ui/calibration |
 | 104 | Apply screenshot vertical calibration as a signed overlay correction | ui/calibration |
 | 105 | Add a developer-only placement probe trigger | developer/ui |
+| 106 | Offset Messages caret geometry by captured attachment height | app-compatibility/ui |
+| 107 | Enable history and clipboard context by default | privacy/settings |
 
 ---
 
@@ -3420,3 +3422,21 @@ text. Both are now closed:
   attachments, but are anchored to the typed line rather than the rich preview. The fallback is
   limited to native Messages, single-line append contexts, and tall compose fields, so normal
   compose fields and mid-message editing keep native AX geometry.
+
+## ADR-107 — Enable history and clipboard context by default
+
+- Date: 2026-06-27
+- Status: accepted
+- Context: The Privacy settings exposed writing-history personalization and clipboard context as
+  user-facing switches, but fresh installs initialized both to off. This reduced the app's ability
+  to produce personalized, immediately useful suggestions unless the user found and enabled both
+  toggles manually.
+- Decision: Default `historyEnabled` and `clipboardEnabled` to true only when the corresponding
+  `UserDefaults` key is unset. Preserve explicit saved user choices, including false. Keep
+  screen/OCR and screenshot calibration off by default because they require Screen Recording and
+  have a larger capture surface. Update Settings, onboarding, release notes, and guardrail docs to
+  describe the new posture.
+- Consequences: Fresh installs include local writing history and clipboard text in eligible prompts
+  by default, while users can still disable either switch and clear stored personal data. Sensitive
+  targets remain protected by secure-field exclusion and `AppCompatibility` privacy gates. This
+  intentionally trades stricter opt-in defaults for better out-of-box suggestion quality.

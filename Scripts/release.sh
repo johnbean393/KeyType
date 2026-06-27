@@ -213,14 +213,14 @@ On-device, system-wide tab autocomplete for macOS.
 - Fully on-device prediction with a local LLM (no network calls)
 - Short, cursor-anchored continuations that prefer silence over a wrong guess
 - App-aware insertion and overlay behavior
-- Private by default: clipboard, screen/OCR, and writing-history context are opt-in
+- Private and on-device: writing history and clipboard context are local and user-controllable; screen/OCR is opt-in
 
 ## Requirements
 
 - macOS Sonoma (14.0) or later
 - Apple Silicon Mac recommended for on-device model inference"
 
-    RELEASE_NOTES_HTML="<p>On-device, system-wide tab autocomplete for macOS.</p><h2>Features</h2><ul><li>System-wide ghost-text completions accepted with Tab</li><li>Fully on-device prediction with a local LLM (no network calls)</li><li>Short, cursor-anchored continuations that prefer silence over a wrong guess</li><li>App-aware insertion and overlay behavior</li><li>Private by default: clipboard, screen/OCR, and writing-history context are opt-in</li></ul>"
+    RELEASE_NOTES_HTML="<p>On-device, system-wide tab autocomplete for macOS.</p><h2>Features</h2><ul><li>System-wide ghost-text completions accepted with Tab</li><li>Fully on-device prediction with a local LLM (no network calls)</li><li>Short, cursor-anchored continuations that prefer silence over a wrong guess</li><li>App-aware insertion and overlay behavior</li><li>Private and on-device: writing history and clipboard context are local and user-controllable; screen/OCR is opt-in</li></ul>"
 fi
 
 

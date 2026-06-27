@@ -15,7 +15,8 @@ and iteration. **Read `docs/00-overview.md` first.**
 The non-negotiables (full detail in `AGENTS.md`):
 
 - **Prefer suppression to a wrong suggestion**; predict a *short* base-model continuation that
-  ends exactly at the cursor; keep it on-device and private (clipboard/OCR/history opt-in).
+  ends exactly at the cursor; keep it on-device and private (history/clipboard local and
+  user-controllable; OCR opt-in).
 - **Extend the existing module graph; do not rewrite it.** Cross-module types go in
   `AutocompleteCore` (no AppKit/llama deps); the app target is the only wiring layer.
 - Generation is cancellable; model decode runs off the main actor; AX + overlay code is `@MainActor`.

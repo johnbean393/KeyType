@@ -15,7 +15,8 @@ maintenance playbooks (quality, performance, app compatibility). Log non-obvious
   immediately insertable.
 - **Prefer suppression to a wrong suggestion** — showing nothing beats a bad completion.
 - Base-model continuation: the prompt ends exactly at the cursor (not chat/instruct).
-- On-device & private: clipboard, screen/OCR, and writing history are local and opt-in.
+- On-device & private: writing history and clipboard context are local, user-controllable, and on
+  by default; screen/OCR remains opt-in.
 
 ## Architecture
 - Target: macOS 14+, Swift. Logic lives in local SwiftPM packages under `Packages/`.

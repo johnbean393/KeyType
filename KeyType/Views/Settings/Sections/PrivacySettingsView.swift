@@ -22,7 +22,7 @@ struct PrivacySettingsView: View {
                 Toggle(isOn: $settings.historyEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Personalize from my writing history")
-                        Text("Stores recent typing locally (encrypted) to improve suggestions. Off by default.")
+                        Text("Stores recent typing locally (encrypted) to improve suggestions. On by default.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -30,7 +30,7 @@ struct PrivacySettingsView: View {
                 Toggle(isOn: $settings.clipboardEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Use clipboard as context")
-                        Text("Includes clipboard text in the prompt. Off by default.")
+                        Text("Includes clipboard text in the prompt. On by default.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

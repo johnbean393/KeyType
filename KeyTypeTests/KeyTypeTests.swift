@@ -113,6 +113,32 @@ struct KeyTypeTests {
         #expect(!reloaded.isAppEnabled("com.example.MenuBar"))
     }
 
+    @Test @MainActor func freshPrivacyDefaultsEnableHistoryAndClipboardOnly() {
+        let (defaults, suiteName) = Self.temporaryDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = SettingsStore(defaults: defaults)
+
+        #expect(store.historyEnabled)
+        #expect(store.clipboardEnabled)
+        #expect(!store.ocrEnabled)
+        #expect(!store.screenshotCalibrationEnabled)
+    }
+
+    @Test @MainActor func privacyDefaultsPreserveExplicitUserChoices() {
+        let (defaults, suiteName) = Self.temporaryDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = SettingsStore(defaults: defaults)
+        store.historyEnabled = false
+        store.clipboardEnabled = false
+
+        let reloaded = SettingsStore(defaults: defaults)
+
+        #expect(!reloaded.historyEnabled)
+        #expect(!reloaded.clipboardEnabled)
+    }
+
     @Test @MainActor func promptCustomInstructionsAppendOSDerivedBritishEnglishAfterAppInstructions() {
         let (defaults, suiteName) = Self.temporaryDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }

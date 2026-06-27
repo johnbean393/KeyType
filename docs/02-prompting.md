@@ -116,8 +116,9 @@ a local DB; keep it on-device and optional):
 a token budget. Tunables to expose: fetch size, minimum characters, longest-count,
 most-recent-count, cross-app-recent-count, token budget, same-app-only flag.
 
-Privacy: history, clipboard, and OCR are **opt-in**, never leave the device, and are skipped for
-password fields and apps flagged sensitive in `AppCompatibility`.
+Privacy: history and clipboard are local and user-controllable, OCR remains **opt-in**, all three
+never leave the device, and all are skipped for password fields and apps flagged sensitive in
+`AppCompatibility`.
 
 ## Reconstructed prompt skeleton (original wording — tune freely)
 

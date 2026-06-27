@@ -235,7 +235,7 @@ struct OnboardingView: View {
         @Bindable var settings = settings
         StepHeader(
             title: "Privacy",
-            subtitle: "These context sources are off by default. Turn on only what you're comfortable with — everything stays on this device."
+            subtitle: "Writing history and clipboard context start on. Turn off anything you're not comfortable with — everything stays on this device."
         )
         VStack(spacing: 10) {
             ToggleCard(

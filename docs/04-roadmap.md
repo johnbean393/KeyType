@@ -220,7 +220,7 @@ same-app + a few cross-app recents under a token budget.
 the controller; `ThresholdTuner` applies bounded nudges to the decoder's relative-cutoff and
 min-branch-probability at engine build.
 - ✅ Settings UI (`SettingsView`/`SettingsStore`): model selection, completion length, per-app
-toggles, and privacy switches (history/clipboard/OCR **off by default**) with a one-action
+toggles, and privacy switches (history/clipboard on by default; OCR off by default) with a one-action
 "Clear all personal data". Per-app disables layer onto `AppCompatibility`.
 - ⬜ Autocorrect/typo mode (separate from completion) — **deferred** (ADR-023); the in-beam typo
 guard (ADR-015) covers the worst case for now.
@@ -274,4 +274,3 @@ commitment.
 
 ### Packaging & distribution
 - Code signing, notarization, and a release/update story for shipping builds to users.
-
