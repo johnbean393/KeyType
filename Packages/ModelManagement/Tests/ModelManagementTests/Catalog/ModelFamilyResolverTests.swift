@@ -13,9 +13,20 @@ final class ModelFamilyResolverTests: XCTestCase {
     }
 
     func testGemmaCatalogEntryUsesGemmaFamily() {
-        let gemma = RuntimeModelCatalog.models.first { $0.displayName == "Gemma 4 E2B" }
+        let gemma = RuntimeModelCatalog.allModels.first { $0.displayName == "Gemma 4 E2B" }
         let family = ModelFamilyResolver.family(forFilename: gemma!.filename, vocabSize: 1)
         XCTAssertEqual(family, RuntimeModelCatalog.gemmaFamily)
+    }
+
+    func testLFM25CatalogEntryUsesLFM25FamilyEvenWhenHardwareFilteredOut() {
+        let lowMemoryCatalog = RuntimeModelCatalog.models(forPhysicalMemoryBytes: 8 * 1_073_741_824)
+        XCTAssertFalse(lowMemoryCatalog.contains { $0.filename == "LFM2.5-8B-A1B-Base-Q4_K_M.gguf" })
+
+        let family = ModelFamilyResolver.family(
+            forFilename: "LFM2.5-8B-A1B-Base-Q4_K_M.gguf",
+            vocabSize: 1
+        )
+        XCTAssertEqual(family, RuntimeModelCatalog.lfm25Family)
     }
 
     func testUnknownModelDerivesFamilyFromNameAndVocab() {

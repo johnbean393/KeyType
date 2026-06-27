@@ -32,6 +32,8 @@ public struct DownloadableRuntimeModel: Identifiable, Equatable, Sendable {
     public let sha256: String?
     public let downloadURL: URL?
     public let availability: Availability
+    /// Minimum physical memory required for this model to appear in the guided catalog.
+    public let minimumPhysicalMemoryBytes: UInt64?
 
     public init(
         displayName: String,
@@ -42,7 +44,8 @@ public struct DownloadableRuntimeModel: Identifiable, Equatable, Sendable {
         expectedSizeBytes: Int64?,
         sha256: String?,
         downloadURL: URL?,
-        availability: Availability
+        availability: Availability,
+        minimumPhysicalMemoryBytes: UInt64? = nil
     ) {
         self.id = filename
         self.displayName = displayName
@@ -54,6 +57,7 @@ public struct DownloadableRuntimeModel: Identifiable, Equatable, Sendable {
         self.sha256 = sha256
         self.downloadURL = downloadURL
         self.availability = availability
+        self.minimumPhysicalMemoryBytes = minimumPhysicalMemoryBytes
     }
 
     /// `true` only when the entry has a real download URL and has been marked available.
