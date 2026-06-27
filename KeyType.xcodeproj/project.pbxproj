@@ -31,6 +31,8 @@
 		4B5450012FC9600000000043 /* CompletionAcceptanceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */; };
 		4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000044 /* FieldFontResolver.swift */; };
 		4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000046 /* SystemWordRecognizer.swift */; };
+		4B5450012FC9600000000501 /* CorrectionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000500 /* CorrectionController.swift */; };
+		4B5450012FC9600000000503 /* SystemSpellcheckCorrectionDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000502 /* SystemSpellcheckCorrectionDetector.swift */; };
 		4B5450012FC9600000000051 /* LlamaModelRuntime in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000050 /* LlamaModelRuntime */; };
 		4B5450012FC9600000000055 /* PredictionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000054 /* PredictionLog.swift */; };
 		4B5450012FC9600000000062 /* Personalization in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000061 /* Personalization */; };
@@ -107,6 +109,8 @@
 		4B5450012FC9600000000042 /* CompletionAcceptanceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionAcceptanceController.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000044 /* FieldFontResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldFontResolver.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000046 /* SystemWordRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemWordRecognizer.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000500 /* CorrectionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorrectionController.swift; sourceTree = "<group>"; };
+		4B5450012FC9600000000502 /* SystemSpellcheckCorrectionDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemSpellcheckCorrectionDetector.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000049 /* KeyType.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeyType.entitlements; sourceTree = "<group>"; };
 		4B5450012FC9600000000054 /* PredictionLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictionLog.swift; sourceTree = "<group>"; };
 		4B5450012FC9600000000063 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
@@ -271,6 +275,7 @@
 				4B5450012FC960000000000B /* KeyTypeModuleGraph.swift */,
 				4B5450012FC9600000000100 /* Completion */,
 				4B5450012FC9600000000101 /* Context */,
+				4B5450012FC9600000000504 /* Correction */,
 				4B5450012FC9600000000402 /* Developer */,
 				4B5450012FC9600000000102 /* Models */,
 				4B5450012FC96000000000C0 /* Permission */,
@@ -313,6 +318,15 @@
 				4B5450012FC96000000000B1 /* ScreenContextController.swift */,
 			);
 			path = Context;
+			sourceTree = "<group>";
+		};
+		4B5450012FC9600000000504 /* Correction */ = {
+			isa = PBXGroup;
+			children = (
+				4B5450012FC9600000000500 /* CorrectionController.swift */,
+				4B5450012FC9600000000502 /* SystemSpellcheckCorrectionDetector.swift */,
+			);
+			path = Correction;
 			sourceTree = "<group>";
 		};
 		4B5450012FC9600000000102 /* Models */ = {
@@ -639,6 +653,8 @@
 				4B5450012FC9600000000043 /* CompletionAcceptanceController.swift in Sources */,
 				4B5450012FC9600000000045 /* FieldFontResolver.swift in Sources */,
 				4B5450012FC9600000000047 /* SystemWordRecognizer.swift in Sources */,
+				4B5450012FC9600000000501 /* CorrectionController.swift in Sources */,
+				4B5450012FC9600000000503 /* SystemSpellcheckCorrectionDetector.swift in Sources */,
 				4B5450012FC9600000000311 /* FullPromptLog.swift in Sources */,
 				4B5450012FC9600000000401 /* DeveloperOverrideController.swift in Sources */,
 				4B5450012FC9600000000404 /* DeveloperOverridePanelController.swift in Sources */,

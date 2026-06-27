@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let developerOverrides: DeveloperOverrideController
     let screenContext: ScreenContextController
     let completion: CompletionController
+    let correction: CorrectionController
     let historyRecorder: WritingHistoryRecorder
     private let acceptance = CompletionAcceptanceController()
     private lazy var developerOverridePanel = DeveloperOverridePanelController(
@@ -100,6 +101,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             telemetry: telemetry,
             compatibilityStore: compatibilityStore
         )
+        self.correction = CorrectionController(
+            tracker: tracker,
+            settings: settings,
+            telemetry: telemetry,
+            compatibilityStore: compatibilityStore
+        )
         self.historyRecorder = WritingHistoryRecorder(
             tracker: tracker,
             store: history,
@@ -107,7 +114,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             compatibilityStore: compatibilityStore
         )
         super.init()
+        completion.shouldSuppressForCorrection = { [weak correction] context in
+            correction?.shouldSuppressCompletion(for: context) ?? false
+        }
+        correction.validateWithModel = { [weak completion] candidates, target, context in
+            guard let completion else { return [] }
+            return try await completion.validateCorrectionCandidates(candidates, target: target, context: context)
+        }
+        correction.onWillShowCorrection = { [weak completion] context in
+            completion?.suppressVisibleCompletionForCorrection(context: context)
+        }
+        correction.onCorrectionAccepted = { [weak completion] in
+            completion?.refreshAfterCorrectionAccepted()
+        }
         acceptance.completionController = completion
+        acceptance.correctionController = correction
         acceptance.settings = settings
         // When a model finishes setup (GGUF + ACPF both present), make it the selected model and
         // reload the engine so the change takes effect without a relaunch.
@@ -229,12 +250,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !isPresentingOpenPanel else { return }
         if permissions.accessibility.isGranted {
             contextCapture.start()
+            correction.start()
             completion.start()
             historyRecorder.start()
             acceptance.start()
         } else {
             contextCapture.stop()
             completion.stop()
+            correction.stop()
             historyRecorder.stop()
             acceptance.stop()
         }

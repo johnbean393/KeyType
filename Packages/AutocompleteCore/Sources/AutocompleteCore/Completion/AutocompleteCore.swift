@@ -54,7 +54,7 @@ public struct TextFieldGeometry: Equatable {
     }
 }
 
-public enum CaretGeometryQuality: String, Equatable {
+public enum CaretGeometryQuality: String, Equatable, Sendable {
     case exact
     case derived
     case estimated
@@ -126,6 +126,106 @@ public enum CompletionMode: Equatable {
     case terminal
     case emoji
     case correction
+}
+
+public struct TextRangeDescriptor: Equatable, Sendable {
+    public enum Container: String, Equatable, Sendable {
+        case beforeCursor
+        case afterCursor
+    }
+
+    /// Character offsets in the selected text container. V1 intentionally stays string-index based
+    /// inside `beforeCursor` / `afterCursor`; native AX/text-marker identifiers can be layered on
+    /// when exact mid-text replacement lands.
+    public var container: Container
+    public var startOffset: Int
+    public var endOffset: Int
+
+    public init(container: Container, startOffset: Int, endOffset: Int) {
+        self.container = container
+        self.startOffset = max(0, startOffset)
+        self.endOffset = max(self.startOffset, endOffset)
+    }
+
+    public func range(in text: String) -> Range<String.Index>? {
+        guard startOffset <= endOffset,
+              let start = text.index(text.startIndex, offsetBy: startOffset, limitedBy: text.endIndex),
+              let end = text.index(text.startIndex, offsetBy: endOffset, limitedBy: text.endIndex),
+              start <= end else {
+            return nil
+        }
+        return start..<end
+    }
+}
+
+public enum CorrectionCandidateSource: String, Equatable, Sendable {
+    case spellcheckValidatedByModel
+    case spellcheckOnly
+    case priorPrediction
+    case systemGrammarValidatedByModel
+    case systemGrammarOnly
+    case spellcheckThenSystemGrammar
+}
+
+public struct CorrectionValidation: Equatable, Sendable {
+    public enum Method: String, Equatable, Sendable {
+        case none
+        case priorPrediction
+        case modelScore
+    }
+
+    public var method: Method
+    public var absoluteScore: Double?
+    public var margin: Double?
+    public var suffixJoinScore: Double?
+    public var boostedByPriorPrediction: Bool
+    public var suppressionReason: String?
+
+    public init(
+        method: Method = .none,
+        absoluteScore: Double? = nil,
+        margin: Double? = nil,
+        suffixJoinScore: Double? = nil,
+        boostedByPriorPrediction: Bool = false,
+        suppressionReason: String? = nil
+    ) {
+        self.method = method
+        self.absoluteScore = absoluteScore
+        self.margin = margin
+        self.suffixJoinScore = suffixJoinScore
+        self.boostedByPriorPrediction = boostedByPriorPrediction
+        self.suppressionReason = suppressionReason
+    }
+
+    public static let spellcheckOnly = CorrectionValidation(method: .none)
+}
+
+public struct CorrectionCandidate: Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var original: String
+    public var replacement: String
+    public var originalRange: TextRangeDescriptor
+    public var confidence: Double
+    public var source: CorrectionCandidateSource
+    public var validation: CorrectionValidation
+
+    public init(
+        id: UUID = UUID(),
+        original: String,
+        replacement: String,
+        originalRange: TextRangeDescriptor,
+        confidence: Double,
+        source: CorrectionCandidateSource,
+        validation: CorrectionValidation
+    ) {
+        self.id = id
+        self.original = original
+        self.replacement = replacement
+        self.originalRange = originalRange
+        self.confidence = confidence
+        self.source = source
+        self.validation = validation
+    }
 }
 
 public struct CompletionRequest: Equatable {
@@ -211,6 +311,10 @@ public protocol ContextProviding {
 
 public protocol CompletionGenerating {
     func completions(for request: CompletionRequest) async throws -> [CompletionCandidate]
+}
+
+public protocol CorrectionDetecting {
+    func correctionCandidates(for context: TextFieldContext) async throws -> [CorrectionCandidate]
 }
 
 public protocol CandidateFiltering {

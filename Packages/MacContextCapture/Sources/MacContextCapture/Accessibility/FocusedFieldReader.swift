@@ -209,7 +209,7 @@ public struct FocusedFieldReader {
             || role == "AXDocument"
     }
 
-    private static func textElement(
+    static func textElement(
         for element: AXUIElement,
         preferDescendantTextElement: Bool = false
     ) -> AXUIElement? {

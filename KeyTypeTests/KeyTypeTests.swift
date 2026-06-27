@@ -61,6 +61,104 @@ struct KeyTypeTests {
         #expect(CompletionController.adaptiveDebounceNanoseconds(lastGenerationLatencyMs: nil) == 25_000_000)
     }
 
+    @Test @MainActor func correctionSuffixWindowIgnoresLeadingPunctuation() {
+        #expect(CompletionController.correctionSuffixWindow(from: " , they are shown") == "")
+        #expect(CompletionController.correctionSuffixWindow(from: ", they are shown") == "")
+    }
+
+    @Test @MainActor func correctionSuffixWindowCapsNormalTextSuffix() {
+        #expect(CompletionController.correctionSuffixWindow(from: " are displayed, they are shown in the field") == " are displayed, they are shown ")
+    }
+
+    @Test @MainActor func systemGrammarDetectorUsesNSSpellCheckerCorrections() {
+        let context = TextFieldContext(
+            beforeCursor: "These popsicles is",
+            afterCursor: " delicious!",
+            target: Self.target,
+            detectedLanguage: "en"
+        )
+
+        let candidates = SystemGrammarCorrectionDetector().correctionCandidates(for: context)
+
+        #expect(candidates.contains {
+            $0.original == "is"
+                && $0.replacement == "are"
+                && $0.originalRange == TextRangeDescriptor(container: .beforeCursor, startOffset: 16, endOffset: 18)
+                && $0.source == .systemGrammarOnly
+        })
+    }
+
+    @Test @MainActor func systemGrammarDetectorDoesNotInventUnsupportedCorrections() {
+        let context = TextFieldContext(
+            beforeCursor: "The result is delicious",
+            afterCursor: ".",
+            target: Self.target,
+            detectedLanguage: "en"
+        )
+
+        #expect(SystemGrammarCorrectionDetector().correctionCandidates(for: context).isEmpty)
+    }
+
+    @Test @MainActor func spellingCandidateCanComposeThroughSystemGrammar() {
+        let context = TextFieldContext(
+            beforeCursor: "These popsiclse is",
+            afterCursor: " delicious!",
+            target: Self.target,
+            detectedLanguage: "en"
+        )
+        let spelling = CorrectionCandidate(
+            original: "popsiclse",
+            replacement: "popsicles",
+            originalRange: TextRangeDescriptor(container: .beforeCursor, startOffset: 6, endOffset: 15),
+            confidence: 0.9,
+            source: .spellcheckValidatedByModel,
+            validation: CorrectionValidation(method: .modelScore)
+        )
+
+        let candidates = SystemGrammarCorrectionDetector().candidates(afterApplying: spelling, in: context)
+
+        #expect(candidates.contains {
+            $0.original == "popsiclse is"
+                && $0.replacement == "popsicles are"
+                && $0.originalRange == TextRangeDescriptor(container: .beforeCursor, startOffset: 6, endOffset: 18)
+                && $0.source == .spellcheckThenSystemGrammar
+        })
+    }
+
+    @Test @MainActor func spellcheckDetectorKeepsTypoCorrectionsThatChangePriorText() async throws {
+        let displayContext = TextFieldContext(
+            beforeCursor: "The completion suggestions are not being displayd",
+            afterCursor: ".",
+            target: Self.target,
+            detectedLanguage: "en"
+        )
+        let suggestionsContext = TextFieldContext(
+            beforeCursor: "The completion suggestionss",
+            afterCursor: " are not being displayed.",
+            target: Self.target,
+            detectedLanguage: "en"
+        )
+        let detector = SystemSpellcheckCorrectionDetector()
+
+        let displayCandidates = try await detector.detectCorrection(for: displayContext)?.candidates ?? []
+        let suggestionCandidates = try await detector.detectCorrection(for: suggestionsContext)?.candidates ?? []
+
+        #expect(displayCandidates.contains { $0.original == "displayd" && $0.replacement == "displayed" })
+        #expect(suggestionCandidates.contains { $0.original == "suggestionss" && $0.replacement == "suggestions" })
+    }
+
+    @Test @MainActor func spellcheckDetectorSuppressesPrefixOnlyWordCompletion() async throws {
+        let context = TextFieldContext(
+            beforeCursor: "These popsicles are deliciou",
+            target: Self.target,
+            detectedLanguage: "en"
+        )
+
+        let detection = try await SystemSpellcheckCorrectionDetector().detectCorrection(for: context)
+
+        #expect(detection == nil)
+    }
+
     @Test @MainActor func caretDebugOverlaySnapshotUsesCapturedFieldGeometry() {
         let caret = CGRect(x: 42, y: 20, width: 2, height: 18)
         let field = CGRect(x: 10, y: 10, width: 100, height: 36)

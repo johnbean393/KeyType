@@ -104,6 +104,14 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
     /// End-to-end (AX-snapshot → on-screen) latency, with per-phase breakdown plus raw samples for
     /// the Statistics histogram. Recorded only for completions that were shown. See ADR-070.
     public var endToEnd: EndToEndLatencyStats
+    public var correctionsDetectedCount: Int
+    public var correctionsShownCount: Int
+    public var correctionsAcceptedCount: Int
+    public var correctionsDismissedCount: Int
+    public var correctionsReplacementFailureCount: Int
+    public var correctionSuppressionReasons: [String: Int]
+    public var correctionValidationLatencyMillisP50: Double
+    public var correctionValidationLatencyMillisP95: Double
 
     public init(
         generatedCount: Int = 0,
@@ -113,7 +121,15 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
         latencyMillisP50: Double = 0,
         latencyMillisP95: Double = 0,
         latencySampleCount: Int = 0,
-        endToEnd: EndToEndLatencyStats = EndToEndLatencyStats()
+        endToEnd: EndToEndLatencyStats = EndToEndLatencyStats(),
+        correctionsDetectedCount: Int = 0,
+        correctionsShownCount: Int = 0,
+        correctionsAcceptedCount: Int = 0,
+        correctionsDismissedCount: Int = 0,
+        correctionsReplacementFailureCount: Int = 0,
+        correctionSuppressionReasons: [String: Int] = [:],
+        correctionValidationLatencyMillisP50: Double = 0,
+        correctionValidationLatencyMillisP95: Double = 0
     ) {
         self.generatedCount = generatedCount
         self.shownCount = shownCount
@@ -123,6 +139,14 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
         self.latencyMillisP95 = latencyMillisP95
         self.latencySampleCount = latencySampleCount
         self.endToEnd = endToEnd
+        self.correctionsDetectedCount = correctionsDetectedCount
+        self.correctionsShownCount = correctionsShownCount
+        self.correctionsAcceptedCount = correctionsAcceptedCount
+        self.correctionsDismissedCount = correctionsDismissedCount
+        self.correctionsReplacementFailureCount = correctionsReplacementFailureCount
+        self.correctionSuppressionReasons = correctionSuppressionReasons
+        self.correctionValidationLatencyMillisP50 = correctionValidationLatencyMillisP50
+        self.correctionValidationLatencyMillisP95 = correctionValidationLatencyMillisP95
     }
 
     /// Accepted / shown. 0 when nothing has been shown yet.
@@ -183,6 +207,13 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
         var suppressionReasons: [String: Int] = [:]
         var latenciesMillis: [Double] = []
         var endToEndSamples: [CompletionLatencySample] = []
+        var correctionsDetectedCount = 0
+        var correctionsShownCount = 0
+        var correctionsAcceptedCount = 0
+        var correctionsDismissedCount = 0
+        var correctionsReplacementFailureCount = 0
+        var correctionSuppressionReasons: [String: Int] = [:]
+        var correctionValidationLatenciesMillis: [Double] = []
 
         init() {}
 
@@ -198,6 +229,13 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
             suppressionReasons = try container.decodeIfPresent([String: Int].self, forKey: .suppressionReasons) ?? [:]
             latenciesMillis = try container.decodeIfPresent([Double].self, forKey: .latenciesMillis) ?? []
             endToEndSamples = try container.decodeIfPresent([CompletionLatencySample].self, forKey: .endToEndSamples) ?? []
+            correctionsDetectedCount = try container.decodeIfPresent(Int.self, forKey: .correctionsDetectedCount) ?? 0
+            correctionsShownCount = try container.decodeIfPresent(Int.self, forKey: .correctionsShownCount) ?? 0
+            correctionsAcceptedCount = try container.decodeIfPresent(Int.self, forKey: .correctionsAcceptedCount) ?? 0
+            correctionsDismissedCount = try container.decodeIfPresent(Int.self, forKey: .correctionsDismissedCount) ?? 0
+            correctionsReplacementFailureCount = try container.decodeIfPresent(Int.self, forKey: .correctionsReplacementFailureCount) ?? 0
+            correctionSuppressionReasons = try container.decodeIfPresent([String: Int].self, forKey: .correctionSuppressionReasons) ?? [:]
+            correctionValidationLatenciesMillis = try container.decodeIfPresent([Double].self, forKey: .correctionValidationLatenciesMillis) ?? []
         }
     }
 
@@ -209,7 +247,14 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
         "suppressedCount",
         "acceptedCount",
         "suppressionReasons",
-        "latenciesMillis"
+        "latenciesMillis",
+        "correctionsDetectedCount",
+        "correctionsShownCount",
+        "correctionsAcceptedCount",
+        "correctionsDismissedCount",
+        "correctionsReplacementFailureCount",
+        "correctionSuppressionReasons",
+        "correctionValidationLatenciesMillis"
     ]
 
     private let url: URL?
@@ -220,6 +265,7 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
     /// Same bound as decoder-only samples — the Statistics histogram only needs a recent window and
     /// the per-phase percentile sort is O(n log n) on every snapshot read.
     private let maxEndToEndSamples = 500
+    private let maxCorrectionValidationLatencySamples = 500
 
     public static func defaultURL() throws -> URL {
         let support = try FileManager.default.url(
@@ -264,6 +310,40 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
 
     public func recordAccepted() {
         mutate { $0.acceptedCount += 1 }
+    }
+
+    public func recordCorrectionDetected() {
+        mutate { $0.correctionsDetectedCount += 1 }
+    }
+
+    public func recordCorrectionShown() {
+        mutate { $0.correctionsShownCount += 1 }
+    }
+
+    public func recordCorrectionAccepted() {
+        mutate { $0.correctionsAcceptedCount += 1 }
+    }
+
+    public func recordCorrectionDismissed() {
+        mutate { $0.correctionsDismissedCount += 1 }
+    }
+
+    public func recordCorrectionSuppressed(reason: String) {
+        mutate { $0.correctionSuppressionReasons[reason, default: 0] += 1 }
+    }
+
+    public func recordCorrectionValidationLatency(milliseconds: Double) {
+        guard milliseconds.isFinite, milliseconds >= 0 else { return }
+        mutate {
+            $0.correctionValidationLatenciesMillis.append(milliseconds)
+            if $0.correctionValidationLatenciesMillis.count > maxCorrectionValidationLatencySamples {
+                $0.correctionValidationLatenciesMillis.removeFirst($0.correctionValidationLatenciesMillis.count - maxCorrectionValidationLatencySamples)
+            }
+        }
+    }
+
+    public func recordCorrectionReplacementFailure() {
+        mutate { $0.correctionsReplacementFailureCount += 1 }
     }
 
     public func recordLatency(milliseconds: Double) {
@@ -422,6 +502,7 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
     private static func snapshot(from state: State) -> TelemetrySnapshot {
         let latencies = state.latenciesMillis
         let endToEndSamples = state.endToEndSamples
+        let correctionLatencies = state.correctionValidationLatenciesMillis
         return TelemetrySnapshot(
             generatedCount: state.generatedCount,
             shownCount: state.shownCount,
@@ -430,7 +511,15 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
             latencyMillisP50: Self.percentile(latencies, 0.5),
             latencyMillisP95: Self.percentile(latencies, 0.95),
             latencySampleCount: latencies.count,
-            endToEnd: Self.endToEndStats(from: endToEndSamples)
+            endToEnd: Self.endToEndStats(from: endToEndSamples),
+            correctionsDetectedCount: state.correctionsDetectedCount,
+            correctionsShownCount: state.correctionsShownCount,
+            correctionsAcceptedCount: state.correctionsAcceptedCount,
+            correctionsDismissedCount: state.correctionsDismissedCount,
+            correctionsReplacementFailureCount: state.correctionsReplacementFailureCount,
+            correctionSuppressionReasons: state.correctionSuppressionReasons,
+            correctionValidationLatencyMillisP50: Self.percentile(correctionLatencies, 0.5),
+            correctionValidationLatencyMillisP95: Self.percentile(correctionLatencies, 0.95)
         )
     }
 

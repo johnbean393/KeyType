@@ -75,6 +75,27 @@ struct CompletionReuseHistory: Equatable {
         max(0, entryCount - appendEntryCount)
     }
 
+    func priorPredictedReplacement(prefixBeforeWord: String, replacement: String) -> String? {
+        let normalizedReplacement = replacement.lowercased()
+        for snapshot in snapshots.reversed() {
+            guard snapshot.cache.anchorContext.beforeCursor == prefixBeforeWord else { continue }
+            for entry in snapshot.cache.entries {
+                let candidate = entry.anchorText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard candidate.lowercased().hasPrefix(normalizedReplacement) else { continue }
+                let boundaryIndex = candidate.index(
+                    candidate.startIndex,
+                    offsetBy: replacement.count,
+                    limitedBy: candidate.endIndex
+                )
+                guard let boundaryIndex else { continue }
+                if boundaryIndex == candidate.endIndex || !candidate[boundaryIndex].isLetter {
+                    return replacement
+                }
+            }
+        }
+        return nil
+    }
+
     @discardableResult
     mutating func record(_ cache: CompletionPromotionCache) -> Eviction? {
         guard !cache.entries.isEmpty else { return nil }

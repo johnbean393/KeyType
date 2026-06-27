@@ -25,6 +25,7 @@ public struct TargetOverride: Equatable {
     /// and numbers instead of the user's prose. See ADR-017.
     public var environmentContextDisabled: Bool
     public var secureFieldExclusion: Bool
+    public var autocorrectDisabled: Bool
 
     public init(
         bundleIdentifier: String? = nil,
@@ -46,7 +47,8 @@ public struct TargetOverride: Equatable {
         completionMode: CompletionMode? = nil,
         customInstructions: String? = nil,
         environmentContextDisabled: Bool = false,
-        secureFieldExclusion: Bool = false
+        secureFieldExclusion: Bool = false,
+        autocorrectDisabled: Bool = false
     ) {
         self.bundleIdentifier = bundleIdentifier
         self.domain = domain.map(Self.normalizedDomain)
@@ -68,6 +70,7 @@ public struct TargetOverride: Equatable {
         self.customInstructions = customInstructions
         self.environmentContextDisabled = environmentContextDisabled
         self.secureFieldExclusion = secureFieldExclusion
+        self.autocorrectDisabled = autocorrectDisabled
     }
 
     public static func == (lhs: TargetOverride, rhs: TargetOverride) -> Bool {
@@ -93,6 +96,7 @@ public struct TargetOverride: Equatable {
             && lhs.customInstructions == rhs.customInstructions
             && lhs.environmentContextDisabled == rhs.environmentContextDisabled
             && lhs.secureFieldExclusion == rhs.secureFieldExclusion
+            && lhs.autocorrectDisabled == rhs.autocorrectDisabled
     }
 
     public func matches(_ target: AppTarget) -> Bool {

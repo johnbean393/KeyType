@@ -21,6 +21,7 @@ public struct CompletionPolicy: Equatable {
     /// terminals (see `TargetOverride.environmentContextDisabled` / ADR-017).
     public var includesEnvironmentContext: Bool
     public var excludesSecureField: Bool
+    public var autocorrectDisabled: Bool
 
     public init(
         isCompletionEnabled: Bool = true,
@@ -38,7 +39,8 @@ public struct CompletionPolicy: Equatable {
         completionMode: CompletionMode = .prose,
         customInstructions: [String] = [],
         includesEnvironmentContext: Bool = true,
-        excludesSecureField: Bool = false
+        excludesSecureField: Bool = false,
+        autocorrectDisabled: Bool = false
     ) {
         self.isCompletionEnabled = isCompletionEnabled
         self.allowsMidLineCompletion = allowsMidLineCompletion
@@ -56,6 +58,7 @@ public struct CompletionPolicy: Equatable {
         self.customInstructions = customInstructions
         self.includesEnvironmentContext = includesEnvironmentContext
         self.excludesSecureField = excludesSecureField
+        self.autocorrectDisabled = autocorrectDisabled
     }
 
     public static func == (lhs: CompletionPolicy, rhs: CompletionPolicy) -> Bool {
@@ -77,5 +80,6 @@ public struct CompletionPolicy: Equatable {
             && lhs.customInstructions == rhs.customInstructions
             && lhs.includesEnvironmentContext == rhs.includesEnvironmentContext
             && lhs.excludesSecureField == rhs.excludesSecureField
+            && lhs.autocorrectDisabled == rhs.autocorrectDisabled
     }
 }

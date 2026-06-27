@@ -73,6 +73,91 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(resolver.placement(for: context)?.mode, .inline)
     }
 
+    @MainActor
+    func testCorrectionBadgeLayoutPlacesBesideCaretAndClampsToField() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 190, y: 100, width: 2, height: 18),
+            fieldRect: CGRect(x: 0, y: 80, width: 220, height: 60),
+            mode: .correction
+        )
+
+        let layout = GhostTextOverlayWindow.correctionBadgeLayout(
+            original: "mdidle",
+            replacement: "middle",
+            font: font,
+            placement: placement
+        )
+
+        XCTAssertLessThanOrEqual(layout.frame.maxX, 220)
+        XCTAssertLessThan(layout.frame.minY, placement.cursorRect.minY)
+    }
+
+    @MainActor
+    func testCorrectionBadgeLayoutPlacesRTLToLeft() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 160, y: 100, width: 2, height: 18),
+            fieldRect: CGRect(x: 0, y: 80, width: 300, height: 60),
+            mode: .correction,
+            isRightToLeft: true
+        )
+
+        let layout = GhostTextOverlayWindow.correctionBadgeLayout(
+            original: "mdidle",
+            replacement: "middle",
+            font: font,
+            placement: placement
+        )
+
+        XCTAssertLessThanOrEqual(layout.frame.maxX, placement.cursorRect.minX)
+    }
+
+    @MainActor
+    func testAnchoredCorrectionPlacesReplacementBesideWord() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let word = CGRect(x: 80, y: 100, width: 46, height: 18)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 140, y: 100, width: 2, height: 18),
+            fieldRect: CGRect(x: 40, y: 80, width: 360, height: 80),
+            mode: .correction
+        )
+
+        let layout = GhostTextOverlayWindow.anchoredCorrectionLayout(
+            replacement: "middle",
+            wordRect: word,
+            font: font,
+            placement: placement
+        )
+
+        XCTAssertEqual(layout.lineRect.minX + layout.frame.minX, word.minX, accuracy: 0.5)
+        XCTAssertGreaterThan(layout.replacementRect.minX + layout.frame.minX, word.maxX)
+    }
+
+    @MainActor
+    func testAnchoredCorrectionFallsBelowWhenInlineWouldOverflow() {
+        let font = NSFont.systemFont(ofSize: 14)
+        let word = CGRect(x: 320, y: 120, width: 50, height: 18)
+        let field = CGRect(x: 40, y: 80, width: 340, height: 90)
+        let placement = OverlayPlacement(
+            cursorRect: CGRect(x: 372, y: 120, width: 2, height: 18),
+            fieldRect: field,
+            mode: .correction
+        )
+
+        let layout = GhostTextOverlayWindow.anchoredCorrectionLayout(
+            replacement: "replacement",
+            wordRect: word,
+            font: font,
+            placement: placement
+        )
+        let replacement = layout.replacementRect.offsetBy(dx: layout.frame.minX, dy: layout.frame.minY)
+
+        XCTAssertLessThan(replacement.maxY, word.minY)
+        XCTAssertGreaterThanOrEqual(replacement.minX, field.minX)
+        XCTAssertLessThanOrEqual(replacement.maxX, field.maxX)
+    }
+
     func testPlacementUsesNativeBaselineForSingleLineWebField() throws {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore())
         let context = TextFieldContext(

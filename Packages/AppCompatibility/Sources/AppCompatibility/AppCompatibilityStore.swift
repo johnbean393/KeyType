@@ -57,6 +57,9 @@ public struct AppCompatibilityStore {
             if override.environmentContextDisabled {
                 policy.includesEnvironmentContext = false
             }
+            if override.autocorrectDisabled {
+                policy.autocorrectDisabled = true
+            }
 
             policy.insertionRequiresPasteAndMatchStyle = policy.insertionRequiresPasteAndMatchStyle || override.requiresPasteAndMatchStyle
             policy.insertionRequiresNonBreakingSpace = policy.insertionRequiresNonBreakingSpace || override.requiresNonBreakingSpaceWorkaround
@@ -110,6 +113,7 @@ public struct AppCompatibilityStore {
         policy.allowsTabAcceptance = false
         policy.allowsTrainingDataCollection = false
         policy.overlayPreference = .hidden
+        policy.autocorrectDisabled = true
     }
 
     private func applySecureExclusion(to policy: inout CompletionPolicy) {
@@ -119,12 +123,14 @@ public struct AppCompatibilityStore {
         policy.allowsTrainingDataCollection = false
         policy.overlayPreference = .hidden
         policy.customInstructions.removeAll()
+        policy.autocorrectDisabled = true
     }
 
     private func applyTerminalSafety(to policy: inout CompletionPolicy) {
         policy.allowsMidLineCompletion = false
         policy.allowsTabAcceptance = false
         policy.allowsTrainingDataCollection = false
+        policy.autocorrectDisabled = true
         if policy.overlayPreference != .hidden {
             policy.overlayPreference = .textMirror
         }

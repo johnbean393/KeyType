@@ -40,6 +40,21 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         await runtime.shutdown()
     }
 
+    public func validateCorrectionCandidates(
+        _ candidates: [CorrectionCandidate],
+        prefixBeforeWord: String,
+        suffixWindow: String = "",
+        priorPredictionReplacement: String? = nil,
+        thresholds: CorrectionValidationThresholds = CorrectionValidationThresholds()
+    ) async throws -> [CorrectionCandidate] {
+        try await CorrectionValidationScorer(runtime: runtime, thresholds: thresholds).validate(
+            candidates: candidates,
+            prefixBeforeWord: prefixBeforeWord,
+            suffixWindow: suffixWindow,
+            priorPredictionReplacement: priorPredictionReplacement
+        )
+    }
+
     public func completions(for request: CompletionRequest) async throws -> [CompletionCandidate] {
         let policy = compatibilityStore.policy(for: request.context)
         guard policy.isCompletionEnabled else { return [] }

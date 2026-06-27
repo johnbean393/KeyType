@@ -127,6 +127,12 @@ row here.**
 | 105 | Add a developer-only placement probe trigger | developer/ui |
 | 106 | Offset Messages caret geometry by captured attachment height | app-compatibility/ui |
 | 107 | Enable history and clipboard context by default | privacy/settings |
+| 108 | Add autocorrect as a conservative app-owned lane | correction |
+| 109 | Validate corrections through the loaded completion engine | correction/model-runtime |
+| 110 | Compose conservative grammar fixes into correction candidates | correction/grammar |
+| 111 | Treat grammar validation as a model veto, not spellcheck reranking | correction/grammar |
+| 112 | Use system grammar checking for grammar candidate generation | correction/grammar |
+| 113 | Route prefix-only spellcheck replacements to completion | correction/completion |
 
 ---
 
@@ -3440,3 +3446,117 @@ text. Both are now closed:
   by default, while users can still disable either switch and clear stored personal data. Sensitive
   targets remain protected by secure-field exclusion and `AppCompatibility` privacy gates. This
   intentionally trades stricter opt-in defaults for better out-of-box suggestion quality.
+
+## ADR-108 — Add autocorrect as a conservative app-owned lane
+
+- Date: 2026-06-27
+- Status: accepted
+- Context: Autocorrect needs to fix a nearby misspelled word without turning into prose
+  autocomplete. Candidate generation depends on `NSSpellChecker`, which is AppKit-affine, while
+  KeyType's shared packages should remain decoupled from AppKit and from target-app insertion
+  details.
+- Decision: Add shared correction candidate and range types in `AutocompleteCore`, but keep the V1
+  detector and arbitration controller in the app target. The detector only considers the last
+  closed word before the caret, applies strict eligibility and edit-distance gates, and emits
+  spellcheck candidates for a distinct correction overlay and replacement plan. Model-based
+  correction validation is implemented as a separate package component so it can be wired into the
+  lane without making spellcheck or UI depend on the local model.
+- Consequences: The first autocorrect lane favors suppression over risky edits, keeps normal
+  completion suppressed only while a correction is active for that word, and limits insertion to
+  safe before-caret replacement. Exact mid-text AX replacement and word-anchored geometry remain
+  follow-on phases behind the same core range representation and app-compatibility policy flag.
+
+## ADR-109 — Validate corrections through the loaded completion engine
+
+- Date: 2026-06-27
+- Status: accepted
+- Context: Phase V2/V3 autocorrect needs exact range replacement and contextual reranking without
+  turning the correction lane into another autocomplete renderer. The app already owns the loaded
+  local model through `CompletionController`, and the reuse cache already stores recent
+  string-only predictions from the same prefix where a typo may have been typed.
+- Decision: Keep spellcheck candidate generation in the app-owned detector, but route validation
+  through a narrow `ConstrainedGenerationEngine` correction-scoring method. Before scoring, check
+  the completion reuse history for a prior prediction that began with the proposed replacement and
+  use that as a strong local boost. When a correction is validated, explicitly hide the text
+  completion overlay before showing the correction overlay; Tab accepts the correction first. For
+  replacement, prefer exact AX selected-text range replacement with caret restoration, falling back
+  to delete-and-replay only when correction is disabled for exact replacement policy.
+- Consequences: Text completion and correction overlays are mutually exclusive, correction wins
+  after validation, and normal completion is invalidated/refreshed after accepting a fix. Mid-text
+  correction can now be word-anchored when AX/range geometry resolves, while targets with unreliable
+  range replacement can be suppressed through `AppCompatibility.autocorrectDisabled`.
+
+## ADR-110 — Compose conservative grammar fixes into correction candidates
+
+- Date: 2026-06-28
+- Status: accepted
+- Context: A user can type a misspelled word inside a grammatically invalid phrase, for example an
+  article agreement error that only becomes visible after spellcheck proposes the corrected word.
+  The correction lane still needs to behave like a local fix for nearby text, not like prose
+  autocomplete or a broad rewrite system.
+- Decision: Add a local grammar targeting component in `AutocompleteCore` that emits narrow,
+  range-based candidates for high-confidence rules. When spellcheck has candidates, first apply
+  each spelling candidate to a temporary context, run grammar targeting over that corrected text,
+  and compose the spelling and grammar ranges into a single replacement candidate before model
+  validation. Keep English grammar rules explicit and conservative for now, and allow only
+  whitespace-token duplicate-word fixes for non-English languages until language-specific analyzers
+  can supply reliable candidates.
+- Consequences: The UI still displays one correction suggestion and one replacement range, but it
+  can now represent combined fixes such as `a appl` -> `an apple`. Model validation remains the
+  final gate, and composed spellcheck-plus-grammar candidates are prioritized above spelling-only
+  candidates. Broader grammar for Spanish, French, Chinese, Korean, Japanese, and other languages
+  remains a follow-up requiring language-aware tokenization and morphology rather than generic
+  English heuristics.
+
+## ADR-111 — Treat grammar validation as a model veto, not spellcheck reranking
+
+- Date: 2026-06-28
+- Status: accepted
+- Context: Spellcheck candidates often have several plausible alternatives, so they need absolute
+  likelihood and runner-up margin gates. Grammar-rule candidates are narrower local edits, such as
+  `is` -> `are` or `being displays` -> `being displayed`, where the rule already chose the edit
+  and the model's job is to reject contextually implausible fixes. Applying the spellcheck margin
+  gate to grammar-only candidates suppressed valid short substitutions because the model often
+  assigns both original and replacement low absolute scores.
+- Decision: Keep grammar candidate generation conservative, but validate grammar-only candidates
+  by requiring a finite model score, a passing suffix join when suffix text is available, and no
+  strong model preference for the original text. Keep spellcheck and spellcheck-plus-grammar
+  candidates on the stricter spellcheck-style gates.
+- Consequences: Grammar corrections show more reliably for high-confidence local rules while still
+  allowing the model to veto cases where the original is much more plausible or the suffix join is
+  weak. The safety burden stays primarily in the grammar targeter, so new grammar rules need focused
+  negative tests before they are enabled.
+
+## ADR-112 — Use system grammar checking for grammar candidate generation
+
+- Date: 2026-06-28
+- Status: accepted
+- Context: The initial grammar lane used a few handwritten English rules. That does not scale, is
+  hard to make multilingual, and would force KeyType to enumerate grammar mistakes case by case.
+  macOS already exposes structured grammar checking through `NSSpellChecker`, including issue
+  ranges and optional correction strings.
+- Decision: Supersede the handwritten grammar targeter with an app-owned
+  `SystemGrammarCorrectionDetector` that calls `NSSpellChecker.checkGrammar` over the current
+  sentence window. Keep AppKit-dependent grammar candidate generation in the app target, preserve
+  `AutocompleteCore` as shared data types only, and continue to use the local model only to
+  validate/rerank system-provided grammar candidates. If the system grammar checker does not return
+  a correction, KeyType suppresses rather than applying local rule fallbacks.
+- Consequences: Grammar coverage now scales with macOS text checking and user language settings
+  instead of KeyType-specific rule tables. Some mistakes will still not produce suggestions when
+  Apple's grammar checker does not flag them or does not provide corrections, but those misses are
+  preferable to maintaining brittle handwritten grammar logic.
+
+## ADR-113 — Route prefix-only spellcheck replacements to completion
+
+- Date: 2026-06-28
+- Status: accepted
+- Context: `NSSpellChecker` can return a completed word as a spelling guess for an incomplete word,
+  such as `deliciou` -> `delicious`. KeyType's correction UI is for replacements that change
+  already-typed characters, while prefix-only continuations should use the normal ghost-text
+  completion lane.
+- Decision: Filter spellcheck guesses whose replacement starts with the original current word,
+  case-insensitively. If no remaining spellcheck candidate requires changing prior text, suppress
+  the correction lane and let the completion pipeline decide whether to show ghost text.
+- Consequences: True typo edits such as `displayd` -> `displayed` and `suggestionss` ->
+  `suggestions` remain eligible for correction, while incomplete words that only need appended
+  characters are no longer rendered as red/green correction overlays.

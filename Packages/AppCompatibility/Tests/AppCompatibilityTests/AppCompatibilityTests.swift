@@ -345,6 +345,20 @@ final class AppCompatibilityTests: XCTestCase {
         XCTAssertFalse(policy.allowsMidLineCompletion)
     }
 
+    func testOverrideCanDisableAutocorrectOnly() {
+        let target = AppTarget(bundleIdentifier: "com.example.no-correct", appName: "NoCorrect")
+        let context = TextFieldContext(beforeCursor: "in the mdidle ", target: target)
+        let store = AppCompatibilityStore(overrides: [
+            TargetOverride(bundleIdentifier: target.bundleIdentifier, autocorrectDisabled: true)
+        ])
+
+        let policy = store.policy(for: context)
+
+        XCTAssertTrue(policy.isCompletionEnabled)
+        XCTAssertTrue(policy.allowsTabAcceptance)
+        XCTAssertTrue(policy.autocorrectDisabled)
+    }
+
     func testSlackNativeUsesTextMirrorWithoutNativeOffset() {
         let target = AppTarget(bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack")
         let context = TextFieldContext(beforeCursor: "Let's", target: target)

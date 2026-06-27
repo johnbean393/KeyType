@@ -18,6 +18,7 @@ import os
 @MainActor
 final class CompletionAcceptanceController {
     weak var completionController: CompletionController?
+    weak var correctionController: CorrectionController?
     /// Source of the configurable acceptance hotkeys. Read on every matching key-down.
     weak var settings: SettingsStore?
 
@@ -112,6 +113,21 @@ final class CompletionAcceptanceController {
 
         let acceptWord = settings?.acceptWordShortcut ?? .defaultAcceptWord
         let acceptFull = settings?.acceptFullShortcut ?? .defaultAcceptFull
+        let acceptCorrection = settings?.acceptCorrectionShortcut ?? .defaultAcceptCorrection
+
+        let matchesCorrection = acceptCorrection.matches(keyCode: keyCode, flags: flags)
+            || AcceptanceShortcut.defaultAcceptWord.matches(keyCode: keyCode, flags: flags)
+        if matchesCorrection,
+           let controller = correctionController,
+           controller.canAcceptCorrection() {
+            controller.acceptCorrection()
+            return nil
+        }
+
+        if keyCode == 53, let controller = correctionController, controller.hasVisibleCorrection {
+            controller.dismissCorrection()
+            return nil
+        }
 
         // Match the full-acceptance hotkey first: it is typically the same key as accept-word plus a
         // modifier (Shift+Tab vs Tab), so checking the more specific binding first is required.

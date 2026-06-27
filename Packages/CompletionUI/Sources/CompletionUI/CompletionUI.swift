@@ -384,3 +384,95 @@ public struct CapsuleCompletionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+public struct CorrectionBadgeView: View {
+    public var original: String
+    public var replacement: String
+    public var font: NSFont
+
+    public init(
+        original: String,
+        replacement: String,
+        font: NSFont = .systemFont(ofSize: NSFont.systemFontSize)
+    ) {
+        self.original = original
+        self.replacement = replacement
+        self.font = font
+    }
+
+    public var body: some View {
+        HStack(spacing: 6) {
+            Text(original)
+                .font(Font(font as CTFont))
+                .foregroundStyle(Color(nsColor: .systemRed))
+                .strikethrough(true, color: Color(nsColor: .systemRed))
+                .lineLimit(1)
+                .fixedSize()
+            Text("→")
+                .font(Font(font as CTFont))
+                .foregroundStyle(Color(nsColor: .secondaryLabelColor))
+                .lineLimit(1)
+                .fixedSize()
+            Text(replacement)
+                .font(Font(font as CTFont))
+                .foregroundStyle(Color(nsColor: .systemGreen))
+                .lineLimit(1)
+                .fixedSize()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+public struct AnchoredCorrectionView: View {
+    public var replacement: String
+    public var font: NSFont
+    public var lineRect: CGRect
+    public var replacementRect: CGRect
+
+    public init(
+        replacement: String,
+        font: NSFont = .systemFont(ofSize: NSFont.systemFontSize),
+        lineRect: CGRect,
+        replacementRect: CGRect
+    ) {
+        self.replacement = replacement
+        self.font = font
+        self.lineRect = lineRect
+        self.replacementRect = replacementRect
+    }
+
+    public var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color(nsColor: .systemRed))
+                    .frame(width: max(1, lineRect.width), height: max(1, lineRect.height))
+                    .position(
+                        x: lineRect.midX,
+                        y: proxy.size.height - lineRect.midY
+                    )
+                Text(replacement)
+                    .font(Font(font as CTFont))
+                    .foregroundStyle(Color(nsColor: .systemGreen))
+                    .shadow(color: Color(nsColor: .textBackgroundColor).opacity(0.8), radius: 0.8, x: 0, y: 0)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .position(
+                        x: replacementRect.midX,
+                        y: proxy.size.height - replacementRect.midY
+                    )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

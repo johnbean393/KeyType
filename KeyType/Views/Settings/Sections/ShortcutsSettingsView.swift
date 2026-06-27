@@ -32,6 +32,15 @@ struct ShortcutsSettingsView: View {
                     onReset: settings.acceptFullShortcut != .defaultAcceptFull
                         ? { settings.acceptFullShortcut = .defaultAcceptFull } : nil
                 )
+                KeyRecorderView(
+                    title: "Accept correction",
+                    subtitle: "Replaces the misspelled word with the shown fix.",
+                    shortcut: settings.acceptCorrectionShortcut,
+                    onChange: { settings.acceptCorrectionShortcut = $0 },
+                    onClear: { settings.acceptCorrectionShortcut = .unassigned },
+                    onReset: settings.acceptCorrectionShortcut != .defaultAcceptCorrection
+                        ? { settings.acceptCorrectionShortcut = .defaultAcceptCorrection } : nil
+                )
             } header: {
                 Text("Acceptance keys")
             } footer: {

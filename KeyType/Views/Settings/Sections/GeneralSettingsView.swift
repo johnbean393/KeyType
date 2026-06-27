@@ -32,6 +32,12 @@ struct GeneralSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+
+            Section("Autocorrect") {
+                Toggle("Enable autocorrect suggestions", isOn: $settings.autocorrectSuggestionsEnabled)
+                Toggle("Show suggested fixes", isOn: $settings.showSuggestedFixes)
+                Toggle("Aggressive corrections", isOn: $settings.aggressiveCorrectionsEnabled)
+            }
         }
         .formStyle(.grouped)
     }

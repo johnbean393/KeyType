@@ -26,6 +26,12 @@ public final class GhostTextOverlayWindow {
     static let capsuleHorizontalPadding = CapsuleCompletionView.defaultHorizontalPadding
     static let capsuleVerticalPadding = CapsuleCompletionView.defaultVerticalPadding
     static let capsuleGapBelowCaret: CGFloat = 5
+    static let correctionBadgeGapBelowCaret: CGFloat = 5
+    static let correctionBadgeHorizontalPadding: CGFloat = 8
+    static let correctionBadgeVerticalPadding: CGFloat = 4
+    static let correctionBadgeInterItemSpacing: CGFloat = 6
+    static let anchoredCorrectionGap: CGFloat = 6
+    static let anchoredCorrectionPadding: CGFloat = 3
 
     public nonisolated init() {}
 
@@ -113,6 +119,78 @@ public final class GhostTextOverlayWindow {
         }
 
         lastShow = (text, style, placement, mirrorContext)
+    }
+
+    public func showCorrection(
+        original: String,
+        replacement: String,
+        style: OverlayTextStyle,
+        placement: OverlayPlacement
+    ) {
+        guard !original.isEmpty, !replacement.isEmpty else { hide(); return }
+        let font = style.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+        let layout = Self.correctionBadgeLayout(
+            original: original,
+            replacement: replacement,
+            font: font,
+            placement: placement
+        )
+
+        window.hasShadow = true
+        hosting.rootView = AnyView(
+            CorrectionBadgeView(original: original, replacement: replacement, font: font)
+        )
+        window.setFrame(
+            layout.frame.offsetBy(
+                dx: CGFloat(placement.horizontalOffset),
+                dy: -CGFloat(placement.verticalOffset(Double(layout.lineHeight)))
+            ),
+            display: true
+        )
+        if !window.isVisible {
+            window.orderFrontRegardless()
+        }
+        lastShow = ("\(original) -> \(replacement)", style, placement, nil)
+    }
+
+    public func showAnchoredCorrection(
+        replacement: String,
+        wordRect: CGRect,
+        style: OverlayTextStyle,
+        placement: OverlayPlacement
+    ) {
+        guard !replacement.isEmpty, !wordRect.isEmpty else {
+            showCorrection(original: "", replacement: replacement, style: style, placement: placement)
+            return
+        }
+        let font = style.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+        let layout = Self.anchoredCorrectionLayout(
+            replacement: replacement,
+            wordRect: wordRect,
+            font: font,
+            placement: placement
+        )
+
+        window.hasShadow = false
+        hosting.rootView = AnyView(
+            AnchoredCorrectionView(
+                replacement: replacement,
+                font: font,
+                lineRect: layout.lineRect,
+                replacementRect: layout.replacementRect
+            )
+        )
+        window.setFrame(
+            layout.frame.offsetBy(
+                dx: CGFloat(placement.horizontalOffset),
+                dy: -CGFloat(placement.verticalOffset(Double(layout.lineHeight)))
+            ),
+            display: true
+        )
+        if !window.isVisible {
+            window.orderFrontRegardless()
+        }
+        lastShow = (replacement, style, placement, nil)
     }
 
     /// Eagerly shrink the shown inline ghost text past an accepted word: shift it by the rendered
@@ -275,6 +353,13 @@ public final class GhostTextOverlayWindow {
         var lineHeight: CGFloat
     }
 
+    struct AnchoredCorrectionLayout: Equatable {
+        var frame: CGRect
+        var lineRect: CGRect
+        var replacementRect: CGRect
+        var lineHeight: CGFloat
+    }
+
     static func layout(for text: String, font: NSFont, placement: OverlayPlacement) -> Layout {
         if placement.presentation == .capsule {
             return capsuleLayout(for: text, font: font, placement: placement)
@@ -392,6 +477,89 @@ public final class GhostTextOverlayWindow {
         return Layout(
             frame: CGRect(x: x, y: y, width: capsuleWidth, height: capsuleHeight),
             lines: [GhostTextLine(text: text, reservedHeight: capsuleHeight)],
+            lineHeight: lineHeight
+        )
+    }
+
+    static func correctionBadgeLayout(
+        original: String,
+        replacement: String,
+        font: NSFont,
+        placement: OverlayPlacement
+    ) -> Layout {
+        let caret = placement.cursorRect
+        let fontLineHeight = ceil(font.ascender - font.descender)
+        let lineHeight = max(trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
+        let arrowWidth = measuredWidth("→", font: font)
+        let textWidth = ceil(measuredWidth(original, font: font) + measuredWidth(replacement, font: font) + arrowWidth)
+        let badgeWidth = textWidth
+            + correctionBadgeInterItemSpacing * 2
+            + correctionBadgeHorizontalPadding * 2
+            + 2
+        let badgeHeight = lineHeight + correctionBadgeVerticalPadding * 2
+
+        var x = placement.isRightToLeft ? caret.minX - badgeWidth : caret.maxX
+        if let field = placement.fieldRect, !field.isEmpty {
+            if badgeWidth >= field.width {
+                x = field.minX
+            } else {
+                x = min(max(x, field.minX), field.maxX - badgeWidth)
+            }
+        }
+        let y = caret.minY - correctionBadgeGapBelowCaret - badgeHeight
+        return Layout(
+            frame: CGRect(x: x, y: y, width: badgeWidth, height: badgeHeight),
+            lines: [],
+            lineHeight: lineHeight
+        )
+    }
+
+    static func anchoredCorrectionLayout(
+        replacement: String,
+        wordRect: CGRect,
+        font: NSFont,
+        placement: OverlayPlacement
+    ) -> AnchoredCorrectionLayout {
+        let fontLineHeight = ceil(font.ascender - font.descender)
+        let lineHeight = max(trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
+        let replacementWidth = ceil(measuredWidth(replacement, font: font)) + 3
+        let replacementHeight = lineHeight
+        let field = placement.fieldRect
+        let gap = anchoredCorrectionGap
+
+        var replacementRect = CGRect(
+            x: placement.isRightToLeft ? wordRect.minX - gap - replacementWidth : wordRect.maxX + gap,
+            y: wordRect.minY + (wordRect.height - replacementHeight) / 2,
+            width: replacementWidth,
+            height: replacementHeight
+        )
+
+        if let field, !field.isEmpty {
+            let fitsInline = placement.isRightToLeft
+                ? replacementRect.minX >= field.minX
+                : replacementRect.maxX <= field.maxX
+            if !fitsInline {
+                let belowY = wordRect.minY - gap - replacementHeight
+                let centeredX = wordRect.midX - replacementWidth / 2
+                replacementRect.origin = CGPoint(
+                    x: min(max(centeredX, field.minX), max(field.minX, field.maxX - replacementWidth)),
+                    y: max(field.minY, belowY)
+                )
+            }
+        }
+
+        let lineHeightPixels: CGFloat = 1.5
+        let strike = CGRect(
+            x: wordRect.minX,
+            y: wordRect.midY - lineHeightPixels / 2,
+            width: wordRect.width,
+            height: lineHeightPixels
+        )
+        let frame = strike.union(replacementRect).insetBy(dx: -anchoredCorrectionPadding, dy: -anchoredCorrectionPadding)
+        return AnchoredCorrectionLayout(
+            frame: frame,
+            lineRect: strike.offsetBy(dx: -frame.minX, dy: -frame.minY),
+            replacementRect: replacementRect.offsetBy(dx: -frame.minX, dy: -frame.minY),
             lineHeight: lineHeight
         )
     }
@@ -527,6 +695,33 @@ public final class InlineGhostTextPresenter: CompletionOverlayPresenting {
     public func hide() {
         window.hide()
         visibleCandidate = nil
+    }
+
+    public func show(
+        correction: CorrectionCandidate,
+        placement: OverlayPlacement,
+        style: OverlayTextStyle?,
+        wordRect: CGRect? = nil
+    ) {
+        var correctionPlacement = placement
+        correctionPlacement.mode = .correction
+        let resolved = Self.resolveStyle(style, placement: correctionPlacement)
+        if let wordRect, !wordRect.isEmpty {
+            window.showAnchoredCorrection(
+                replacement: correction.replacement,
+                wordRect: wordRect,
+                style: resolved,
+                placement: correctionPlacement
+            )
+        } else {
+            window.showCorrection(
+                original: correction.original,
+                replacement: correction.replacement,
+                style: resolved,
+                placement: correctionPlacement
+            )
+        }
+        visibleCandidate = CompletionCandidate(text: correction.replacement, mode: .correction)
     }
 
     /// Advance the inline ghost text past an accepted `head`, redrawing `remainder` immediately

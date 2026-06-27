@@ -120,6 +120,10 @@ public final class AccessibilityContextTracker: NSObject {
 
     public var currentSnapshot: FocusedFieldSnapshot? { lastSnapshot }
 
+    public func requestRefresh() {
+        refreshSoon()
+    }
+
     // MARK: - Workspace notifications
 
     @objc

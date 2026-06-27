@@ -75,6 +75,7 @@ struct AcceptanceShortcut: Sendable, Equatable {
     static let unassigned = AcceptanceShortcut(keyCode: -1, modifiers: [], label: "")
     static let defaultAcceptWord = AcceptanceShortcut(keyCode: 48, modifiers: [], label: "\u{21E5}")
     static let defaultAcceptFull = AcceptanceShortcut(keyCode: 48, modifiers: .shift, label: "\u{21E5}")
+    static let defaultAcceptCorrection = AcceptanceShortcut(keyCode: 48, modifiers: [], label: "\u{21E5}")
 }
 
 /// Best-effort human label for a virtual key code, used by the key recorder when the pressed key

@@ -1,5 +1,6 @@
 import AppCompatibility
 import AppKit
+import ApplicationServices
 import AutocompleteCore
 import Foundation
 
@@ -11,30 +12,57 @@ public enum InsertionStrategy: Equatable {
     case firstWordOnly
 }
 
+public enum TextInsertionError: Error, Equatable {
+    case selectionReplacementUnavailable
+}
+
 public struct InsertionPlan: Equatable {
+    public struct SelectionReplacement: Equatable {
+        public var utf16Location: Int
+        public var utf16Length: Int
+        public var restoredCaretUTF16Location: Int?
+
+        public init(
+            utf16Location: Int,
+            utf16Length: Int,
+            restoredCaretUTF16Location: Int? = nil
+        ) {
+            self.utf16Location = max(0, utf16Location)
+            self.utf16Length = max(0, utf16Length)
+            self.restoredCaretUTF16Location = restoredCaretUTF16Location.map { max(0, $0) }
+        }
+    }
+
     public var text: String
     public var strategy: InsertionStrategy
     public var restorePasteboard: Bool
     public var useNonBreakingSpaceWorkaround: Bool
     public var backspaceAfterPaste: Bool
+    public var deleteBackwardCount: Int
+    public var selectionReplacement: SelectionReplacement?
 
     public init(
         text: String,
         strategy: InsertionStrategy = .pasteboardPaste,
         restorePasteboard: Bool = true,
         useNonBreakingSpaceWorkaround: Bool = false,
-        backspaceAfterPaste: Bool = false
+        backspaceAfterPaste: Bool = false,
+        deleteBackwardCount: Int = 0,
+        selectionReplacement: SelectionReplacement? = nil
     ) {
         self.text = text
         self.strategy = strategy
         self.restorePasteboard = restorePasteboard
         self.useNonBreakingSpaceWorkaround = useNonBreakingSpaceWorkaround
         self.backspaceAfterPaste = backspaceAfterPaste
+        self.deleteBackwardCount = max(0, deleteBackwardCount)
+        self.selectionReplacement = selectionReplacement
     }
 }
 
 public protocol CompletionInserting {
     func planInsertion(candidate: CompletionCandidate, context: TextFieldContext) -> InsertionPlan
+    func planCorrection(candidate: CorrectionCandidate, context: TextFieldContext) -> InsertionPlan?
     func insert(plan: InsertionPlan) async throws
 }
 
@@ -46,6 +74,39 @@ public struct InsertionPlanner {
     }
 
     public func plan(candidate: CompletionCandidate, context: TextFieldContext) -> InsertionPlan {
+        basePlan(text: candidate.text, context: context)
+    }
+
+    public func planCorrection(candidate: CorrectionCandidate, context: TextFieldContext) -> InsertionPlan? {
+        if let exact = exactSelectionReplacement(for: candidate, context: context) {
+            return basePlan(
+                text: candidate.replacement,
+                context: context,
+                selectionReplacement: exact
+            )
+        }
+
+        guard candidate.originalRange.container == .beforeCursor,
+              let range = candidate.originalRange.range(in: context.beforeCursor) else {
+            return nil
+        }
+        let suffixToReplay = String(context.beforeCursor[range.upperBound...])
+        let deleteCount = context.beforeCursor.distance(from: range.lowerBound, to: context.beforeCursor.endIndex)
+        guard deleteCount >= candidate.original.count else { return nil }
+
+        return basePlan(
+            text: candidate.replacement + suffixToReplay,
+            context: context,
+            deleteBackwardCount: deleteCount
+        )
+    }
+
+    private func basePlan(
+        text rawText: String,
+        context: TextFieldContext,
+        deleteBackwardCount: Int = 0,
+        selectionReplacement: InsertionPlan.SelectionReplacement? = nil
+    ) -> InsertionPlan {
         let policy = compatibilityStore.policy(for: context)
 
         let strategy: InsertionStrategy
@@ -58,15 +119,55 @@ public struct InsertionPlanner {
         }
 
         let text = policy.insertionRequiresNonBreakingSpace
-            ? candidate.text.replacingOccurrences(of: " ", with: "\u{00a0}")
-            : candidate.text
+            ? rawText.replacingOccurrences(of: " ", with: "\u{00a0}")
+            : rawText
 
         return InsertionPlan(
             text: text,
             strategy: strategy,
             restorePasteboard: true,
             useNonBreakingSpaceWorkaround: policy.insertionRequiresNonBreakingSpace,
-            backspaceAfterPaste: policy.insertionRequiresBackspaceAfterPaste
+            backspaceAfterPaste: policy.insertionRequiresBackspaceAfterPaste,
+            deleteBackwardCount: deleteBackwardCount,
+            selectionReplacement: selectionReplacement
+        )
+    }
+
+    private func exactSelectionReplacement(
+        for candidate: CorrectionCandidate,
+        context: TextFieldContext
+    ) -> InsertionPlan.SelectionReplacement? {
+        let policy = compatibilityStore.policy(for: context)
+        guard !policy.autocorrectDisabled else { return nil }
+
+        let fullText = context.beforeCursor + context.afterCursor
+        let charStart: Int
+        let charEnd: Int
+        switch candidate.originalRange.container {
+        case .beforeCursor:
+            charStart = candidate.originalRange.startOffset
+            charEnd = candidate.originalRange.endOffset
+        case .afterCursor:
+            charStart = context.beforeCursor.count + candidate.originalRange.startOffset
+            charEnd = context.beforeCursor.count + candidate.originalRange.endOffset
+        }
+        guard charStart >= 0,
+              charEnd > charStart,
+              charEnd <= fullText.count,
+              let start = fullText.index(fullText.startIndex, offsetBy: charStart, limitedBy: fullText.endIndex),
+              let end = fullText.index(fullText.startIndex, offsetBy: charEnd, limitedBy: fullText.endIndex) else {
+            return nil
+        }
+
+        let nsRange = NSRange(start..<end, in: fullText)
+        let caretLocation = (context.beforeCursor as NSString).length
+        let replacementLength = (candidate.replacement as NSString).length
+        let delta = replacementLength - nsRange.length
+        let restoredCaret = nsRange.location < caretLocation ? caretLocation + delta : caretLocation
+        return InsertionPlan.SelectionReplacement(
+            utf16Location: nsRange.location,
+            utf16Length: nsRange.length,
+            restoredCaretUTF16Location: restoredCaret
         )
     }
 }
@@ -84,6 +185,8 @@ public protocol KeystrokeSynthesizing {
     func type(_ string: String)
     /// One backspace / forward-delete keystroke.
     func deleteBackward()
+    /// Select an exact AX text range in the currently focused field.
+    func selectTextRange(location: Int, length: Int) -> Bool
 }
 
 /// Pasteboard seam. The implementation owns its own saved snapshot so callers only sequence
@@ -117,6 +220,18 @@ public final class CGEventKeystrokeSynthesizer: KeystrokeSynthesizing {
 
     public func deleteBackward() { sendShortcut(Self.keyDelete, flags: []) }
 
+    public func selectTextRange(location: Int, length: Int) -> Bool {
+        guard let field = Self.focusedTextElement() else { return false }
+        var range = CFRange(location: location, length: length)
+        guard let value = AXValueCreate(.cfRange, &range) else { return false }
+        let result = AXUIElementSetAttributeValue(
+            field,
+            kAXSelectedTextRangeAttribute as CFString,
+            value
+        )
+        return result == .success
+    }
+
     public func type(_ string: String) {
         guard !string.isEmpty else { return }
         var utf16 = Array(string.utf16)
@@ -133,6 +248,21 @@ public final class CGEventKeystrokeSynthesizer: KeystrokeSynthesizing {
             event.flags = flags
             event.post(tap: .cghidEventTap)
         }
+    }
+
+    private static func focusedTextElement() -> AXUIElement? {
+        let system = AXUIElementCreateSystemWide()
+        var focusedValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            system,
+            kAXFocusedUIElementAttribute as CFString,
+            &focusedValue
+        ) == .success,
+              let focusedValue,
+              CFGetTypeID(focusedValue) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return unsafeBitCast(focusedValue, to: AXUIElement.self)
     }
 }
 
@@ -202,8 +332,25 @@ public final class PasteboardCompletionInserter: CompletionInserting {
         planner.plan(candidate: candidate, context: context)
     }
 
+    public func planCorrection(candidate: CorrectionCandidate, context: TextFieldContext) -> InsertionPlan? {
+        planner.planCorrection(candidate: candidate, context: context)
+    }
+
     public func insert(plan: InsertionPlan) async throws {
-        guard !plan.text.isEmpty else { return }
+        guard !plan.text.isEmpty || plan.deleteBackwardCount > 0 else { return }
+
+        if let selection = plan.selectionReplacement {
+            guard synthesizer.selectTextRange(
+                location: selection.utf16Location,
+                length: selection.utf16Length
+            ) else {
+                throw TextInsertionError.selectionReplacementUnavailable
+            }
+        } else {
+            for _ in 0..<plan.deleteBackwardCount {
+                synthesizer.deleteBackward()
+            }
+        }
 
         switch plan.strategy {
         case .pasteboardPaste:
@@ -222,6 +369,10 @@ public final class PasteboardCompletionInserter: CompletionInserting {
                 synthesizer.type(chunk)
             }
             finishInjection(plan: plan)
+        }
+
+        if let location = plan.selectionReplacement?.restoredCaretUTF16Location {
+            _ = synthesizer.selectTextRange(location: location, length: 0)
         }
     }
 

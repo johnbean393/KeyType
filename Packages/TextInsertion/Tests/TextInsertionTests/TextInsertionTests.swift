@@ -19,6 +19,10 @@ final class TextInsertionTests: XCTestCase {
         func pasteAndMatchStyle() { events.append("pasteAndMatchStyle") }
         func type(_ string: String) { events.append("type(\(string))") }
         func deleteBackward() { events.append("deleteBackward") }
+        func selectTextRange(location: Int, length: Int) -> Bool {
+            events.append("select(\(location),\(length))")
+            return true
+        }
         func save() { events.append("save") }
         func write(_ string: String) { events.append("write(\(string))") }
         func restore() { events.append("restore") }
@@ -83,6 +87,84 @@ final class TextInsertionTests: XCTestCase {
         XCTAssertFalse(plan.useNonBreakingSpaceWorkaround)
     }
 
+    func testCorrectionPlanSelectsExactRangeAndRestoresCaret() throws {
+        let context = TextFieldContext(beforeCursor: "in the mdidle, ", target: Self.target)
+        let candidate = CorrectionCandidate(
+            original: "mdidle",
+            replacement: "middle",
+            originalRange: TextRangeDescriptor(container: .beforeCursor, startOffset: 7, endOffset: 13),
+            confidence: 0.9,
+            source: .spellcheckOnly,
+            validation: .spellcheckOnly
+        )
+
+        let plan = try XCTUnwrap(InsertionPlanner().planCorrection(candidate: candidate, context: context))
+
+        XCTAssertEqual(plan.text, "middle")
+        XCTAssertEqual(plan.selectionReplacement?.utf16Location, 7)
+        XCTAssertEqual(plan.selectionReplacement?.utf16Length, 6)
+        XCTAssertEqual(plan.selectionReplacement?.restoredCaretUTF16Location, 15)
+        XCTAssertEqual(plan.deleteBackwardCount, 0)
+    }
+
+    func testCorrectionPlanFallsBackToDeleteReplayWhenAutocorrectDisabledForExactRange() throws {
+        let context = TextFieldContext(beforeCursor: "in the mdidle, ", target: Self.target)
+        let candidate = CorrectionCandidate(
+            original: "mdidle",
+            replacement: "middle",
+            originalRange: TextRangeDescriptor(container: .beforeCursor, startOffset: 7, endOffset: 13),
+            confidence: 0.9,
+            source: .spellcheckOnly,
+            validation: .spellcheckOnly
+        )
+        let store = AppCompatibilityStore(overrides: [
+            TargetOverride(bundleIdentifier: Self.target.bundleIdentifier, autocorrectDisabled: true)
+        ])
+
+        let plan = try XCTUnwrap(InsertionPlanner(compatibilityStore: store).planCorrection(candidate: candidate, context: context))
+
+        XCTAssertEqual(plan.text, "middle, ")
+        XCTAssertEqual(plan.deleteBackwardCount, 8)
+        XCTAssertNil(plan.selectionReplacement)
+    }
+
+    func testCorrectionPlanReturnsNilForAfterCursorRange() {
+        let context = TextFieldContext(beforeCursor: "in the ", afterCursor: "mdidle", target: Self.target)
+        let candidate = CorrectionCandidate(
+            original: "mdidle",
+            replacement: "middle",
+            originalRange: TextRangeDescriptor(container: .afterCursor, startOffset: 0, endOffset: 6),
+            confidence: 0.9,
+            source: .spellcheckOnly,
+            validation: .spellcheckOnly
+        )
+
+        let plan = InsertionPlanner().planCorrection(candidate: candidate, context: context)
+        XCTAssertEqual(plan?.text, "middle")
+        XCTAssertEqual(plan?.selectionReplacement?.utf16Location, 7)
+        XCTAssertEqual(plan?.selectionReplacement?.restoredCaretUTF16Location, 7)
+    }
+
+    func testInserterSelectsExactRangeBeforePasteAndRestoresCaret() async throws {
+        let recorder = Recorder()
+        let inserter = makeInserter(recorder)
+        let plan = InsertionPlan(
+            text: "middle",
+            selectionReplacement: .init(
+                utf16Location: 7,
+                utf16Length: 6,
+                restoredCaretUTF16Location: 15
+            )
+        )
+
+        try await inserter.insert(plan: plan)
+
+        XCTAssertEqual(
+            recorder.events,
+            ["select(7,6)", "save", "write(middle)", "paste", "restore", "select(15,0)"]
+        )
+    }
+
     func testPlannerUsesChunkedInjectionForNativeSlack() {
         let target = AppTarget(bundleIdentifier: "com.tinyspeck.slackmacgap", appName: "Slack")
         let plan = InsertionPlanner()
@@ -136,6 +218,12 @@ final class TextInsertionTests: XCTestCase {
         let recorder = Recorder()
         try await makeInserter(recorder).insert(plan: InsertionPlan(text: "x", restorePasteboard: false))
         XCTAssertEqual(recorder.events, ["save", "write(x)", "paste"])
+    }
+
+    func testCorrectionDeleteHappensBeforePaste() async throws {
+        let recorder = Recorder()
+        try await makeInserter(recorder).insert(plan: InsertionPlan(text: "middle, ", deleteBackwardCount: 2))
+        XCTAssertEqual(recorder.events, ["deleteBackward", "deleteBackward", "save", "write(middle, )", "paste", "restore"])
     }
 
     func testCharacterInjectionTypesEachCharAndSkipsPasteboard() async throws {

@@ -302,6 +302,7 @@ final class CompletionController {
     /// a real non-Screenshot focused-field snapshot revalidates the text/caret context.
     private var screenCaptureHold: ScreenCaptureHold?
     private var developerTuningHold = false
+    var shouldSuppressForCorrection: ((TextFieldContext) -> Bool)?
 
     private struct ScreenCaptureHold {
         var originalBundleIdentifier: String?
@@ -504,6 +505,11 @@ final class CompletionController {
               policy.allowsTabAcceptance
         else { reset(); return }
 
+        if shouldSuppressForCorrection?(context) == true {
+            reset(keepingReuseHistory: true)
+            return
+        }
+
         // No usable prefix → don't generate (Cotypist's `emptyPrompt` gate). A base model given an
         // empty before-cursor just continues the prompt scaffolding (e.g. echoes section headers),
         // so there is nothing worth showing until the user has typed something at the caret.
@@ -690,6 +696,55 @@ final class CompletionController {
         _ = renderSuggestion(for: snapshot.context, style: style)
     }
 
+    func suppressVisibleCompletionForCorrection(context: TextFieldContext) {
+        guard latestContext?.target == context.target || anchorContext?.target == context.target else {
+            return
+        }
+        debounceTask?.cancel()
+        generationTask?.cancel()
+        finishActiveLatencyTrace(outcome: "correction-priority")
+        lastContextKey = Self.contextKey(for: context)
+        clearCompletion()
+    }
+
+    func refreshAfterCorrectionAccepted() {
+        debounceTask?.cancel()
+        generationTask?.cancel()
+        finishActiveLatencyTrace(outcome: "correction-accepted")
+        lastContextKey = nil
+        holdAnchor = false
+        clearCompletion()
+    }
+
+    func validateCorrectionCandidates(
+        _ candidates: [CorrectionCandidate],
+        target: CorrectionTarget,
+        context: TextFieldContext
+    ) async throws -> [CorrectionCandidate] {
+        guard let engine else { return [] }
+        let prior = candidates.lazy.compactMap {
+            self.reuseHistory.priorPredictedReplacement(
+                prefixBeforeWord: target.prefixBeforeWord,
+                replacement: $0.replacement
+            )
+        }.first
+        let suffixWindow = Self.correctionSuffixWindow(from: target.suffixAfterWord)
+        return try await engine.validateCorrectionCandidates(
+            candidates,
+            prefixBeforeWord: target.prefixBeforeWord,
+            suffixWindow: suffixWindow,
+            priorPredictionReplacement: prior,
+            thresholds: settings.aggressiveCorrectionsEnabled
+                ? CorrectionValidationThresholds(
+                    minimumMeanLogProbability: -6.4,
+                    minimumMargin: 0.25,
+                    minimumSuffixMeanLogProbability: -7.4,
+                    priorPredictionConfidence: 0.97
+                )
+                : CorrectionValidationThresholds()
+        )
+    }
+
     @discardableResult
     func showDeveloperPlacementProbeAtLatestSnapshot(text: String = " ghost text probe") -> Bool {
         showDeveloperPlacementProbe(using: latestSnapshot, text: text)
@@ -818,6 +873,11 @@ final class CompletionController {
             predictionLog.append(
                 "REUSE evict removed=\(eviction.removedEntries) remaining=\(eviction.remainingEntries)"
             )
+        }
+        if shouldSuppressForCorrection?(request.context) == true {
+            clearCompletion()
+            finishLatencyTrace(latencyTrace, outcome: "suppressed-correction-priority")
+            return
         }
         anchorText = anchored
         anchorContext = request.context
@@ -1494,6 +1554,31 @@ final class CompletionController {
 
     private static func contextKey(for context: TextFieldContext) -> String {
         context.beforeCursor + "\u{1}" + context.afterCursor + "\u{1}" + context.target.bundleIdentifier
+    }
+
+    static func correctionSuffixWindow(from suffix: String) -> String {
+        let trimmed = suffix.prefix(80)
+        if let firstNonWhitespace = trimmed.first(where: { !$0.isWhitespace }),
+           !firstNonWhitespace.isLetter,
+           !firstNonWhitespace.isNumber {
+            return ""
+        }
+        var result = ""
+        var consumedWords = 0
+        var inWord = false
+        for character in trimmed {
+            result.append(character)
+            if character.isWhitespace {
+                if inWord {
+                    consumedWords += 1
+                    if consumedWords >= 4 { break }
+                }
+                inWord = false
+            } else {
+                inWord = true
+            }
+        }
+        return result
     }
 
     private static func overlayCalibrationKey(

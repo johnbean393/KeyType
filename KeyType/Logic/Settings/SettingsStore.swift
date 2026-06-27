@@ -119,6 +119,13 @@ final class SettingsStore {
         static let acceptFullKeyCode = "KeyType.settings.acceptFullKeyCode"
         static let acceptFullModifiers = "KeyType.settings.acceptFullModifiers"
         static let acceptFullLabel = "KeyType.settings.acceptFullLabel"
+        static let autocorrectSuggestionsEnabled = "KeyType.settings.autocorrectSuggestionsEnabled"
+        static let showSuggestedFixes = "KeyType.settings.showSuggestedFixes"
+        static let aggressiveCorrectionsEnabled = "KeyType.settings.aggressiveCorrectionsEnabled"
+        static let perAppCorrectionDisabled = "KeyType.settings.perAppCorrectionDisabledBundleIDs"
+        static let acceptCorrectionKeyCode = "KeyType.settings.acceptCorrectionKeyCode"
+        static let acceptCorrectionModifiers = "KeyType.settings.acceptCorrectionModifiers"
+        static let acceptCorrectionLabel = "KeyType.settings.acceptCorrectionLabel"
     }
 
     private let defaults: UserDefaults
@@ -182,6 +189,26 @@ final class SettingsStore {
         didSet { persist(acceptFullShortcut, keyCode: Key.acceptFullKeyCode, modifiers: Key.acceptFullModifiers, label: Key.acceptFullLabel) }
     }
 
+    var autocorrectSuggestionsEnabled: Bool {
+        didSet { defaults.set(autocorrectSuggestionsEnabled, forKey: Key.autocorrectSuggestionsEnabled) }
+    }
+
+    var showSuggestedFixes: Bool {
+        didSet { defaults.set(showSuggestedFixes, forKey: Key.showSuggestedFixes) }
+    }
+
+    var aggressiveCorrectionsEnabled: Bool {
+        didSet { defaults.set(aggressiveCorrectionsEnabled, forKey: Key.aggressiveCorrectionsEnabled) }
+    }
+
+    var perAppCorrectionDisabled: Set<String> {
+        didSet { defaults.set(Array(perAppCorrectionDisabled).sorted(), forKey: Key.perAppCorrectionDisabled) }
+    }
+
+    var acceptCorrectionShortcut: AcceptanceShortcut {
+        didSet { persist(acceptCorrectionShortcut, keyCode: Key.acceptCorrectionKeyCode, modifiers: Key.acceptCorrectionModifiers, label: Key.acceptCorrectionLabel) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.historyEnabled = Self.bool(defaults, forKey: Key.historyEnabled, defaultValue: true)
@@ -209,6 +236,17 @@ final class SettingsStore {
             modifiersKey: Key.acceptFullModifiers,
             labelKey: Key.acceptFullLabel,
             fallback: .defaultAcceptFull
+        )
+        self.autocorrectSuggestionsEnabled = Self.bool(defaults, forKey: Key.autocorrectSuggestionsEnabled, defaultValue: true)
+        self.showSuggestedFixes = Self.bool(defaults, forKey: Key.showSuggestedFixes, defaultValue: true)
+        self.aggressiveCorrectionsEnabled = defaults.bool(forKey: Key.aggressiveCorrectionsEnabled)
+        self.perAppCorrectionDisabled = Set(defaults.stringArray(forKey: Key.perAppCorrectionDisabled) ?? [])
+        self.acceptCorrectionShortcut = Self.loadShortcut(
+            defaults: defaults,
+            keyCodeKey: Key.acceptCorrectionKeyCode,
+            modifiersKey: Key.acceptCorrectionModifiers,
+            labelKey: Key.acceptCorrectionLabel,
+            fallback: .defaultAcceptCorrection
         )
     }
 
