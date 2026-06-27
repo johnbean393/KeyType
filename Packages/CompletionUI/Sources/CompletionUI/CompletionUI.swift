@@ -141,9 +141,6 @@ public struct OverlayPlacementResolver {
         guard let cursorRect = context.geometry.cursorRect else {
             return nil
         }
-        if Self.shouldSuppressUnreliableWebParagraphPlacement(context: context, cursorRect: cursorRect) {
-            return nil
-        }
         if Self.shouldSuppressUnreliableCodeEditorLineOriginPlacement(context: context, cursorRect: cursorRect) {
             return nil
         }
@@ -195,30 +192,6 @@ public struct OverlayPlacementResolver {
 
         let lineHeight = max(12, min(48, cursorRect.height > 0 ? cursorRect.height : 18))
         return fieldRect.height < max(80, lineHeight * 2.5)
-    }
-
-    private static func shouldSuppressUnreliableWebParagraphPlacement(
-        context: TextFieldContext,
-        cursorRect: CGRect
-    ) -> Bool {
-        if context.target.bundleIdentifier == "com.google.Chrome" {
-            return false
-        }
-
-        guard context.traits.isWebField,
-              let fieldRect = context.geometry.fieldRect,
-              !fieldRect.isEmpty,
-              fieldRect.height >= 80 else {
-            return false
-        }
-
-        if context.beforeCursor.contains("\n") || context.afterCursor.contains("\n") {
-            return true
-        }
-
-        let lineHeight = max(12, min(24, max(18, cursorRect.height)))
-        let distanceFromFieldTop = fieldRect.maxY - cursorRect.midY
-        return distanceFromFieldTop > max(32, lineHeight * 1.75)
     }
 
     private static func shouldSuppressUnreliableCodeEditorLineOriginPlacement(

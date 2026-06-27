@@ -182,7 +182,7 @@ final class CompletionUITests: XCTestCase {
         XCTAssertNotNil(resolver.placement(for: context))
     }
 
-    func testPlacementSuppressesTallWebEditorWhenTextSnapshotOmitsPreviousParagraphs() {
+    func testPlacementKeepsTallWebEditorWhenTextSnapshotOmitsPreviousParagraphs() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
         let field = CGRect(x: 32, y: 407, width: 810, height: 200)
         let rect = CGRect(x: 338, y: 475, width: 2, height: 18)
@@ -197,10 +197,10 @@ final class CompletionUITests: XCTestCase {
             traits: TextFieldTraits(isWebField: true)
         )
 
-        XCTAssertNil(resolver.placement(for: context))
+        XCTAssertNotNil(resolver.placement(for: context))
     }
 
-    func testPlacementSuppressesTallWebEditorAfterLineBreak() {
+    func testPlacementKeepsTallWebEditorAfterLineBreak() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
         let field = CGRect(x: 32, y: 407, width: 810, height: 200)
         let rect = CGRect(x: 338, y: 475, width: 2, height: 18)
@@ -215,10 +215,10 @@ final class CompletionUITests: XCTestCase {
             traits: TextFieldTraits(isWebField: true)
         )
 
-        XCTAssertNil(resolver.placement(for: context))
+        XCTAssertNotNil(resolver.placement(for: context))
     }
 
-    func testPlacementSuppressesTallWebEditorWithTextBelowCaret() {
+    func testPlacementKeepsTallWebEditorWithTextBelowCaret() {
         let resolver = OverlayPlacementResolver(compatibilityStore: AppCompatibilityStore(overrides: []))
         let field = CGRect(x: 199, y: 529, width: 786, height: 206)
         let rect = CGRect(x: 501, y: 699, width: 2, height: 21)
@@ -234,7 +234,7 @@ final class CompletionUITests: XCTestCase {
             traits: TextFieldTraits(isWebField: true)
         )
 
-        XCTAssertNil(resolver.placement(for: context))
+        XCTAssertNotNil(resolver.placement(for: context))
     }
 
     func testPlacementKeepsTopLineWebEditorSnapshot() {
