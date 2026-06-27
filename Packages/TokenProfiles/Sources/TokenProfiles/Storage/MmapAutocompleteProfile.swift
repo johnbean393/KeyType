@@ -81,14 +81,16 @@ public final class MmapAutocompleteProfile: AutocompleteProfile {
         at url: URL,
         expectedVocabSize: Int? = nil,
         expectedModelFamily: String? = nil,
-        expectedTokenizerDigest: ACPFTokenizerDigestValue? = nil
+        expectedTokenizerDigest: ACPFTokenizerDigestValue? = nil,
+        expectedGeneratorVersion: String? = ACPF.generatorVersion
     ) throws -> MmapAutocompleteProfile {
         let data = try Data(contentsOf: url, options: [.alwaysMapped, .uncached])
         return try MmapAutocompleteProfile(
             data: data,
             expectedVocabSize: expectedVocabSize,
             expectedModelFamily: expectedModelFamily,
-            expectedTokenizerDigest: expectedTokenizerDigest
+            expectedTokenizerDigest: expectedTokenizerDigest,
+            expectedGeneratorVersion: expectedGeneratorVersion
         )
     }
 
@@ -99,14 +101,16 @@ public final class MmapAutocompleteProfile: AutocompleteProfile {
         at url: URL,
         tokenizerVocabSize: Int,
         tokenizerBytes: (TokenID) throws -> [UInt8],
-        expectedModelFamily: String? = nil
+        expectedModelFamily: String? = nil,
+        expectedGeneratorVersion: String? = ACPF.generatorVersion
     ) throws -> MmapAutocompleteProfile {
         let digest = try ACPFTokenizerDigest.digest(vocabSize: tokenizerVocabSize, bytesFor: tokenizerBytes)
         return try open(
             at: url,
             expectedVocabSize: tokenizerVocabSize,
             expectedModelFamily: expectedModelFamily,
-            expectedTokenizerDigest: digest
+            expectedTokenizerDigest: digest,
+            expectedGeneratorVersion: expectedGeneratorVersion
         )
     }
 
@@ -116,7 +120,8 @@ public final class MmapAutocompleteProfile: AutocompleteProfile {
         data: Data,
         expectedVocabSize: Int? = nil,
         expectedModelFamily: String? = nil,
-        expectedTokenizerDigest: ACPFTokenizerDigestValue? = nil
+        expectedTokenizerDigest: ACPFTokenizerDigestValue? = nil,
+        expectedGeneratorVersion: String? = ACPF.generatorVersion
     ) throws {
         // 1. Header sanity.
         let header = try data.withUnsafeBytes { try ACPFHeaderRaw(reading: $0) }
@@ -170,6 +175,20 @@ public final class MmapAutocompleteProfile: AutocompleteProfile {
         let digest = ACPFTokenizerDigestValue(lo: header.tokenizerHashLo, hi: header.tokenizerHashHi)
         if let expectedDigest = expectedTokenizerDigest, expectedDigest != digest {
             throw ACPFOpenError.tokenizerDigestMismatch(expected: expectedDigest, found: digest)
+        }
+
+        // 5b. Generator-version cache-buster. The tokenizer digest covers only vocab bytes, so a
+        //     `TokenClassifier` logic change (which alters the baked `.excluded`/`.special` flags and
+        //     trie) leaves the digest untouched. The VALIDATION section's `generator_version` string
+        //     captures that logic version; reject a profile stamped with anything other than the
+        //     build's expected value so `ProfileGenerator` rebuilds. An empty/missing stamp (older
+        //     profiles, or a section without validation strings) skips the check for back-compat —
+        //     only a present, non-empty, non-matching value is a hard mismatch.
+        if let expectedGenerator = expectedGeneratorVersion, let validation = sections[.validation] {
+            let stamped = MmapAutocompleteProfile.readValidationStrings(data: data, section: validation).generatorVersion
+            if !stamped.isEmpty, stamped != expectedGenerator {
+                throw ACPFOpenError.generatorVersionMismatch(expected: expectedGenerator, found: stamped)
+            }
         }
 
         // 6. Parse trie preamble (nodeCount, edgeCount) and compute payload offsets.
@@ -407,7 +426,16 @@ public final class MmapAutocompleteProfile: AutocompleteProfile {
 
     /// Returns the validation section's `(ggufMetadataDigest, generatorVersion, builderHost)` triple.
     public func validationStrings() -> (ggufMetadataDigest: String, generatorVersion: String, builderHost: String) {
-        let section = sections[.validation]!
+        Self.readValidationStrings(data: data, section: sections[.validation]!)
+    }
+
+    /// Parses the three length-prefixed strings in the VALIDATION section payload. Shared by
+    /// `validationStrings()` and the init-time `generator_version` check so both decode identically.
+    /// A truncated/empty section yields empty strings (never a crash).
+    static func readValidationStrings(
+        data: Data,
+        section: ACPFSectionRaw
+    ) -> (ggufMetadataDigest: String, generatorVersion: String, builderHost: String) {
         var cursor = Int(section.offset)
         let end = cursor + Int(section.length)
 

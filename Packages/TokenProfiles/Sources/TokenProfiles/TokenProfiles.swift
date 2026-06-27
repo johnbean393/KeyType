@@ -20,6 +20,10 @@ public struct TokenProfileFlags: OptionSet, Equatable {
     public static let emoji = TokenProfileFlags(rawValue: 1 << 9)
     public static let chatMarker = TokenProfileFlags(rawValue: 1 << 10)
     public static let invalidUTF8 = TokenProfileFlags(rawValue: 1 << 11)
+    /// A whole markup tag as a single vocab token (Gemma bakes `<b>`, `</code>`, `<table>`, … into
+    /// its vocabulary as dedicated tokens the GGUF reports as NORMAL). Not excluded — markup is
+    /// legitimate output in code/terminal modes — but down-biased in prose (see `BiasPolicy`).
+    public static let markupTag = TokenProfileFlags(rawValue: 1 << 12)
 }
 
 public struct TokenProfileRecord: Equatable {

@@ -38,6 +38,16 @@ public enum BiasPolicy {
     /// Re-enables emoji tokens in emoji mode (cancels `emojiStaticPenalty`).
     public static let emojiEmojiModeDelta: Float = 3.0
 
+    /// Whole-tag markup tokens (Gemma's `<b>`/`</code>` block) leak into prose when the context is
+    /// thin: observed shown `</code>` at logprob −0.35 with legitimate runners-up at −1.7…−3.8, so
+    /// the emoji-sized −3 would not cover the gap. −6 pushes a tag below any plausible prose token
+    /// while staying finite (the output-stage `MarkupTagGuard` is context-aware; this is not).
+    public static let markupTagStaticPenalty: Float = -6.0
+    /// Re-enables markup-tag tokens where markup is working material (cancels the static penalty):
+    /// HTML/Markdown in editors (code mode) and editors running inside a terminal.
+    public static let markupTagCodeModeDelta: Float = 6.0
+    public static let markupTagTerminalModeDelta: Float = 6.0
+
     public static let newlineProseDelta: Float = -2.0
 
     // MARK: - Static bias
@@ -61,6 +71,9 @@ public enum BiasPolicy {
         var bias: Float = 0
         if flags.contains(.emoji) {
             bias += emojiStaticPenalty
+        }
+        if flags.contains(.markupTag) {
+            bias += markupTagStaticPenalty
         }
         if isRepeatedWhitespace(flags: flags, bytes: bytes) {
             bias += repeatedWhitespaceStaticPenalty
@@ -104,11 +117,15 @@ public enum BiasPolicy {
             if flags.contains(.sentenceEnd) { delta += sentenceEndProseBonus }
             return delta
         case .code:
-            if isRepeatedWhitespace(flags: flags, bytes: bytes) { return repeatedWhitespaceCodeBonus }
-            return 0
+            var delta: Float = 0
+            if isRepeatedWhitespace(flags: flags, bytes: bytes) { delta += repeatedWhitespaceCodeBonus }
+            if flags.contains(.markupTag) { delta += markupTagCodeModeDelta }
+            return delta
         case .terminal:
-            if isRepeatedWhitespace(flags: flags, bytes: bytes) { return repeatedWhitespaceTerminalBonus }
-            return 0
+            var delta: Float = 0
+            if isRepeatedWhitespace(flags: flags, bytes: bytes) { delta += repeatedWhitespaceTerminalBonus }
+            if flags.contains(.markupTag) { delta += markupTagTerminalModeDelta }
+            return delta
         case .emoji:
             if flags.contains(.emoji) { return emojiEmojiModeDelta }
             return 0

@@ -135,6 +135,12 @@ public struct CompletionRequest: Equatable {
     public var mode: CompletionMode
     public var maxCompletionTokens: Int
     public var maxDisplayWidth: Int
+    /// Side-context text injected into the prompt that the user did NOT type — clipboard contents and
+    /// on-screen OCR text. Carried alongside the request so the output filter can drop a completion
+    /// that merely parrots it verbatim (`ContextEchoGuard`). Writing-history samples are deliberately
+    /// excluded: they are scoped to the same app/domain and reproducing the user's own recurring
+    /// phrases is the point of that feature.
+    public var injectedContext: [String]
 
     public init(
         context: TextFieldContext,
@@ -142,7 +148,8 @@ public struct CompletionRequest: Equatable {
         requiredPrefixBytes: [UInt8] = [],
         mode: CompletionMode = .prose,
         maxCompletionTokens: Int = 4,
-        maxDisplayWidth: Int = 80
+        maxDisplayWidth: Int = 80,
+        injectedContext: [String] = []
     ) {
         self.context = context
         self.prompt = prompt
@@ -150,6 +157,7 @@ public struct CompletionRequest: Equatable {
         self.mode = mode
         self.maxCompletionTokens = maxCompletionTokens
         self.maxDisplayWidth = maxDisplayWidth
+        self.injectedContext = injectedContext
     }
 }
 
@@ -202,6 +210,26 @@ public enum SuppressionReason: Equatable {
     /// A mid-line / fill-in-the-middle completion that is too long or too low-probability to show
     /// without risking a wrong suggestion.
     case lowConfidenceMidLine
+    /// The completion reproduces a phrase that is already present in the recent text before the caret.
+    /// Accepting it would create a verbatim repetition loop. See `PrefixRepetitionGuard`.
+    case repeatsRecentPrefix
+    /// The completion verbatim-reproduces a span of injected side context the user did not type
+    /// (clipboard, on-screen OCR text) — the small model parroting context instead of predicting.
+    /// See `ContextEchoGuard`.
+    case echoesInjectedContext
+    /// The completion contains a reserved model-internal marker (e.g. Gemma's `<unused56>`, chat/FIM
+    /// scaffolding) that should have been masked at sample time. Belt-and-suspenders for stale or
+    /// mis-flagged token profiles. See `TokenClassifier` / `DefaultCandidateFilter.containsReservedMarker`.
+    case reservedMarker
+    /// The completion contains a within-candidate token-repetition loop — the same word appears ≥ 3 times
+    /// ("text 1 1 1", "since 1 1 1"). Model degeneration, not a bleed from side context.
+    /// See `IntraCompletionRepetitionGuard`.
+    case intraCompletionRepetition
+    /// The completion is nothing but markup tags (`</code>`, `<b>`, …) in a prose/correction context
+    /// whose surrounding text contains no markup — Gemma's single-token HTML-tag block surfacing in
+    /// ordinary writing. Sample-time demotion is the primary defence (see
+    /// `BiasPolicy.markupTagStaticPenalty`); this is its context-aware output net. See `MarkupTagGuard`.
+    case markupTagOutsideMarkupContext
     case noCandidate
 }
 

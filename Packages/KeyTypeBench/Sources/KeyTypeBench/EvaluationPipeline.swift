@@ -128,6 +128,9 @@ public final class ProductionCompletionEvaluator {
     private let modelInfo: BenchmarkModelInfo
     private let defaultMaxCompletionTokens: Int
     private let defaultMaxDisplayWidth: Int
+    /// When false, the case's `previousUserInputs` (writing history) is dropped from the prompt — the
+    /// history on/off A/B knob. Clipboard/screen side context is unaffected.
+    private let includeWritingHistory: Bool
 
     public init(
         runtime: LocalModelRuntime,
@@ -136,8 +139,10 @@ public final class ProductionCompletionEvaluator {
         compatibilityStore: AppCompatibilityStore = AppCompatibilityStore(),
         decodingConfiguration: DecodingConfiguration = DecodingConfiguration(enableFillInMiddle: true),
         defaultMaxCompletionTokens: Int = 4,
-        defaultMaxDisplayWidth: Int = 80
+        defaultMaxDisplayWidth: Int = 80,
+        includeWritingHistory: Bool = true
     ) {
+        self.includeWritingHistory = includeWritingHistory
         self.compatibilityStore = compatibilityStore
         self.engine = ConstrainedGenerationEngine(
             runtime: runtime,
@@ -228,7 +233,7 @@ public final class ProductionCompletionEvaluator {
         let promptResult = promptBuilder.buildPrompt(
             context: promptContext,
             customInstructions: policy.customInstructions,
-            previousUserInputs: benchmarkCase.context.previousUserInputs,
+            previousUserInputs: includeWritingHistory ? benchmarkCase.context.previousUserInputs : [],
             pasteboardText: benchmarkCase.context.clipboardContext,
             screenText: benchmarkCase.context.screenContext,
             includeEnvironmentContext: policy.includesEnvironmentContext
