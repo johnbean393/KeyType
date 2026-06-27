@@ -3,6 +3,15 @@
     <channel>
         <title>KeyType</title>
         <item>
+            <title>1.6</title>
+            <pubDate>Sat, 27 Jun 2026 15:13:37 +0800</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>1.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<h2>New Features</h2><p>No new features in this release.</p><h2>Bug Fixes</h2><ul><li>Messages ghost text with attachment</li><li>Remove tall web field ghost text suppression</li><li>Browser ghost text tall multiline fields</li><li>Chrome ghost text tall web fields</li><li>Sublime Text ghost text unreliable editor placement</li><li>Chrome ghost text vertical baseline</li><li>Safari ghost text vertical baseline</li><li>TextEdit ghost text vertical baseline</li><li>Excel ghost text multiline cell suppression</li><li>Google AI Studio ghost text multiline prompt alignment</li><li>Browser ghost text single-line web fields</li><li>TextEdit ghost text vertical alignment overshoot</li><li>Google ghost text search field alignment</li><li>Chrome ghost text lower vertical alignment</li><li>Safari ghost text lower vertical alignment</li><li>TextEdit ghost text lower vertical alignment</li><li>Safari ghost text omnibox overlay</li><li>Chrome ghost text omnibox overlay</li><li>Terminal ghost text invisible overlay</li><li>Chrome ghost text too high</li><li>Safari ghost text too high</li><li>TextEdit ghost text too high</li><li>Pages ghost text stale probe</li><li>Chrome ghost text inline baseline</li><li>Safari ghost text inline baseline</li><li>TextEdit ghost text inline baseline</li><li>Chrome ghost text lower baseline</li><li>Safari ghost text lower baseline</li><li>TextEdit ghost text lower baseline</li><li>Chrome ghost text search overflow</li><li>Chrome ghost text multiline wrap overlap</li><li>Chrome ghost text high baseline</li><li>Safari ghost text high baseline</li><li>TextEdit ghost text high baseline</li><li>VS Code ghost text line-origin overlay</li><li>Safari Chrome ghost text suppress multiline web drift</li><li>Chrome ghost text lower baseline</li><li>Safari ghost text lower baseline</li><li>TextEdit ghost text lower baseline</li><li>Chrome ghost text vertical alignment</li><li>Safari ghost text vertical alignment</li><li>TextEdit ghost text vertical alignment</li><li>Chrome TextEdit Safari ghost text vertical alignment</li></ul>]]></description>
+            <enclosure url="https://github.com/johnbean393/KeyType/releases/download/v1.6.0/KeyType.1.6.dmg" sparkle:edSignature="Yht1+YScpEj3ZC3GieLIhoMkdHWN2i2zsKkmcfXxBtTHnGWntq6wzK5qklPgQUBjTFVFlZnuXwkrj3wAvTUvDw==" length="14785409" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>1.5</title>
             <pubDate>Fri, 12 Jun 2026 11:45:51 +0800</pubDate>
             <sparkle:version>7</sparkle:version>
