@@ -404,23 +404,35 @@ public struct CorrectionBadgeView: View {
     }
 
     public var body: some View {
+        // Strike only the letters that are wrong and embolden only the letters that change
+        // (ADR-119): defin̶a̶tely → definitely. A pure insertion has an empty original core and
+        // nothing to strike; the arrow still carries the meaning.
+        let diff = CorrectionLetterDiff.between(original, replacement)
+        let badgeFont = Font(font as CTFont)
         HStack(spacing: 6) {
-            Text(original)
-                .font(Font(font as CTFont))
-                .foregroundStyle(Color(nsColor: .systemRed))
-                .strikethrough(true, color: Color(nsColor: .systemRed))
-                .lineLimit(1)
-                .fixedSize()
+            (
+                Text(diff.prefix)
+                    + Text(diff.originalCore).strikethrough(true, color: Color(nsColor: .systemRed))
+                    + Text(diff.suffix)
+            )
+            .font(badgeFont)
+            .foregroundStyle(Color(nsColor: .systemRed))
+            .lineLimit(1)
+            .fixedSize()
             Text("→")
-                .font(Font(font as CTFont))
+                .font(badgeFont)
                 .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                 .lineLimit(1)
                 .fixedSize()
-            Text(replacement)
-                .font(Font(font as CTFont))
-                .foregroundStyle(Color(nsColor: .systemGreen))
-                .lineLimit(1)
-                .fixedSize()
+            (
+                Text(diff.prefix)
+                    + Text(diff.replacementCore).fontWeight(.semibold)
+                    + Text(diff.suffix)
+            )
+            .font(badgeFont)
+            .foregroundStyle(Color(nsColor: .systemGreen))
+            .lineLimit(1)
+            .fixedSize()
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

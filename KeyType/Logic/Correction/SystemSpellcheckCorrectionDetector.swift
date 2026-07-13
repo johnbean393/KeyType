@@ -27,6 +27,15 @@ struct SystemSpellcheckCorrectionDetector: CorrectionDetecting {
         case let (.success(closed), _):
             target = closed
         case let (.failure, .success(current)):
+            // An open fragment that can still extend into a dictionary word is typing in
+            // progress (shou → should), not a typo: leave it to the completion lane (ADR-113)
+            // and only correct dead-end fragments. Without this gate the recalibrated validator
+            // (ADR-120) happily proves "show" more probable than "shou" mid-word and badge-spams
+            // while the user types. Mirrors the completion typo guard's closed-word-only rule.
+            guard !SystemWordRecognizer().canCompleteWord(
+                prefix: current.original,
+                language: context.detectedLanguage
+            ) else { return nil }
             target = current
         case (.failure, .failure):
             return nil

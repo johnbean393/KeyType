@@ -135,6 +135,7 @@ row here.**
 | 113 | Route prefix-only spellcheck replacements to completion | correction/completion |
 | 114 | Lower spellcheck correction model margin | correction/model-runtime |
 | 115 | Remove aggressive correction mode | correction/settings |
+| 116 | Correction validation: joint log-probability scoring + guards | correction/model-runtime |
 
 ---
 
@@ -3589,3 +3590,49 @@ text. Both are now closed:
   detector and correction validation thresholds.
 - Consequences: Correction behavior is simpler to reason about and the Settings UI has one fewer
   safety-related toggle. Previously stored user defaults for the removed key are ignored.
+
+
+## ADR-116 — Correction validation: joint log-probability scoring, clear-cut margins, and guards
+
+- Date: 2026-07-11
+- Status: accepted
+- Context: The autocorrect lane (ADR-108–115) detected typos but suppressed nearly every fix even
+  in ideal prose context (e.g. `definately` after "I " stayed suppressed as `lowModelMargin`).
+  Instrumenting `CorrectionValidationScorer` against a real GGUF found the thresholds were not the
+  problem — the scoring was, in three compounding ways, which explains the escalating threshold
+  surgery in ADR-113/114/115:
+  1. The anchor kept its trailing space, so candidate words tokenized standalone — a split that
+     BPE vocabularies essentially never produce after a space token, flooring every score.
+  2. Per-token **mean** log-probability systematically favoured multi-token strings (their tails
+     are near-deterministic): measured, `" definitely"` (1 token) scored mean −8.09 while
+     `" definately"` (2 tokens) scored −6.56 — the misspelling out-scored its own correction. The
+     joint (summed) log-probabilities are −8.09 vs −13.12, i.e. the correction wins by ~5 nats.
+  3. The −6.0 absolute mean floor asked "is this a likely continuation?" — the wrong question for
+     a correction (an adverb after "I" is valid but unlikely), so every candidate died at the
+     floor.
+- Decision:
+  - Move the anchor's trailing whitespace onto the scored word (the correction-lane analogue of
+    ADR-017's caret-boundary sanitization), so tokenization matches real model input.
+  - Compare candidates and the user's original on **joint (summed)** log-probability; the
+    per-token mean survives only for the suffix-join probe, where the window text is identical
+    across candidates.
+  - Replace the absolute floor and the "original is much better" slack with one gate: the
+    replacement's joint score must beat the user's own string by `minimumAdvantageOverOriginal`
+    (default 0 — any model preference for the original vetoes, which strengthens deliberate-
+    spelling / proper-noun protection). Dictionary flagging already guarantees the replacement is
+    a real word.
+  - Recalibrate margins to joint nats: `minimumMargin` 2.0, with a relaxed `clearCutMargin` 0.5
+    for dictionary-flagged candidates within edit distance 2 that are the model's top guess
+    (common typos attract look-alike checker guesses that compress the margin).
+  - Skip the suffix-join probe for whitespace-only windows (probing a bare space token is
+    tokenization noise that vetoed corrections typed at the end of a sentence).
+  - Only correct an *open* current word when it is a dead-end fragment (no possible dictionary
+    completion); a fragment still extensible into a word is typing in progress and belongs to the
+    completion lane (ADR-113), mirroring the in-beam typo guard's closed-word-only rule (ADR-015).
+  - Render the badge with a per-letter diff (`CorrectionLetterDiff`): strike only the wrong
+    letters, embolden only the changed ones (`definately` -> `definitely`).
+- Consequences: The live regression passes end to end — real-model verdict `definitely` at
+  confidence 0.95, joint margin ~5.4 (thin context) / ~6.0 (rich); textbook one-to-two-letter
+  typos surface while ambiguous near-ties and deliberate spellings stay suppressed. Thresholds are
+  now in interpretable units (nats of probability ratio). Correction latency is unchanged (joint
+  scoring decodes the same tokens as before). Verified by unit tests pinning the logged cases.

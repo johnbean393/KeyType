@@ -73,6 +73,29 @@ final class CompletionUITests: XCTestCase {
         XCTAssertEqual(resolver.placement(for: context)?.mode, .inline)
     }
 
+    func testCorrectionLetterDiffSplitsSubstitution() {
+        let diff = CorrectionLetterDiff.between("definately", "definitely")
+        XCTAssertEqual(diff, CorrectionLetterDiff(prefix: "defin", originalCore: "a", replacementCore: "i", suffix: "tely"))
+    }
+
+    func testCorrectionLetterDiffSplitsTransposition() {
+        let diff = CorrectionLetterDiff.between("recieve", "receive")
+        XCTAssertEqual(diff, CorrectionLetterDiff(prefix: "rec", originalCore: "ie", replacementCore: "ei", suffix: "ve"))
+    }
+
+    func testCorrectionLetterDiffPureInsertionHasEmptyOriginalCore() {
+        let diff = CorrectionLetterDiff.between("wich", "which")
+        XCTAssertEqual(diff, CorrectionLetterDiff(prefix: "w", originalCore: "", replacementCore: "h", suffix: "ich"))
+    }
+
+    func testCorrectionLetterDiffDisjointWordsFallBackToWholeWordCores() {
+        let diff = CorrectionLetterDiff.between("teh", "the")
+        XCTAssertEqual(diff.prefix, "t")
+        XCTAssertEqual(diff.originalCore, "eh")
+        XCTAssertEqual(diff.replacementCore, "he")
+        XCTAssertEqual(diff.suffix, "")
+    }
+
     @MainActor
     func testCorrectionBadgeLayoutPlacesBesideCaretAndClampsToField() {
         let font = NSFont.systemFont(ofSize: 14)

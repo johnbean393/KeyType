@@ -1551,6 +1551,10 @@ final class CompletionController {
 
     static func correctionSuffixWindow(from suffix: String) -> String {
         let trimmed = suffix.prefix(80)
+        // A whitespace-only window (the usual case right after typing "word ") carries no join
+        // signal — probing P(bare space | prefix + replacement) is pure tokenization noise that
+        // vetoes valid corrections (ADR-120).
+        guard trimmed.contains(where: { !$0.isWhitespace }) else { return "" }
         if let firstNonWhitespace = trimmed.first(where: { !$0.isWhitespace }),
            !firstNonWhitespace.isLetter,
            !firstNonWhitespace.isNumber {
