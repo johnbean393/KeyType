@@ -3589,3 +3589,122 @@ text. Both are now closed:
   detector and correction validation thresholds.
 - Consequences: Correction behavior is simpler to reason about and the Settings UI has one fewer
   safety-related toggle. Previously stored user defaults for the removed key are ignored.
+
+## ADR-116 — Screenshot calibration must not run on the main actor, and must cache its failures
+
+- Date: 2026-07-14
+- Status: accepted
+- Context: With `screenshotCalibrationEnabled` on, live telemetry showed `generationMillis` p50 861 ms
+  / p95 14.8 s / max 24 s, and — decisively — `debounceMillis` max of **23.6 s**. The debounce is a
+  pure `Task.sleep`; no decode touches it, so a 23-second debounce can only mean the **main actor was
+  starved**. Four independent defects compounded:
+  1. `ScreenshotOverlayCalibrator` is `@MainActor`, and both Vision OCR (`VNImageRequestHandler.perform`
+     is synchronous) and the ~440-candidate `bestCandidate` sweep ran synchronously on the main thread.
+  2. `bestCandidate` called `normalizedRMSE` twice per candidate, and each call re-rasterized the
+     *unchanging* observed screenshot — ~880 redundant full-image rasterizations per calibration.
+  3. The file contained **no cancellation checks**, so `overlayCalibrationTask.cancel()` was inert:
+     superseded sweeps ran to completion and piled up serialized on the main actor.
+  4. `overlayCalibrationKey` fell back to `cursorRect` when the app exposed no AX `fieldRect`
+     (Electron/web views), so the key changed on **every keystroke** — a guaranteed cache miss — and
+     rejected calibrations were never cached at all, so a field where calibration could not lock on
+     re-ran the full screenshot + OCR + sweep forever, once per keystroke.
+- Decision: Move OCR and the candidate sweep off the main actor (`nonisolated async` → global
+  executor, still a child task so cancellation propagates). Rasterize the observed image once per
+  sweep (`ObservedReference`) and compute direct + inverted luminance RMSE in a single pixel pass
+  (`normalizedRMSEPair`); the arithmetic is unchanged. Make `bestCandidate` throwing and check
+  cancellation per size iteration. Key the cache on the AX field rect when present and omit the rect
+  entirely when absent — calibration solves for font size and vertical offset, neither of which
+  depends on caret x. Cache the calibration *attempt* even when it misses its quality thresholds; the
+  reader (`calibratedOverlayInputs`) already ignores results with `meetsQualityThresholds == false`.
+- Consequences: Calibration quality is unchanged (same candidates, same RMSE, same winner) — only its
+  execution context, redundancy, cancellability, and cache identity change. A field that cannot be
+  calibrated is now attempted once per key instead of once per keystroke. The main actor stays free
+  for AX capture and overlay presentation, which is what the latency traces assume.
+
+## ADR-117 — Cancellation must be enforced inside the model runtime, not just the engine loop
+
+- Date: 2026-07-14
+- Status: accepted
+- Context: ADR-080 deliberately overlaps generation with the debounce gate, on the stated premise that
+  "generation is cancellable and a newer focused-field snapshot already cancels stale work". That
+  premise did not hold at the runtime boundary: `ConstrainedGenerationEngine` checks
+  `Task.checkCancellation()` per depth level and per branch, but `LlamaModelRuntime` (an `actor`)
+  contained **zero** cancellation checks. A call already enqueued on the actor therefore ran a full
+  `llama_decode` even when its task had been cancelled, and the *next* keystroke's work queued behind
+  that dead decode. Under ADR-080's design — every keystroke starts a generation immediately — this
+  turns a fast typist into a growing backlog of work for keystrokes nobody is waiting for.
+- Decision: Check `Task.checkCancellation()` at the model-runtime decode entry points
+  (`anchoredLogits`, `anchoredLogitsBatch`, and per group in the multi-group reseed loop) so a
+  superseded request is dropped when it reaches the actor rather than after it has decoded. Keep
+  ADR-080's overlap: gating compute behind the debounce would re-introduce the additive 15–55 ms that
+  ADR-080 removed on purpose. Separately, time the engine call in a `nonisolated` helper
+  (`CompletionController.timedCompletions`) so `generationMillis` measures generation instead of
+  generation plus the wait for a busy main actor — the old measurement straddled the hop back to
+  `@MainActor` and silently attributed main-actor contention to the model, which made every latency
+  number unverifiable.
+- Consequences: ADR-080's premise is now true rather than assumed. In-flight `llama_decode` calls
+  still run to completion (llama.cpp has no mid-decode abort wired up here); only *enqueued* work is
+  dropped. `generationMillis` is now a trustworthy diagnostic, and `debounceMillis` becomes a clean
+  main-actor-starvation probe: it should never exceed its configured tier.
+
+## ADR-118 — Per-token decode cost is memory bandwidth over the weights; model size is the budget
+
+- Date: 2026-07-14
+- Status: accepted
+- Context: A user reported KeyType being far slower than a competitor running **the same** Gemma 4 E2B
+  model. Profiling the production path in release (`LatencyProfileTests`, extended to accept
+  `KEYTYPE_PROFILE_MODEL` / `KEYTYPE_PROFILE_FAMILY` so any downloaded family can be profiled, not just
+  the Qwen default) produced an unambiguous split on an M4 Air:
+  ```
+  prepare (decode)  :   385.8 ms  (99%)
+  logits read       :     0.0 ms  (0%)
+  sampling + other  :     2.2 ms  (1%)
+  ```
+  Three plausible culprits were tested and **all three were refuted**:
+  1. *Full-vocab `[TokenLogit]` materialization per branch per level, and the constrained sampler's
+     exhaustive 262,144-token scan (ADR-025).* Together: **~2 ms, 1% of latency.** Both are irrelevant
+     to latency despite looking alarming. Do not "optimize" them.
+  2. *Tensor placement / Metal offload.* llama.cpp assigns `token_embd.weight` and
+     `per_layer_token_embd.weight` (2.1 GB) to CPU buffers. Forcing them onto the Metal buffer type via
+     `tensor_buft_overrides` moved them (CPU buffer 2152 MiB → 0) and changed latency by **~0 ms**.
+     Reverted; only the explicit `n_gpu_layers` was kept.
+  3. *ADR-018 snapshot/restore.* A/B with `enableKVFork: false` is **3.5x slower** (1016 ms vs 289 ms).
+     KV fork is a large win, not a cost.
+  What the numbers actually say: cost is linear in **tokens pushed through `llama_decode`** —
+  ~2.5 ms/token, with fork on (109 tokens → 289 ms) and off (406 tokens → 1017 ms) agreeing. That is
+  memory bandwidth: a single-token decode reads the whole 3.65 GB weight set, and an M4 Air moves
+  ~120 GB/s ⇒ ~30 ms per sequential decode step, whatever the app does.
+- Decision: Treat **decoded tokens as the latency budget**, not Swift-side work. Two quantities set
+  user-visible latency, and only these two are worth optimizing:
+  - **prompt tokens x per-token prefill** — paid in full whenever the prompt *prefix* changes, so
+    protecting KV prefix reuse is worth more than any micro-optimization (see ADR-119).
+  - **`maxCompletionTokens` x per-token decode** — sequential and unavoidable; beam *width* is nearly
+    free (branches batch into one `llama_decode`), beam *depth* is not.
+- Consequences: Model choice is a latency decision, not just a quality one: on this hardware a 3.65 GB
+  model costs ~30 ms per generated token, so an 8-token completion cannot beat ~240 ms of decode no
+  matter how the app is written. A competitor feeling faster on the same weights is generating fewer
+  tokens, streaming partial results, or carrying a smaller prompt — not running a faster matmul. Future
+  latency work should start by counting decoded tokens, and `docs/07-performance.md`'s "measure in
+  release" rule now extends to "profile the family you actually ship to that user".
+
+## ADR-119 — The periodic OCR refresh must not run mid-typing
+
+- Date: 2026-07-14
+- Status: accepted
+- Context: `ScreenContextController` re-OCRs the focused window every 4 s while it stays focused. The
+  `[Screen context]` section sits *ahead of* `beforeCursor` in `sectionOrder` (`Prompting.swift`), so
+  replacing its text rewrites the prompt **prefix**. KV reuse requires a pure append
+  (`LlamaModelRuntime`: `isPureAppend`), so a refresh forces `llama_memory_clear` and a **full
+  re-prefill of the entire prompt** on the next keystroke. By ADR-118 that costs ~2.5 ms per prompt
+  token on the profiled model — so with OCR, clipboard, and writing history all contributing sections,
+  a ~1000-token prompt turns into a ~2.5 s stall, arriving *every 4 seconds while the user types*.
+  This is the mechanism behind the reported p95 of 14.8 s.
+- Decision: Skip the periodic refresh while the user is actively typing — track the last observed text
+  change (text signature, so caret repolls don't count) and require a `typingIdleInterval` (2 s) pause
+  before a periodic capture may replace the screen text. Capture on focus/window change is unchanged:
+  that path rebuilds the prompt anyway, so it costs no reuse.
+- Consequences: Screen context can now lag on-screen changes by up to a typing pause, which is the
+  correct trade — the section is a *background* hint, and a stale hint is worth far more than a
+  multi-second stall mid-sentence. OCR stays viable with the feature enabled instead of being
+  effectively unusable. The invariant worth testing directly is prompt-**prefix stability** across
+  consecutive keystrokes within a session.
