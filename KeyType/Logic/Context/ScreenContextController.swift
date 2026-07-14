@@ -31,12 +31,24 @@ final class ScreenContextController {
     /// on-screen changes (a scrolled doc, an updated panel) without a focus change to trigger it.
     private let refreshInterval: TimeInterval = 4.0
 
+    /// How long the user must pause before a periodic refresh is allowed to replace the screen text.
+    /// The `[Screen context]` section sits *ahead of* `beforeCursor` in the prompt, so swapping its
+    /// contents rewrites the prompt **prefix** — which breaks the pure-append condition KV reuse
+    /// depends on and forces a full re-prefill of the entire prompt on the very next keystroke. That
+    /// costs milliseconds per prompt token, so on a long prompt it is seconds of stall, landing
+    /// mid-typing-burst every `refreshInterval`. Refresh only once typing has settled. See ADR-119.
+    private let typingIdleInterval: TimeInterval = 2.0
+
     private(set) var isRunning = false
     private var listenerToken: UUID?
     private var refreshTimer: Timer?
     /// Identity of the window we last captured, so per-keystroke snapshot re-emits (same window)
     /// don't kick off a fresh capture — only an actual focus/window change does.
     private var lastWindowKey: String?
+    /// Text signature of the last snapshot, so typing (text changed) is distinguishable from caret
+    /// repolls (same text), and the moment of the last observed edit.
+    private var lastTextSignature: Int?
+    private var lastTypingActivity: Date?
 
     /// The cached-OCR provider to inject into `CompletionController`.
     var screenTextProvider: ScreenTextProviding { engine }
@@ -90,28 +102,52 @@ final class ScreenContextController {
 
     /// Focus/window change: only re-capture when the *window* identity changes, so typing (which
     /// re-emits snapshots for the same window) doesn't thrash OCR.
-    private func handle(_ snapshot: FocusedFieldSnapshot?) {
+    private func handle(_ snapshot: FocusedFieldSnapshot?, now: Date = Date()) {
         guard isEligible(snapshot), let snapshot else {
             lastWindowKey = nil
+            lastTextSignature = nil
             engine.clear()
             return
         }
+
+        // Record edits (text changed) but not caret repolls (same text), so the periodic refresh can
+        // tell an active typing burst from an idle window.
+        let signature = Self.textSignature(for: snapshot.context)
+        if signature != lastTextSignature {
+            lastTextSignature = signature
+            lastTypingActivity = now
+        }
+
         let key = windowKey(for: snapshot)
         guard key != lastWindowKey else { return }
         lastWindowKey = key
+        // A window/focus change rebuilds the prompt from scratch anyway, so capturing here costs no
+        // reuse — unlike the periodic refresh below.
         capture(for: snapshot)
     }
 
-    /// Periodic refresh while a window stays focused.
-    private func refreshTick() {
+    /// Periodic refresh while a window stays focused. Deliberately skipped mid-burst: replacing the
+    /// screen text rewrites the prompt prefix and forces a full re-prefill (see `typingIdleInterval`).
+    func refreshTick(now: Date = Date()) {
         let snapshot = tracker.currentSnapshot
         guard isEligible(snapshot), let snapshot else {
             lastWindowKey = nil
+            lastTextSignature = nil
             engine.clear()
+            return
+        }
+        if let lastTypingActivity, now.timeIntervalSince(lastTypingActivity) < typingIdleInterval {
             return
         }
         lastWindowKey = windowKey(for: snapshot)
         capture(for: snapshot)
+    }
+
+    private static func textSignature(for context: TextFieldContext) -> Int {
+        var hasher = Hasher()
+        hasher.combine(context.beforeCursor)
+        hasher.combine(context.afterCursor)
+        return hasher.finalize()
     }
 
     private func capture(for snapshot: FocusedFieldSnapshot) {
