@@ -35,9 +35,12 @@ secrets.json
 # Vendored binary frameworks (llama.cpp xcframework lives outside git, see ADR-007)
 Packages/ModelRuntime/Vendor/
 
-# Model weights (stay in ~/Library/Application Support/KeyType/Models, never in the repo)
+# Model weights (stay in ~/Library/Application Support/KeyType/Models, never in the repo).
+# Match by extension only: an unanchored `Models/` rule also silently excludes *source*
+# directories named `Models/` — which is how KeyType/Logic/Models/ModelSetupCoordinator.swift
+# was lost in the directory refactor, leaving `main` unable to compile from a fresh clone.
 *.gguf
-Models/
+*.acpf.bin
 
 # Completion benchmark local/private data and generated reports
 KeyTypeBench-20260603/Private/
