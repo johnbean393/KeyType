@@ -22,12 +22,17 @@ final class PrefillLatencyBenchmarkTests: XCTestCase {
     /// the cold-path fits the budget at the ceiling.
     private static let coldP90BudgetMillis: Double = 200.0
 
+    /// Defaults to the benchmarked model; override with `KEYTYPE_PROFILE_MODEL` to measure the raw
+    /// prefill/decode cost of any other downloaded GGUF (per-token cost is model-specific).
+    private static let modelFilename = ProcessInfo.processInfo.environment["KEYTYPE_PROFILE_MODEL"]
+        ?? ModelContainer.defaultModelFilename
+
     private func makeRuntime() throws -> LlamaModelRuntime {
+        let url = try ModelContainer.modelURL(filename: Self.modelFilename)
         try XCTSkipUnless(
-            ModelContainer.defaultModelExists(),
-            "Model file not present at \(ModelContainer.defaultModelFilename); skipping prefill latency benchmark"
+            FileManager.default.fileExists(atPath: url.path),
+            "Model file not present at \(Self.modelFilename); skipping prefill latency benchmark"
         )
-        let url = try ModelContainer.modelURL()
         // Headroom over the largest swept prompt size so the runtime can hold it
         // without re-sliding the KV cache.
         return try LlamaModelRuntime(modelURL: url, contextLength: 5120, reuseThreshold: 8)

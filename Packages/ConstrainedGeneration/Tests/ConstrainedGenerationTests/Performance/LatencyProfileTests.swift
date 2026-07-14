@@ -14,7 +14,14 @@ import XCTest
 /// Run: swift test --package-path Packages/ConstrainedGeneration \
 ///   --filter LatencyProfileTests -c release
 final class LatencyProfileTests: XCTestCase {
-    private static let family = "qwen3-v151936"
+    /// Defaults to the benchmarked Qwen model, but any downloaded model family can be profiled by
+    /// setting `KEYTYPE_PROFILE_MODEL` (GGUF filename) and `KEYTYPE_PROFILE_FAMILY` (ACPF family).
+    /// Per-family profiling matters because Swift-side per-token work scales with vocabulary size:
+    /// Gemma's 262,144-token vocab is 1.7x Qwen's, and the constrained sampler walks it in full.
+    private static let family = ProcessInfo.processInfo.environment["KEYTYPE_PROFILE_FAMILY"]
+        ?? "qwen3-v151936"
+    private static let modelFilename = ProcessInfo.processInfo.environment["KEYTYPE_PROFILE_MODEL"]
+        ?? ModelContainer.defaultModelFilename
 
     /// Records what the engine asks of the runtime, classifying each prepare by how many tokens it
     /// actually pushed through `llama_decode`.
@@ -105,10 +112,11 @@ final class LatencyProfileTests: XCTestCase {
     }
 
     private func load(enableKVFork: Bool = true) throws -> (LlamaModelRuntime, MmapAutocompleteProfile) {
-        try XCTSkipUnless(ModelContainer.defaultModelExists(), "GGUF missing; skipping profile")
+        let modelURL = try ModelContainer.modelURL(filename: Self.modelFilename)
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: modelURL.path), "GGUF missing; skipping profile")
         let profileURL = try ModelContainer.profileURL(family: Self.family)
         try XCTSkipUnless(FileManager.default.fileExists(atPath: profileURL.path), "profile missing")
-        let runtime = try LlamaModelRuntime(modelURL: try ModelContainer.modelURL(), contextLength: 2048, enableKVFork: enableKVFork)
+        let runtime = try LlamaModelRuntime(modelURL: modelURL, contextLength: 2048, enableKVFork: enableKVFork)
         let profile = try MmapAutocompleteProfile.open(
             at: profileURL,
             tokenizerVocabSize: runtime.metadata.vocabularySize,
