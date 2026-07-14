@@ -939,8 +939,10 @@ final class CompletionUITests: XCTestCase {
     func testResolveFontFallsBackToCaretHeight() {
         let placement = OverlayPlacement(cursorRect: CGRect(x: 0, y: 0, width: 1, height: 20))
         let resolved = InlineGhostTextPresenter.resolveFont(nil, placement: placement)
-        // Estimated from caret height (20 * 0.83), then reduced by 15%, clamped into [8, 96].
-        XCTAssertEqual(resolved.pointSize, 20 * 0.83 * 0.85, accuracy: 0.1)
+        // Estimated from caret height (20 * 0.83 ≈ the 1/1.2 line-height→point-size ratio), clamped
+        // into [8, 96]. No extra shrink: a second factor made ghost text visibly smaller than the
+        // field's own text in web/Electron fields.
+        XCTAssertEqual(resolved.pointSize, 20 * 0.83, accuracy: 0.1)
     }
 
     @MainActor

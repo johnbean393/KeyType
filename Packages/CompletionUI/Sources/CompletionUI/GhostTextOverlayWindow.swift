@@ -300,6 +300,23 @@ public final class GhostTextOverlayWindow {
         quality == .derived || quality == .estimated
     }
 
+    /// Origin Y for a ghost-text box whose glyphs sit on the field's text baseline.
+    ///
+    /// The caret rect spans the whole line box, which is taller than the glyphs whenever the field
+    /// uses line-height > 1 (typical in web/Electron fields). Centering the ghost's *reserved box*
+    /// inside that rect misaligns the glyphs, because the box is `lineHeight` tall while the glyphs
+    /// only occupy `fontLineHeight` of it. Center the glyph run itself instead, so the ghost sits on
+    /// the same baseline as the text it continues.
+    static func baselineAlignedOriginY(
+        caret: CGRect,
+        visualCaretHeight: CGFloat,
+        lineHeight: CGFloat,
+        font: NSFont
+    ) -> CGFloat {
+        let fontLineHeight = ceil(font.ascender - font.descender)
+        return caret.minY + (visualCaretHeight - fontLineHeight) / 2
+    }
+
     private static func visualCaretHeight(for placement: OverlayPlacement, lineHeight: CGFloat) -> CGFloat {
         let caretHeight = placement.cursorRect.height
         guard caretHeight > 0 else { return lineHeight }
@@ -367,6 +384,12 @@ public final class GhostTextOverlayWindow {
         let fontLineHeight = ceil(font.ascender - font.descender)
         let lineHeight = max(Self.trustedCaretHeight(for: placement, fallbackLineHeight: fontLineHeight), fontLineHeight)
         let visualCaretHeight = Self.visualCaretHeight(for: placement, lineHeight: lineHeight)
+        let baselineY = Self.baselineAlignedOriginY(
+            caret: caret,
+            visualCaretHeight: visualCaretHeight,
+            lineHeight: lineHeight,
+            font: font
+        )
         let singleLineWidth = ceil(measuredWidth(text, font: font)) + 2
         guard
             !placement.isRightToLeft,
@@ -378,14 +401,12 @@ public final class GhostTextOverlayWindow {
         else {
             let width = availableTextWidth(for: placement, singleLineWidth: singleLineWidth)
             let x: CGFloat
-            let y: CGFloat
+            let y = baselineY
             switch placement.mode {
             case .mirror:
                 x = placement.isRightToLeft ? caret.maxX - width : caret.maxX
-                y = caret.minY + (visualCaretHeight - lineHeight) / 2
             default:
                 x = placement.isRightToLeft ? caret.minX - width : caret.maxX
-                y = caret.minY + (visualCaretHeight - lineHeight) / 2
             }
             return Layout(
                 frame: CGRect(x: x, y: y, width: width, height: lineHeight),
@@ -401,7 +422,7 @@ public final class GhostTextOverlayWindow {
             return Layout(
                 frame: CGRect(
                     x: placement.isRightToLeft ? caret.minX - singleLineWidth : caret.maxX,
-                    y: caret.minY + (visualCaretHeight - lineHeight) / 2,
+                    y: baselineY,
                     width: singleLineWidth,
                     height: lineHeight
                 ),
@@ -418,7 +439,7 @@ public final class GhostTextOverlayWindow {
             lineHeight: lineHeight
         )
         let height = lineHeight * CGFloat(lines.count)
-        let y = caret.minY + (visualCaretHeight - lineHeight) / 2 - (height - lineHeight)
+        let y = baselineY - (height - lineHeight)
 
         return Layout(
             frame: CGRect(x: field.minX, y: y, width: fullLineWidth, height: height),
@@ -656,7 +677,7 @@ private extension String {
 public final class InlineGhostTextPresenter: CompletionOverlayPresenting {
     private let window: GhostTextOverlayWindow
     public private(set) var visibleCandidate: CompletionCandidate?
-    private nonisolated static let fallbackFontSizeScale: CGFloat = 0.85
+    private nonisolated static let fallbackFontSizeScale: CGFloat = 1.0
 
     public nonisolated init(window: GhostTextOverlayWindow = GhostTextOverlayWindow()) {
         self.window = window
