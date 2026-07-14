@@ -117,6 +117,12 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         var modelParams = llama_model_default_params()
         modelParams.use_mmap = true
         modelParams.use_mlock = false
+        // Offload every layer to Metal explicitly rather than relying on the library default. (This
+        // is what the default already resolves to; stating it means a future llama.cpp bump can't
+        // silently drop us onto the CPU.) Measured: no latency change, since offload was already
+        // correct — the per-token cost is memory bandwidth over the weights, not tensor placement.
+        // See ADR-118.
+        modelParams.n_gpu_layers = 999
 
         guard let loadedModel = llama_model_load_from_file(modelURL.path, modelParams) else {
             throw LlamaRuntimeError.modelLoadFailed
@@ -308,6 +314,11 @@ public actor LlamaModelRuntime: LocalModelRuntime {
     /// memory aborts on `seq_cp`; `get_data`/`set_data` serialize the full per-sequence state
     /// (attention KV + recurrent state) and are safe.
     public func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit] {
+        // Cancellation is checked *here*, inside the actor, not just in the calling engine loop
+        // (ADR-080 assumes a superseded keystroke stops costing GPU time). Calls that were enqueued
+        // on this actor before their task was cancelled would otherwise still run a full
+        // `llama_decode`, and the next keystroke's work would queue behind that dead decode.
+        try Task.checkCancellation()
         guard enableKVFork else {
             try await prepare(promptTokens: anchor + suffix)
             return try await logitsForNextToken()
@@ -346,6 +357,9 @@ public actor LlamaModelRuntime: LocalModelRuntime {
     /// calls into ~3 batched ones roughly halves latency. Results are returned in input order and
     /// are identical (top-k) to scoring each branch with `anchoredLogits`.
     public func anchoredLogitsBatch(anchor: [TokenID], suffixes: [[TokenID]]) async throws -> [[TokenLogit]] {
+        // See `anchoredLogits`: drop work whose task was cancelled while this call sat in the actor's
+        // queue, so a superseded keystroke neither burns a decode nor delays the live one.
+        try Task.checkCancellation()
         guard enableKVFork else {
             var out: [[TokenLogit]] = []
             out.reserveCapacity(suffixes.count)
@@ -399,6 +413,7 @@ public actor LlamaModelRuntime: LocalModelRuntime {
         invalidateFrontier()
         var cursor = 0
         while cursor < pending.count {
+            try Task.checkCancellation()
             let end = min(cursor + groupSize, pending.count)
             try decodeBranchGroup(anchor: anchor, group: Array(pending[cursor..<end]), into: &results)
             cursor = end

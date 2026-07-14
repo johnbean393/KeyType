@@ -99,24 +99,23 @@ public final class ScreenshotOverlayCalibrator {
             maxHeight: maxCropHeight
         )
         let screenshot = try await capture(region: crop, windowID: snapshot.windowID)
-        let observations = (try? await recognizeText(in: screenshot)) ?? []
-        let recognizedText = observations
-            .compactMap { $0.topCandidates(1).first?.string }
-            .first
+
+        // Everything below is pure pixel work (Vision OCR + the candidate sweep) with no AppKit view
+        // or AX involvement, so it must not run on the main actor: it is hundreds of milliseconds of
+        // synchronous compute, and blocking the main actor stalls the entire keystroke pipeline —
+        // including the continuations that present ghost text. `nonisolated async` hops to the global
+        // executor while staying a child task, so cancellation still propagates. See ADR-116.
+        let recognizedText = await Self.recognizeFirstLine(in: screenshot)
         let actualLineLength = recognizedText?.count ?? prefix.count
 
-        let sizes = ScreenshotCalibrationScorer.candidateSizes(around: font.pointSize)
-        let offsets = ScreenshotCalibrationScorer.candidateVerticalOffsets()
-        let candidate = ScreenshotCalibrationScorer.bestCandidate(
+        let candidate = try await Self.scoreCandidates(
             text: prefix,
             baseFont: font,
             color: textColor ?? .labelColor,
             observed: screenshot,
             cropRect: crop,
             fieldRect: field,
-            caretRect: caret,
-            sizes: sizes,
-            verticalOffsets: offsets
+            caretRect: caret
         )
 
         let confidence = max(0, 1 - candidate.rmse)
@@ -187,7 +186,39 @@ public final class ScreenshotOverlayCalibrator {
         return image
     }
 
-    private func recognizeText(in image: CGImage) async throws -> [VNRecognizedTextObservation] {
+    /// The candidate sweep, off the main actor. `nonisolated async` runs on the global executor.
+    private nonisolated static func scoreCandidates(
+        text: String,
+        baseFont: NSFont,
+        color: NSColor,
+        observed: CGImage,
+        cropRect: CGRect,
+        fieldRect: CGRect,
+        caretRect: CGRect
+    ) async throws -> ScreenshotCalibrationCandidate {
+        try ScreenshotCalibrationScorer.bestCandidate(
+            text: text,
+            baseFont: baseFont,
+            color: color,
+            observed: observed,
+            cropRect: cropRect,
+            fieldRect: fieldRect,
+            caretRect: caretRect,
+            sizes: ScreenshotCalibrationScorer.candidateSizes(around: baseFont.pointSize),
+            verticalOffsets: ScreenshotCalibrationScorer.candidateVerticalOffsets()
+        )
+    }
+
+    /// Vision OCR, off the main actor. `VNImageRequestHandler.perform` is synchronous and blocks its
+    /// caller's thread, so on the main actor it froze the UI for the duration of the recognition.
+    private nonisolated static func recognizeFirstLine(in image: CGImage) async -> String? {
+        let observations = (try? await recognizeText(in: image)) ?? []
+        return observations
+            .compactMap { $0.topCandidates(1).first?.string }
+            .first
+    }
+
+    private nonisolated static func recognizeText(in image: CGImage) async throws -> [VNRecognizedTextObservation] {
         try await withCheckedThrowingContinuation { continuation in
             let request = VNRecognizeTextRequest { request, error in
                 if let error {
@@ -267,6 +298,25 @@ enum ScreenshotCalibrationScorer {
         stride(from: CGFloat(-6), through: CGFloat(6), by: CGFloat(1)).map { $0 }
     }
 
+    /// The observed screenshot, rasterized once. It is identical for every candidate in a sweep, but
+    /// the old code re-derived it (and re-scanned it for transparency) inside `normalizedRMSE`, which
+    /// ran twice per candidate — ~880 redundant full-image rasterizations per calibration. Hoisting it
+    /// out of the loop is the single biggest win here, and it changes no arithmetic.
+    struct ObservedReference {
+        let rgba: [UInt8]
+        let width: Int
+        let height: Int
+        let hasTransparency: Bool
+
+        init(image: CGImage, width: Int, height: Int) {
+            let pixels = ScreenshotCalibrationScorer.rgba(image, width: width, height: height)
+            self.rgba = pixels
+            self.width = width
+            self.height = height
+            self.hasTransparency = stride(from: 3, to: pixels.count, by: 4).contains { pixels[$0] < 250 }
+        }
+    }
+
     static func bestCandidate(
         text: String,
         baseFont: NSFont,
@@ -277,15 +327,20 @@ enum ScreenshotCalibrationScorer {
         caretRect: CGRect,
         sizes: [CGFloat],
         verticalOffsets: [CGFloat]
-    ) -> ScreenshotCalibrationCandidate {
+    ) throws -> ScreenshotCalibrationCandidate {
         var best = ScreenshotCalibrationCandidate(
             size: baseFont.pointSize,
             verticalOffset: 0,
             rmse: .greatestFiniteMagnitude,
             usesInvertedLuminance: false
         )
+        guard observed.width > 0, observed.height > 0 else { return best }
+        let reference = ObservedReference(image: observed, width: observed.width, height: observed.height)
 
         for size in sizes {
+            // The sweep is hundreds of candidates long. Without this the calibration task's
+            // `cancel()` is inert: a superseded keystroke's sweep runs to completion anyway.
+            try Task.checkCancellation()
             for offset in verticalOffsets {
                 guard let rendered = renderText(
                     text,
@@ -300,8 +355,9 @@ enum ScreenshotCalibrationScorer {
                 ) else {
                     continue
                 }
-                let direct = normalizedRMSE(rendered: rendered, observed: observed, invertRenderedLuminance: false)
-                let inverted = normalizedRMSE(rendered: rendered, observed: observed, invertRenderedLuminance: true)
+                // Direct and inverted luminance differ only in `expected`, so one pixel pass yields
+                // both — the old code walked every pixel twice to get them.
+                let (direct, inverted) = normalizedRMSEPair(rendered: rendered, observed: reference)
                 let usesInverted = inverted < direct
                 let rmse = min(direct, inverted)
                 if rmse < best.rmse {
@@ -317,6 +373,68 @@ enum ScreenshotCalibrationScorer {
         return best
     }
 
+    /// Weighted glyph RMSE of `rendered` against a pre-rasterized `observed`, for both direct and
+    /// inverted rendered luminance, in a single pass.
+    static func normalizedRMSEPair(
+        rendered: CGImage,
+        observed: ObservedReference
+    ) -> (direct: CGFloat, inverted: CGFloat) {
+        let width = min(rendered.width, observed.width)
+        let height = min(rendered.height, observed.height)
+        guard width > 0, height > 0 else {
+            return (.greatestFiniteMagnitude, .greatestFiniteMagnitude)
+        }
+
+        let renderedRGBA = rgba(rendered, width: width, height: height)
+        let observedRGBA = observed.rgba
+        let observedHasTransparency = observed.hasTransparency
+        // The reference may be wider than the compared region; index it by its own row stride.
+        let observedStride = observed.width * 4
+        var directSum = 0.0
+        var invertedSum = 0.0
+        var weightTotal = 0.0
+
+        for y in 0..<height {
+            for x in 0..<width {
+                let renderedIndex = (y * width + x) * 4
+                let observedIndex = y * observedStride + x * 4
+                let renderedAlpha = Double(renderedRGBA[renderedIndex + 3]) / 255.0
+                let observedAlpha = Double(observedRGBA[observedIndex + 3]) / 255.0
+                let alpha = observedHasTransparency ? max(renderedAlpha, observedAlpha) : renderedAlpha
+                guard alpha > 0.03 else { continue }
+
+                let expected = luminance(
+                    r: renderedRGBA[renderedIndex],
+                    g: renderedRGBA[renderedIndex + 1],
+                    b: renderedRGBA[renderedIndex + 2]
+                )
+                let observedLuminance = luminance(
+                    r: observedRGBA[observedIndex],
+                    g: observedRGBA[observedIndex + 1],
+                    b: observedRGBA[observedIndex + 2]
+                )
+                let alphaDiff = observedHasTransparency
+                    ? (renderedAlpha - observedAlpha) * 255.0
+                    : 0
+                let alphaTerm = alphaDiff * alphaDiff
+
+                let directDiff = expected - observedLuminance
+                let invertedDiff = (255 - expected) - observedLuminance
+                directSum += (directDiff * directDiff + alphaTerm) * alpha
+                invertedSum += (invertedDiff * invertedDiff + alphaTerm) * alpha
+                weightTotal += alpha
+            }
+        }
+
+        guard weightTotal > 0 else {
+            return (.greatestFiniteMagnitude, .greatestFiniteMagnitude)
+        }
+        return (
+            CGFloat(sqrt(directSum / weightTotal) / 255.0),
+            CGFloat(sqrt(invertedSum / weightTotal) / 255.0)
+        )
+    }
+
     static func normalizedRMSE(
         rendered: CGImage,
         observed: CGImage,
@@ -325,45 +443,9 @@ enum ScreenshotCalibrationScorer {
         let width = min(rendered.width, observed.width)
         let height = min(rendered.height, observed.height)
         guard width > 0, height > 0 else { return .greatestFiniteMagnitude }
-
-        let renderedRGBA = rgba(rendered, width: width, height: height)
-        let observedRGBA = rgba(observed, width: width, height: height)
-        let observedHasTransparency = stride(from: 3, to: observedRGBA.count, by: 4)
-            .contains { observedRGBA[$0] < 250 }
-        var weightedSum = 0.0
-        var weightTotal = 0.0
-
-        for index in 0..<(width * height) {
-            let renderedAlpha = Double(renderedRGBA[index * 4 + 3]) / 255.0
-            let observedAlpha = Double(observedRGBA[index * 4 + 3]) / 255.0
-            let alpha = observedHasTransparency ? max(renderedAlpha, observedAlpha) : renderedAlpha
-            guard alpha > 0.03 else { continue }
-
-            var expected = luminance(
-                r: renderedRGBA[index * 4],
-                g: renderedRGBA[index * 4 + 1],
-                b: renderedRGBA[index * 4 + 2]
-            )
-            if invertRenderedLuminance {
-                expected = 255 - expected
-            }
-            let observed = luminance(
-                r: observedRGBA[index * 4],
-                g: observedRGBA[index * 4 + 1],
-                b: observedRGBA[index * 4 + 2]
-            )
-            let diff = expected - observed
-            let alphaDiff = observedHasTransparency
-                ? (renderedAlpha - observedAlpha) * 255.0
-                : 0
-            weightedSum += (diff * diff + alphaDiff * alphaDiff) * alpha
-            weightTotal += alpha
-        }
-
-        guard weightTotal > 0 else {
-            return .greatestFiniteMagnitude
-        }
-        return CGFloat(sqrt(weightedSum / weightTotal) / 255.0)
+        let reference = ObservedReference(image: observed, width: width, height: height)
+        let pair = normalizedRMSEPair(rendered: rendered, observed: reference)
+        return invertRenderedLuminance ? pair.inverted : pair.direct
     }
 
     static func renderText(

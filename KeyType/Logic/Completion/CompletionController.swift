@@ -659,10 +659,8 @@ final class CompletionController {
             guard let self else { return }
             do {
                 latencyTrace.eventGenerationBegin()
-                let start = DispatchTime.now()
-                let candidates = try await engine.completions(for: request)
+                let (candidates, elapsedMs) = try await Self.timedCompletions(engine: engine, request: request)
                 try Task.checkCancellation()
-                let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
                 latencyTrace.eventGenerationEnd(elapsedMs: elapsedMs, candidateCount: candidates.count)
                 self.lastGenerationLatencyMs = elapsedMs
                 self.telemetry.recordLatency(milliseconds: elapsedMs)
@@ -1026,6 +1024,21 @@ final class CompletionController {
         return CompletionPromotionCache(anchorContext: request.context, entries: entries)
     }
 
+    /// Runs the engine and times it **off the main actor**, so `generationMillis` measures generation
+    /// rather than generation plus however long the continuation waited for a busy main actor. A
+    /// `nonisolated async` method runs on the global executor, so both timestamps are taken next to
+    /// the engine call instead of straddling the hop back to `@MainActor`. Without this, main-actor
+    /// contention is silently attributed to the model and no latency fix can be verified.
+    private nonisolated static func timedCompletions(
+        engine: ConstrainedGenerationEngine,
+        request: CompletionRequest
+    ) async throws -> (candidates: [CompletionCandidate], elapsedMs: Double) {
+        let start = DispatchTime.now()
+        let candidates = try await engine.completions(for: request)
+        let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
+        return (candidates, elapsedMs)
+    }
+
     nonisolated static func adaptiveDebounceNanoseconds(lastGenerationLatencyMs: Double?) -> UInt64 {
         guard let latency = lastGenerationLatencyMs else { return moderateDebounceNanoseconds }
         if latency <= 70 { return fastDebounceNanoseconds }
@@ -1269,6 +1282,13 @@ final class CompletionController {
                 guard !Task.isCancelled else { return }
                 overlayCalibrationInFlightKey = nil
 
+                // Cache the attempt even when it misses its quality thresholds. The reader
+                // (`calibratedOverlayInputs`) already ignores results that don't meet them, but the
+                // refresh guard keys off cache *presence* — so leaving a rejection unrecorded meant a
+                // field where calibration can't lock on re-ran the whole screenshot + OCR + candidate
+                // sweep on every keystroke, forever, starving the main actor. See ADR-116.
+                rememberOverlayCalibration(result, forKey: key)
+
                 guard result.meetsQualityThresholds else {
                     predictionLog.append(
                         String(
@@ -1281,7 +1301,6 @@ final class CompletionController {
                     return
                 }
 
-                rememberOverlayCalibration(result, forKey: key)
                 predictionLog.append(
                     String(
                         format: "CALIBRATE accept confidence=%.3f rmse=%.3f sizeFactor=%.3f verticalOffset=%.1f",
@@ -1579,14 +1598,18 @@ final class CompletionController {
         style: ResolvedFieldStyle,
         windowID: CGWindowID?
     ) -> String {
-        let field = context.geometry.fieldRect ?? context.geometry.cursorRect ?? .zero
+        // Calibration solves for font size + vertical offset, neither of which depends on where the
+        // caret sits along the line. Falling back to `cursorRect` when the app exposes no AX field
+        // frame (Electron/web views) therefore produced a *new key on every keystroke* — a guaranteed
+        // cache miss, and a full screenshot + OCR + candidate sweep per character typed. Key on the
+        // field rect when we have one; otherwise omit the rect entirely. See ADR-116.
         let font = style.font
         return [
             context.target.bundleIdentifier,
             context.target.domain ?? "",
             context.target.windowTitle ?? "",
             windowID.map(String.init) ?? "window:nil",
-            rectKey(field),
+            context.geometry.fieldRect.map(rectKey) ?? "field:nil",
             font?.fontName ?? "font:nil",
             font.map { String(format: "%.2f", Double($0.pointSize)) } ?? "size:nil",
             style.color.map(colorKey) ?? "color:nil"
