@@ -135,6 +135,7 @@ row here.**
 | 113 | Route prefix-only spellcheck replacements to completion | correction/completion |
 | 114 | Lower spellcheck correction model margin | correction/model-runtime |
 | 115 | Remove aggressive correction mode | correction/settings |
+| 116 | Add Apple Intelligence behind the completion-engine contract | model-runtime/settings |
 
 ---
 
@@ -3589,3 +3590,28 @@ text. Both are now closed:
   detector and correction validation thresholds.
 - Consequences: Correction behavior is simpler to reason about and the Settings UI has one fewer
   safety-related toggle. Previously stored user defaults for the removed key are ignored.
+
+## ADR-116 — Add Apple Intelligence behind the completion-engine contract
+
+- Date: 2026-07-15
+- Status: accepted
+- Context: Apple exposes the on-device model that powers Apple Intelligence through the macOS 26+
+  `FoundationModels` framework. It does not expose Siri's assistant, personal context, tokenizer,
+  vocabulary bytes, next-token logits, or KV state. Treating the system model as a
+  `LocalModelRuntime` would therefore fabricate capabilities required by KeyType's constrained
+  decoder and correction scorer.
+- Decision: Add an app-level `CompletionEngine` lifecycle contract above `CompletionGenerating`.
+  Keep `ConstrainedGenerationEngine` as the GGUF/logit implementation and add a one-shot
+  `LanguageModelSession` adapter for `SystemLanguageModel.default`. Persist provider choice
+  separately from the last local filename, keep macOS 14 deployment compatibility with availability
+  gates, use a conservative 600-token builder budget plus a 2,600-byte final prompt cap, disable
+  token healing and mid-line generation for the text-only provider, and retain only spellcheck-only
+  corrections when logit validation is absent.
+  The UI calls the requested option “Siri AI (Apple Intelligence)” but explains that it uses the
+  public Apple Intelligence Foundation Model rather than direct Siri access.
+- Consequences: Eligible macOS 26+ users can choose Apple's on-device model without downloading a
+  GGUF or supplying an API key. Existing installs remain on their current local model by default,
+  switching back restores the previous filename, rapid requests use isolated sessions, and older or
+  ineligible systems show a specific availability reason. Apple-provider mid-line completions and
+  model-scored grammar corrections stay suppressed until Apple exposes trustworthy confidence or
+  token-scoring primitives.

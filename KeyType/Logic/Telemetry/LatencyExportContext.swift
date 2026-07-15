@@ -48,8 +48,16 @@ enum LatencyExportContext {
     }
 
     private static func currentEngineInfo(settings: SettingsStore) -> LatencyExportEngineInfo {
-        LatencyExportEngineInfo(
-            modelFilename: settings.selectedModelFilename,
+        let modelFilename: String?
+        switch settings.selectedCompletionModel {
+        case .local(let filename):
+            modelFilename = filename
+        case .appleIntelligence:
+            modelFilename = nil
+        }
+        return LatencyExportEngineInfo(
+            provider: settings.completionModelProvider.rawValue,
+            modelFilename: modelFilename,
             completionLengthLabel: settings.completionLength.rawValue
         )
     }

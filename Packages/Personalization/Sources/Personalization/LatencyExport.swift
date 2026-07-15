@@ -6,8 +6,8 @@ import Foundation
 /// explicitly chooses to share it. See ADR-070.
 ///
 /// Privacy notes:
-/// - Carries only non-text counters, the GGUF model filename, and timing samples. No captured user
-///   text, no per-app identifiers, no clipboard or OCR content.
+/// - Carries only non-text counters, the model provider, an optional GGUF filename, and timing
+///   samples. No captured user text, per-app identifiers, clipboard, or OCR content.
 /// - Schema is versioned so an offline analyzer can route through the right decoder when fields are
 ///   added, renamed, or removed in future builds.
 public struct LatencyExport: Codable, Equatable, Sendable {
@@ -76,10 +76,16 @@ public struct LatencyExportDeviceInfo: Codable, Equatable, Sendable {
 /// Engine/decoder context behind a latency sample — different models and length presets produce
 /// very different `generation` percentiles, so analysing latency without this is misleading.
 public struct LatencyExportEngineInfo: Codable, Equatable, Sendable {
+    public var provider: String?
     public var modelFilename: String?
     public var completionLengthLabel: String?
 
-    public init(modelFilename: String? = nil, completionLengthLabel: String? = nil) {
+    public init(
+        provider: String? = nil,
+        modelFilename: String? = nil,
+        completionLengthLabel: String? = nil
+    ) {
+        self.provider = provider
         self.modelFilename = modelFilename
         self.completionLengthLabel = completionLengthLabel
     }

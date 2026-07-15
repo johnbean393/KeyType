@@ -87,6 +87,13 @@ it is not used; see ADR-018). `StubModelRuntime` + `UTF8FallbackTokenizer` are r
 keep the `LocalModelRuntime` protocol stable (the `anchoredLogits` default extension keeps stubs
 unchanged).
 
+The optional **Apple Intelligence** provider is wired separately in the app target behind
+`CompletionGenerating` (ADR-116). Apple's `SystemLanguageModel` returns generated text rather than
+token IDs, raw vocabulary bytes, or logits, so it does not implement `LocalModelRuntime` and does
+not use ACPF/constrained beam decoding. It keeps the shared cancellation and output-filter stages,
+uses a shorter prompt budget, and conservatively suppresses mid-line generation where provider
+confidence is unavailable.
+
 ### `ConstrainedGeneration` — the decoding loop ✅(multi-branch)
 `ConstrainedGenerationEngine: CompletionGenerating` performs real constrained decoding (M5,
 ADR-010): a deterministic best-first **multi-branch** search honouring `branchWidth`,

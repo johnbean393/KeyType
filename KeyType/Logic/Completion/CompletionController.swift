@@ -238,7 +238,8 @@ final class CompletionController {
     private let fullPromptLog = FullPromptLog()
     private let log = Logger(subsystem: "com.pattonium.KeyType", category: "completion")
 
-    private var engine: ConstrainedGenerationEngine?
+    private var engine: (any CompletionEngine)?
+    private var engineLoadTask: Task<Void, Never>?
     private var generationTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Error>?
     private var warmupTask: Task<Void, Never>?
@@ -262,12 +263,12 @@ final class CompletionController {
     private(set) var loadState: LoadState = .idle
     private(set) var isRunning = false
 
-    /// The model filename the current engine was (or is being) built from. Used to coalesce
+    /// The model selection the current engine was (or is being) built from. Used to coalesce
     /// redundant `reloadModel()` calls — e.g. when a freshly downloaded model is auto-selected,
     /// `onModelReady` reloads explicitly *and* the Settings picker's `onChange` fires for the same
     /// programmatic selection. Set synchronously on the main actor before each load suspends, so the
     /// second call sees the target already active and no-ops.
-    private var activeModelFilename: String?
+    private var activeModelSelection: CompletionModelSelection?
 
     /// The completion currently shown as ghost text (the portion still ahead of the live caret).
     /// Nil when nothing is displayed. Exposed for the Tab acceptance controller / UI binding.
@@ -392,20 +393,29 @@ final class CompletionController {
         // Tune the decoder from accumulated local telemetry (bounded nudges) and honor the chosen
         // model. Both are read now, on the main actor, before suspending into the off-main load.
         let adjustments = ThresholdTuner.adjustments(for: telemetry.snapshot())
-        let modelFilename = settings.selectedModelFilename ?? ModelContainer.defaultModelFilename
-        activeModelFilename = modelFilename
-        Task {
+        let modelSelection = settings.selectedCompletionModel
+        activeModelSelection = modelSelection
+        engineLoadTask?.cancel()
+        engineLoadTask = Task { [weak self] in
+            guard let self else { return }
             do {
                 let engine = try await Self.buildEngine(
-                    compatibilityStore: compatibilityStore,
-                    modelFilename: modelFilename,
+                    compatibilityStore: self.compatibilityStore,
+                    modelSelection: modelSelection,
                     adjustments: adjustments
                 )
+                guard !Task.isCancelled, self.activeModelSelection == modelSelection else {
+                    await engine.shutdown()
+                    return
+                }
                 self.engine = engine
+                self.engineLoadTask = nil
                 self.loadState = .ready
                 self.startStartupWarmup(engine: engine)
                 self.log.info("Completion engine ready")
             } catch {
+                guard !Task.isCancelled, self.activeModelSelection == modelSelection else { return }
+                self.engineLoadTask = nil
                 self.loadState = .unavailable("\(error)")
                 self.log.error("Completion engine unavailable: \(error, privacy: .public)")
             }
@@ -418,9 +428,11 @@ final class CompletionController {
     /// (the post-download auto-select reloads *and* fires the picker's `onChange`) don't kick off two
     /// concurrent engine builds.
     func reloadModel() {
-        let target = settings.selectedModelFilename ?? ModelContainer.defaultModelFilename
-        guard target != activeModelFilename || loadState == .idle else { return }
-        activeModelFilename = target
+        let target = settings.selectedCompletionModel
+        guard target != activeModelSelection || loadState == .idle else { return }
+        activeModelSelection = target
+        engineLoadTask?.cancel()
+        engineLoadTask = nil
         reset()
         lastGenerationLatencyMs = nil
         Task {
@@ -461,11 +473,17 @@ final class CompletionController {
     func shutdown() async {
         stop()
         warmupTask?.cancel()
+        let loadTask = engineLoadTask
+        loadTask?.cancel()
+        engineLoadTask = nil
         overlayCalibrationTask?.cancel()
         overlayCalibrationTask = nil
         lastGenerationLatencyMs = nil
         loadState = .idle
-        activeModelFilename = nil
+        activeModelSelection = nil
+        // Model construction can be non-cancellable inside llama.cpp. Wait for the stale-load guard
+        // to receive the completed engine and shut it down before allowing app termination.
+        await loadTask?.value
         if let engine {
             await engine.shutdown()
         }
@@ -595,13 +613,15 @@ final class CompletionController {
         // the natural whole-word token (" great") instead of being stuck in a subword state where a
         // worse word (" greasy") outranks it. The re-emitted stem is stripped before display in
         // `present`. When there is no heal the request is the plain whole-prefix continuation.
-        let heal = MidWordHealing.plan(for: context)
+        let heal = engine.supportsTokenHealing ? MidWordHealing.plan(for: context) : nil
         let promptContext = heal.map { context.replacingBeforeCursor($0.head) } ?? context
         // Personalization, clipboard, and screen/OCR are all opt-in. Once a typing burst starts, the
         // optional side sections are frozen briefly so unrelated history/clipboard/OCR updates do
         // not rewrite the prompt prefix and destroy KV append reuse mid-burst.
         let (sideContext, sideContextReused) = promptSideContext(for: promptContext)
-        let promptResult = KeyTypeModuleGraph.makePromptBuilder().buildPrompt(
+        let promptResult = KeyTypeModuleGraph.makePromptBuilder(
+            maxPromptTokens: engine.maxPromptTokens
+        ).buildPrompt(
             context: promptContext,
             customInstructions: settings.promptCustomInstructions(appInstructions: policy.customInstructions),
             previousUserInputs: sideContext.previousUserInputs,
@@ -1093,7 +1113,7 @@ final class CompletionController {
         ].joined(separator: "\u{1E}")
     }
 
-    private func startStartupWarmup(engine: ConstrainedGenerationEngine) {
+    private func startStartupWarmup(engine: any CompletionEngine) {
         warmupTask?.cancel()
         let context = TextFieldContext(
             beforeCursor: "The",
@@ -1111,11 +1131,11 @@ final class CompletionController {
         startWarmup(engine: engine, request: request)
     }
 
-    private func startAnchorWarmup(engine: ConstrainedGenerationEngine, request: CompletionRequest) {
+    private func startAnchorWarmup(engine: any CompletionEngine, request: CompletionRequest) {
         startWarmup(engine: engine, request: request)
     }
 
-    private func startWarmup(engine: ConstrainedGenerationEngine, request: CompletionRequest) {
+    private func startWarmup(engine: any CompletionEngine, request: CompletionRequest) {
         warmupTask?.cancel()
         warmupTask = Task { [weak self] in
             do {
@@ -1943,9 +1963,14 @@ final class CompletionController {
     /// isolated by default — so every step stays off main.
     nonisolated private static func buildEngine(
         compatibilityStore: AppCompatibilityStore,
-        modelFilename: String,
+        modelSelection: CompletionModelSelection,
         adjustments: ThresholdAdjustments
-    ) async throws -> ConstrainedGenerationEngine {
+    ) async throws -> any CompletionEngine {
+        if case .appleIntelligence = modelSelection {
+            return try AppleIntelligenceCompletionEngineFactory.make()
+        }
+
+        let modelFilename = modelSelection.localFilename ?? ModelContainer.defaultModelFilename
         let modelURL = try ModelContainer.modelURL(filename: modelFilename)
         guard ModelContainer.modelExists(at: modelURL) else {
             throw CompletionLoadError.modelMissing(modelFilename)

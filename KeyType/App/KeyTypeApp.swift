@@ -27,7 +27,10 @@ struct KeyTypeApp: App {
         Window("KeyType", id: AppDelegate.onboardingWindowID) {
             OnboardingView(
                 permissionGuidance: appDelegate.permissionGuidance,
-                markCompleted: { appDelegate.markOnboardingCompleted() }
+                markCompleted: {
+                    appDelegate.markOnboardingCompleted()
+                    appDelegate.completion.reloadModel()
+                }
             )
                 .environment(appDelegate.permissions)
                 .environment(appDelegate.settings)

@@ -363,6 +363,7 @@ final class PersonalizationTests: XCTestCase {
             appBuild: "456"
         )
         let engine = LatencyExportEngineInfo(
+            provider: "local",
             modelFilename: "qwen3-1.7b-q4_K_M.gguf",
             completionLengthLabel: "medium"
         )

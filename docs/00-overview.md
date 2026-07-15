@@ -10,7 +10,7 @@
 
 KeyType is an **open-source, on-device, system-wide tab-autocomplete utility for macOS**.
 It watches the focused text field across any app, predicts a short continuation at the
-cursor using a **local LLM**, and offers it as ghost text that the user accepts with **Tab**.
+cursor using an **on-device model**, and offers it as ghost text that the user accepts with **Tab**.
 
 It is an **alternative** to the closed-source app *Cotypist*
 
@@ -94,6 +94,8 @@ constrained decode → filter → overlay → Tab-insert all work against live m
   handling, insertion/overlay tuning, secure-field exclusion) (ADR-022+).
 - ✅ App target — background menu-bar / agent app with onboarding, in-app model download, Settings,
   encrypted local writing history, and local telemetry (ADR-005/023/034).
+- ✅ Apple Intelligence provider — an optional macOS 26+ `FoundationModels` text-generation engine
+  behind the shared completion contract, with availability-aware Settings/onboarding UI (ADR-116).
 
 For the current set of open improvement themes (vs. the completed build milestones), see
 `04-roadmap.md`.

@@ -13,6 +13,33 @@ import AutocompleteCore
 import Foundation
 import Observation
 
+/// The completion engine selected by the user. Local selections retain their GGUF filename while
+/// the Apple option is backed by the system Foundation Model exposed by Apple Intelligence.
+enum CompletionModelSelection: Hashable, Sendable {
+    case local(filename: String?)
+    case appleIntelligence
+
+    nonisolated var localFilename: String? {
+        guard case .local(let filename) = self else { return nil }
+        return filename
+    }
+
+    /// Stable value for engine reload coalescing and diagnostics.
+    nonisolated var identifier: String {
+        switch self {
+        case .local(let filename):
+            return "local:\(filename ?? "default")"
+        case .appleIntelligence:
+            return "apple-intelligence"
+        }
+    }
+}
+
+enum CompletionModelProvider: String, Sendable {
+    case local
+    case appleIntelligence
+}
+
 /// Completion length presets, mapped to the decoder's token/width budget.
 enum CompletionLength: String, CaseIterable, Identifiable {
     case short
@@ -110,6 +137,7 @@ final class SettingsStore {
         static let fullPromptLoggingEnabled = "KeyType.settings.fullPromptLoggingEnabled"
         static let developerOverrideTuningEnabled = "KeyType.settings.developerOverrideTuningEnabled"
         static let completionLength = "KeyType.settings.completionLength"
+        static let completionModelProvider = "KeyType.settings.completionModelProvider"
         static let selectedModelFilename = "KeyType.settings.selectedModelFilename"
         static let perAppDisabled = "KeyType.settings.perAppDisabledBundleIDs"
         static let manualPerAppDisplayNames = "KeyType.settings.manualPerAppDisplayNames"
@@ -163,9 +191,37 @@ final class SettingsStore {
         didSet { defaults.set(completionLength.rawValue, forKey: Key.completionLength) }
     }
 
+    /// Which high-level engine supplies completions. Existing installs default to the local GGUF
+    /// path, preserving their current behavior and selected filename.
+    var completionModelProvider: CompletionModelProvider {
+        didSet { defaults.set(completionModelProvider.rawValue, forKey: Key.completionModelProvider) }
+    }
+
     /// Chosen GGUF filename in the Models directory, or `nil` to use the app default.
     var selectedModelFilename: String? {
         didSet { defaults.set(selectedModelFilename, forKey: Key.selectedModelFilename) }
+    }
+
+    /// One picker-friendly value spanning the system Apple model and all local GGUF choices.
+    var selectedCompletionModel: CompletionModelSelection {
+        get {
+            switch completionModelProvider {
+            case .local:
+                return .local(filename: selectedModelFilename)
+            case .appleIntelligence:
+                return .appleIntelligence
+            }
+        }
+        set {
+            switch newValue {
+            case .local(let filename):
+                selectedModelFilename = filename
+                completionModelProvider = .local
+            case .appleIntelligence:
+                // Keep the last local filename so switching back restores the user's prior choice.
+                completionModelProvider = .appleIntelligence
+            }
+        }
     }
 
     /// Bundle identifiers the user has turned completions off for.
@@ -214,6 +270,8 @@ final class SettingsStore {
         self.developerOverrideTuningEnabled = defaults.bool(forKey: Key.developerOverrideTuningEnabled)
         self.completionLength = (defaults.string(forKey: Key.completionLength))
             .flatMap(CompletionLength.init(rawValue:)) ?? .medium
+        self.completionModelProvider = defaults.string(forKey: Key.completionModelProvider)
+            .flatMap(CompletionModelProvider.init(rawValue:)) ?? .local
         self.selectedModelFilename = defaults.string(forKey: Key.selectedModelFilename)
         self.perAppDisabled = Set(defaults.stringArray(forKey: Key.perAppDisabled) ?? [])
         self.manualPerAppDisplayNames =

@@ -8,12 +8,39 @@
 import AutocompleteCore
 import AppKit
 import CompletionUI
+import ConstrainedGeneration
 import MacContextCapture
 import Testing
 @testable import KeyType
 
 struct KeyTypeTests {
     private static let target = AppTarget(bundleIdentifier: "com.test.app", appName: "Test")
+
+    private actor AppleResponderRecorder {
+        struct Call: Equatable, Sendable {
+            var prompt: String
+            var instructions: String
+            var maximumResponseTokens: Int
+        }
+
+        var response: String
+        private(set) var calls: [Call] = []
+
+        init(response: String) {
+            self.response = response
+        }
+
+        func respond(prompt: String, instructions: String, maximumResponseTokens: Int) -> String {
+            calls.append(
+                Call(
+                    prompt: prompt,
+                    instructions: instructions,
+                    maximumResponseTokens: maximumResponseTokens
+                )
+            )
+            return response
+        }
+    }
 
     private static func temporaryDefaults() -> (UserDefaults, String) {
         let suiteName = "KeyTypeTests.\(UUID().uuidString)"
@@ -47,6 +74,27 @@ struct KeyTypeTests {
         beforeCursor: String = "I will "
     ) -> TextFieldContext {
         TextFieldContext(beforeCursor: beforeCursor + typedSinceAnchor, target: target)
+    }
+
+    private static func appleCompletionRequest(
+        prompt: String = "PROMPT-AT-CURSOR",
+        beforeCursor: String = "Please send",
+        afterCursor: String = "",
+        requiredPrefix: String = "",
+        maxCompletionTokens: Int = 8,
+        maxDisplayWidth: Int = 60
+    ) -> CompletionRequest {
+        CompletionRequest(
+            context: TextFieldContext(
+                beforeCursor: beforeCursor,
+                afterCursor: afterCursor,
+                target: target
+            ),
+            prompt: prompt,
+            requiredPrefixBytes: Array(requiredPrefix.utf8),
+            maxCompletionTokens: maxCompletionTokens,
+            maxDisplayWidth: maxDisplayWidth
+        )
     }
 
     @Test func adaptiveDebounceUsesFastPathAfterResponsiveGeneration() {
@@ -221,6 +269,191 @@ struct KeyTypeTests {
         #expect(store.clipboardEnabled)
         #expect(!store.ocrEnabled)
         #expect(!store.screenshotCalibrationEnabled)
+    }
+
+    @Test @MainActor func completionModelDefaultsToLegacyLocalSelection() {
+        let (defaults, suiteName) = Self.temporaryDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = SettingsStore(defaults: defaults)
+
+        #expect(store.selectedCompletionModel == .local(filename: nil))
+        #expect(store.completionModelProvider == .local)
+    }
+
+    @Test @MainActor func appleIntelligenceSelectionPersistsWithoutForgettingLocalModel() {
+        let (defaults, suiteName) = Self.temporaryDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = SettingsStore(defaults: defaults)
+        store.selectedCompletionModel = .local(filename: "custom.gguf")
+        store.selectedCompletionModel = .appleIntelligence
+
+        let reloaded = SettingsStore(defaults: defaults)
+
+        #expect(reloaded.selectedCompletionModel == .appleIntelligence)
+        #expect(reloaded.selectedModelFilename == "custom.gguf")
+        reloaded.selectedCompletionModel = .local(filename: reloaded.selectedModelFilename)
+        #expect(reloaded.selectedCompletionModel == .local(filename: "custom.gguf"))
+    }
+
+    @Test func appleIntelligenceEngineForwardsPromptBudgetAndReturnsContinuation() async throws {
+        let recorder = AppleResponderRecorder(response: "S:the update today")
+        let engine = AppleIntelligenceCompletionEngine { prompt, instructions, maximumTokens in
+            await recorder.respond(
+                prompt: prompt,
+                instructions: instructions,
+                maximumResponseTokens: maximumTokens
+            )
+        }
+        let request = Self.appleCompletionRequest(maxCompletionTokens: 8)
+
+        let candidates = try await engine.completions(for: request)
+        let calls = await recorder.calls
+
+        #expect(candidates.map(\.text) == [" the update today"])
+        #expect(calls.count == 1)
+        #expect(calls.first?.prompt.contains(request.prompt) == true)
+        #expect(calls.first?.prompt.contains("Please send<CURSOR>") == true)
+        #expect(calls.first?.maximumResponseTokens == 12)
+        #expect(calls.first?.instructions.contains("boundary marker") == true)
+        #expect(engine.maxPromptTokens == 600)
+        #expect(!engine.supportsTokenHealing)
+    }
+
+    @Test func appleIntelligenceBoundaryMarkersProduceExactInsertionText() {
+        let request = Self.appleCompletionRequest()
+        let afterWhitespace = Self.appleCompletionRequest(beforeCursor: "Please send ")
+
+        #expect(
+            AppleIntelligenceCompletionEngine.candidate(from: "S:the file", request: request)?.text
+                == " the file"
+        )
+        #expect(
+            AppleIntelligenceCompletionEngine.candidate(from: "J:orrow", request: request)?.text
+                == "orrow"
+        )
+        #expect(
+            AppleIntelligenceCompletionEngine.candidate(from: "S:the file", request: afterWhitespace)?.text
+                == "the file"
+        )
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "Send it", request: request) == nil)
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "Just ask", request: request) == nil)
+    }
+
+    @Test func appleIntelligencePromptHasConservativeUTF8BudgetAndKeepsFinalCursor() {
+        let request = Self.appleCompletionRequest(
+            prompt: String(repeating: "界", count: 4_000),
+            beforeCursor: String(repeating: "🙂", count: 800)
+        )
+
+        let prompt = AppleIntelligenceCompletionEngine.prompt(for: request)
+
+        #expect(prompt.utf8.count <= AppleIntelligenceCompletionEngine.maxPromptUTF8Bytes)
+        #expect(prompt.hasSuffix("<CURSOR>"))
+    }
+
+    @Test func appleIntelligenceEngineSuppressesMidLineWithoutCallingSystemModel() async throws {
+        let recorder = AppleResponderRecorder(response: " bridge")
+        let engine = AppleIntelligenceCompletionEngine { prompt, instructions, maximumTokens in
+            await recorder.respond(
+                prompt: prompt,
+                instructions: instructions,
+                maximumResponseTokens: maximumTokens
+            )
+        }
+        let request = Self.appleCompletionRequest(afterCursor: " existing suffix")
+
+        let candidates = try await engine.completions(for: request)
+        let calls = await recorder.calls
+
+        #expect(candidates.isEmpty)
+        #expect(calls.isEmpty)
+    }
+
+    @Test func appleIntelligenceEngineRejectsUnsafeOrUnconstrainedResponses() {
+        let requiredPrefix = "UNTRUSTED-PREFIX"
+        let request = Self.appleCompletionRequest(requiredPrefix: requiredPrefix, maxDisplayWidth: 24)
+
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "wrong", request: request) == nil)
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "X:UNTRUSTED-PREFIX", request: request) == nil)
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "J: UNTRUSTED-PREFIX", request: request) == nil)
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "S:```UNTRUSTED-PREFIX```", request: request) == nil)
+        #expect(AppleIntelligenceCompletionEngine.candidate(from: "J:UNTRUSTED-PREFIX is too long", request: request) == nil)
+        #expect(
+            AppleIntelligenceCompletionEngine.candidate(
+                from: "\nJ:UNTRUSTED-PREFIX\n",
+                request: request
+            )?.text == requiredPrefix
+        )
+        #expect(!AppleIntelligenceCompletionEngine.instructions(for: request).contains(requiredPrefix))
+    }
+
+    @Test func appleIntelligenceAvailabilityStatesHaveDeterministicMessages() {
+        let states: [AppleIntelligenceModelAvailability] = [
+            .available,
+            .requiresMacOS26,
+            .frameworkUnavailable,
+            .deviceNotEligible,
+            .appleIntelligenceNotEnabled,
+            .modelNotReady,
+            .unsupportedLocale,
+            .unavailable
+        ]
+
+        #expect(states.allSatisfy { !$0.message.isEmpty })
+        #expect(states.filter { $0.isAvailable } == [.available])
+    }
+
+    @Test func appleIntelligenceCorrectionFallbackKeepsOnlySpellcheckCandidates() async throws {
+        let range = TextRangeDescriptor(container: .beforeCursor, startOffset: 0, endOffset: 4)
+        let spellcheck = CorrectionCandidate(
+            original: "teh",
+            replacement: "the",
+            originalRange: range,
+            confidence: 0.9,
+            source: .spellcheckOnly,
+            validation: .spellcheckOnly
+        )
+        let grammar = CorrectionCandidate(
+            original: "are",
+            replacement: "is",
+            originalRange: range,
+            confidence: 0.9,
+            source: .systemGrammarOnly,
+            validation: .spellcheckOnly
+        )
+        let engine = AppleIntelligenceCompletionEngine { _, _, _ in " continuation" }
+
+        let validated = try await engine.validateCorrectionCandidates(
+            [grammar, spellcheck],
+            prefixBeforeWord: "",
+            suffixWindow: "",
+            priorPredictionReplacement: nil,
+            thresholds: CorrectionValidationThresholds()
+        )
+
+        #expect(validated.map(\.source) == [.spellcheckOnly])
+    }
+
+    @Test func appleIntelligenceEnginePropagatesCancellation() async {
+        let engine = AppleIntelligenceCompletionEngine { _, _, _ in
+            try await Task.sleep(nanoseconds: 5_000_000_000)
+            return " late response"
+        }
+        let task = Task {
+            try await engine.completions(for: Self.appleCompletionRequest())
+        }
+        task.cancel()
+
+        do {
+            _ = try await task.value
+            Issue.record("Expected cancellation")
+        } catch is CancellationError {
+            // Expected: a superseded keystroke cannot present a late response.
+        } catch {
+            Issue.record("Expected CancellationError, got \(error)")
+        }
     }
 
     @Test @MainActor func privacyDefaultsPreserveExplicitUserChoices() {

@@ -37,7 +37,7 @@ Packages/ModelRuntime/Vendor/
 
 # Model weights (stay in ~/Library/Application Support/KeyType/Models, never in the repo)
 *.gguf
-Models/
+/Models/
 
 # Completion benchmark local/private data and generated reports
 KeyTypeBench-20260603/Private/

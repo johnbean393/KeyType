@@ -23,7 +23,15 @@ An open-source, on-device, system-wide tab-autocomplete utility for macOS.
 **KeyType** is an open-source, on-device, system-wide **tab-autocomplete utility for macOS**.
 
 It watches the focused text field across any app, predicts a short continuation at the cursor
-using a **local LLM**, and offers it as ghost text that you accept with **Tab**.
+using an **on-device model**, and offers it as ghost text that you accept with **Tab**.
+
+## Model options
+
+- **Local GGUF models** — KeyType's original llama.cpp path, available on macOS 14 and later.
+- **Siri AI (Apple Intelligence)** — uses Apple's on-device Foundation Model through the public
+  Foundation Models framework on eligible Macs running macOS 26 or later. It needs Apple
+  Intelligence enabled and ready, but no API key. Apple does not expose Siri's assistant or its
+  personal context directly to third-party apps.
 
 It is a MIT-licensed alternative to the closed-source app *Cotypist*.
 
@@ -38,7 +46,8 @@ It is a MIT-licensed alternative to the closed-source app *Cotypist*.
 
 ### Development
 
-Requirements: macOS 14+ and a recent version of Xcode.
+Requirements: macOS 14+ and a recent version of Xcode. Building the Apple Intelligence provider
+requires the macOS 26 SDK or later.
 
 ```sh
 git clone https://github.com/johnbean393/KeyType.git

@@ -130,11 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         acceptance.completionController = completion
         acceptance.correctionController = correction
         acceptance.settings = settings
-        // When a model finishes setup (GGUF + ACPF both present), make it the selected model and
-        // reload the engine so the change takes effect without a relaunch.
+        // When a model finishes setup (GGUF + ACPF both present), select and reload it only while
+        // the user is on the local-model provider. A background local download must not silently
+        // replace an active Apple Intelligence selection.
         modelSetup.onModelReady = { [weak self] filename in
             guard let self else { return }
-            self.settings.selectedModelFilename = filename
+            guard case .local = self.settings.selectedCompletionModel else { return }
+            self.settings.selectedCompletionModel = .local(filename: filename)
             self.completion.reloadModel()
         }
         // Import failures (an incompatible GGUF, a copy/profile error) are shown as a modal alert the

@@ -26,15 +26,38 @@ struct ModelSettingsView: View {
     var body: some View {
         Form {
             Section("Model") {
-                Picker("Completion model", selection: $settings.selectedModelFilename) {
-                    Text("Default (\(ModelContainer.defaultModelFilename))").tag(String?.none)
+                Picker("Completion model", selection: $settings.selectedCompletionModel) {
+                    Text("Siri AI (Apple Intelligence)")
+                        .tag(CompletionModelSelection.appleIntelligence)
+                        .disabled(!appleIntelligenceAvailability.isAvailable)
+                    Text("Default local (\(ModelContainer.defaultModelFilename))")
+                        .tag(CompletionModelSelection.local(filename: nil))
                     ForEach(availableModels, id: \.self) { name in
-                        Text(name).tag(String?.some(name))
+                        Text(name).tag(CompletionModelSelection.local(filename: name))
                     }
                 }
                 // Honor the "takes effect immediately" promise: a new selection flushes the resident
-                // model + KV cache and reloads from the chosen GGUF without a relaunch (see ADR-021).
-                .onChange(of: settings.selectedModelFilename) { reloadModel() }
+                // engine and reloads the chosen local or system model without a relaunch.
+                .onChange(of: settings.selectedCompletionModel) { reloadModel() }
+
+                if settings.selectedCompletionModel == .appleIntelligence
+                    || !appleIntelligenceAvailability.isAvailable {
+                    Label(
+                        appleIntelligenceAvailability.message,
+                        systemImage: appleIntelligenceAvailability.isAvailable
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.triangle.fill"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(appleIntelligenceAvailability.isAvailable ? Color.green : Color.orange)
+                }
+
+                if settings.selectedCompletionModel == .appleIntelligence {
+                    Text("Uses Apple's on-device Foundation Model, the supported model behind Apple Intelligence. Apps cannot call Siri's assistant or personal context directly.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section("Available models") {
@@ -91,6 +114,10 @@ struct ModelSettingsView: View {
     private var isImporting: Bool {
         if case .preparing = modelSetup.importState { return true }
         return false
+    }
+
+    private var appleIntelligenceAvailability: AppleIntelligenceModelAvailability {
+        AppleIntelligenceModelSupport.availability
     }
 
     @ViewBuilder

@@ -25,7 +25,9 @@ struct OnboardingView: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     @State private var step: Step = .welcome
-    @State private var selectedModelFilename: String = ModelContainer.defaultModelFilename
+    @State private var selectedModel: CompletionModelSelection = .local(
+        filename: ModelContainer.defaultModelFilename
+    )
 
     var body: some View {
         VStack(spacing: 0) {
@@ -144,15 +146,24 @@ struct OnboardingView: View {
     }
 
     private func finish() {
+        if selectedModelIsReady {
+            settings.selectedCompletionModel = selectedModel
+        }
         markCompleted()
         dismissWindow(id: AppDelegate.onboardingWindowID)
     }
 
     private var selectedModelIsReady: Bool {
-        guard let model = modelSetup.catalog.first(where: { $0.filename == selectedModelFilename }) else {
-            return false
+        switch selectedModel {
+        case .appleIntelligence:
+            return AppleIntelligenceModelSupport.availability.isAvailable
+        case .local(let filename):
+            guard let filename,
+                  let model = modelSetup.catalog.first(where: { $0.filename == filename }) else {
+                return false
+            }
+            return modelSetup.isFullyInstalled(model)
         }
-        return modelSetup.isFullyInstalled(model)
     }
 
     // MARK: - Steps
@@ -165,7 +176,7 @@ struct OnboardingView: View {
                 .padding(.top, 8)
             Text("Welcome to KeyType")
                 .font(.title.weight(.semibold))
-            Text("On-device tab-autocomplete for any text field on your Mac. Private by default, powered by a local model.")
+            Text("On-device tab-autocomplete for any text field on your Mac. Private by default, powered by the model you choose.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -210,16 +221,21 @@ struct OnboardingView: View {
     private var modelStep: some View {
         StepHeader(
             title: "Choose a model",
-            subtitle: "Everything runs locally on your Mac. Pick one to download, or use one you've already added."
+            subtitle: "Everything runs locally on your Mac. Use Apple Intelligence or pick a downloadable model."
         )
         VStack(spacing: 10) {
+            AppleIntelligenceModelCard(
+                availability: AppleIntelligenceModelSupport.availability,
+                isSelected: selectedModel == .appleIntelligence,
+                onSelect: { selectedModel = .appleIntelligence }
+            )
             ForEach(modelSetup.catalog) { model in
                 ModelCard(
                     model: model,
                     state: modelSetup.state(for: model),
-                    isSelected: selectedModelFilename == model.filename,
+                    isSelected: selectedModel == .local(filename: model.filename),
                     onSelect: {
-                        selectedModelFilename = model.filename
+                        selectedModel = .local(filename: model.filename)
                         modelSetup.beginSetup(for: model)
                     },
                     onCancel: { modelSetup.cancel(model) },
@@ -521,6 +537,55 @@ private struct PermissionCard: View {
                 }
             }
         }
+    }
+}
+
+private struct AppleIntelligenceModelCard: View {
+    let availability: AppleIntelligenceModelAvailability
+    let isSelected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    Image(systemName: "apple.intelligence")
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Siri AI (Apple Intelligence)").font(.headline)
+                        Text("Apple's built-in on-device Foundation Model. No model download or API key required by KeyType.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 8)
+                    if isSelected, availability.isAvailable {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                }
+                Label(
+                    availability.message,
+                    systemImage: availability.isAvailable
+                        ? "checkmark.circle.fill"
+                        : "exclamationmark.triangle.fill"
+                )
+                .font(.footnote)
+                .foregroundStyle(availability.isAvailable ? Color.green : Color.orange)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.08) : Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(isSelected ? Color.accentColor : Color.secondary.opacity(0.15), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!availability.isAvailable)
     }
 }
 
