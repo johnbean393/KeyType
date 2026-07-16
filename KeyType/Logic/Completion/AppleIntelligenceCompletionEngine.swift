@@ -56,7 +56,7 @@ extension ConstrainedGenerationEngine: CompletionEngine {
     nonisolated var maxPromptTokens: Int { 4_096 }
 }
 
-enum AppleIntelligenceModelAvailability: Equatable, Sendable {
+enum AppleIntelligenceModelAvailability: Equatable, LocalizedError, Sendable {
     case available
     case requiresMacOS26
     case frameworkUnavailable
@@ -91,6 +91,10 @@ enum AppleIntelligenceModelAvailability: Equatable, Sendable {
             return "Apple Intelligence is currently unavailable."
         }
     }
+
+    nonisolated var errorDescription: String? {
+        "Siri AI (Apple Intelligence) is unavailable. \(message)"
+    }
 }
 
 enum AppleIntelligenceModelSupport {
@@ -123,17 +127,6 @@ enum AppleIntelligenceModelSupport {
 #endif
 }
 
-enum AppleIntelligenceCompletionError: Error, LocalizedError {
-    case unavailable(AppleIntelligenceModelAvailability)
-
-    nonisolated var errorDescription: String? {
-        switch self {
-        case .unavailable(let availability):
-            return "Siri AI (Apple Intelligence) is unavailable. \(availability.message)"
-        }
-    }
-}
-
 /// A framework-independent engine whose responder is injectable. Production injects a fresh
 /// `LanguageModelSession` per keystroke; tests inject a deterministic closure and need no real
 /// Apple Intelligence model, hardware eligibility, or network access.
@@ -155,6 +148,36 @@ final class AppleIntelligenceCompletionEngine: CompletionEngine, @unchecked Send
     nonisolated init(respond: @escaping Responder) {
         self.respond = respond
     }
+
+    nonisolated static func make() throws -> AppleIntelligenceCompletionEngine {
+        let availability = AppleIntelligenceModelSupport.availability
+        guard availability.isAvailable else { throw availability }
+
+#if canImport(FoundationModels)
+        if #available(macOS 26.0, *) {
+            return makeAvailableEngine()
+        }
+#endif
+        throw AppleIntelligenceModelAvailability.frameworkUnavailable
+    }
+
+#if canImport(FoundationModels)
+    @available(macOS 26.0, *)
+    nonisolated private static func makeAvailableEngine() -> AppleIntelligenceCompletionEngine {
+        let model = SystemLanguageModel.default
+        return AppleIntelligenceCompletionEngine { prompt, instructions, maximumResponseTokens in
+            // Sessions retain a transcript and reject overlapping calls. A fresh one-shot session
+            // prevents cross-keystroke context leakage and lets rapid replacement tasks run safely.
+            let session = LanguageModelSession(model: model, instructions: instructions)
+            let options = GenerationOptions(
+                sampling: .greedy,
+                maximumResponseTokens: maximumResponseTokens
+            )
+            let response = try await session.respond(to: prompt, options: options)
+            return response.content
+        }
+    }
+#endif
 
     nonisolated func completions(for request: CompletionRequest) async throws -> [CompletionCandidate] {
         guard request.maxCompletionTokens > 0, request.maxDisplayWidth > 0 else { return [] }
@@ -264,38 +287,4 @@ final class AppleIntelligenceCompletionEngine: CompletionEngine, @unchecked Send
         }
         return CompletionCandidate(text: text, mode: request.mode)
     }
-}
-
-enum AppleIntelligenceCompletionEngineFactory {
-    nonisolated static func make() throws -> AppleIntelligenceCompletionEngine {
-        let availability = AppleIntelligenceModelSupport.availability
-        guard availability.isAvailable else {
-            throw AppleIntelligenceCompletionError.unavailable(availability)
-        }
-
-#if canImport(FoundationModels)
-        if #available(macOS 26.0, *) {
-            return makeAvailableEngine()
-        }
-#endif
-        throw AppleIntelligenceCompletionError.unavailable(.frameworkUnavailable)
-    }
-
-#if canImport(FoundationModels)
-    @available(macOS 26.0, *)
-    nonisolated private static func makeAvailableEngine() -> AppleIntelligenceCompletionEngine {
-        let model = SystemLanguageModel.default
-        return AppleIntelligenceCompletionEngine { prompt, instructions, maximumResponseTokens in
-            // Sessions retain a transcript and reject overlapping calls. A fresh one-shot session
-            // prevents cross-keystroke context leakage and lets rapid replacement tasks run safely.
-            let session = LanguageModelSession(model: model, instructions: instructions)
-            let options = GenerationOptions(
-                sampling: .greedy,
-                maximumResponseTokens: maximumResponseTokens
-            )
-            let response = try await session.respond(to: prompt, options: options)
-            return response.content
-        }
-    }
-#endif
 }

@@ -24,15 +24,6 @@ enum CompletionModelSelection: Hashable, Sendable {
         return filename
     }
 
-    /// Stable value for engine reload coalescing and diagnostics.
-    nonisolated var identifier: String {
-        switch self {
-        case .local(let filename):
-            return "local:\(filename ?? "default")"
-        case .appleIntelligence:
-            return "apple-intelligence"
-        }
-    }
 }
 
 enum CompletionModelProvider: String, Sendable {

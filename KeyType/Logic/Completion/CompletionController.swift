@@ -1967,7 +1967,7 @@ final class CompletionController {
         adjustments: ThresholdAdjustments
     ) async throws -> any CompletionEngine {
         if case .appleIntelligence = modelSelection {
-            return try AppleIntelligenceCompletionEngineFactory.make()
+            return try AppleIntelligenceCompletionEngine.make()
         }
 
         let modelFilename = modelSelection.localFilename ?? ModelContainer.defaultModelFilename
