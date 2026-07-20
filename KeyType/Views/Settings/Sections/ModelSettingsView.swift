@@ -27,7 +27,7 @@ struct ModelSettingsView: View {
         Form {
             Section("Model") {
                 Picker("Completion model", selection: $settings.selectedCompletionModel) {
-                    Text("Siri AI (Apple Intelligence)")
+                    Text("Apple Intelligence")
                         .tag(CompletionModelSelection.appleIntelligence)
                         .disabled(!appleIntelligenceAvailability.isAvailable)
                     Text("Default local (\(ModelContainer.defaultModelFilename))")
@@ -53,7 +53,7 @@ struct ModelSettingsView: View {
                 }
 
                 if settings.selectedCompletionModel == .appleIntelligence {
-                    Text("Uses Apple's on-device Foundation Model, the supported model behind Apple Intelligence. Apps cannot call Siri's assistant or personal context directly.")
+                    Text("Uses Apple's on-device Foundation Model through the public Foundation Models framework. Availability is managed by macOS.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -101,7 +101,7 @@ struct ModelSettingsView: View {
         // An import lands a brand-new file in the Models directory that isn't in the catalog, so it
         // won't move `modelSetupSignature`. Re-read the installed GGUFs when the import state settles
         // so the freshly imported model appears in (and can be shown selected by) the picker.
-        .onChange(of: modelSetup.importState) { availableModels = Self.loadModels() }
+        .onChange(of: modelSetup.importingFilename) { availableModels = Self.loadModels() }
     }
 
     /// Changes whenever any catalog model's combined setup state changes, so the picker stays in sync.
@@ -112,8 +112,7 @@ struct ModelSettingsView: View {
     }
 
     private var isImporting: Bool {
-        if case .preparing = modelSetup.importState { return true }
-        return false
+        modelSetup.importingFilename != nil
     }
 
     private var appleIntelligenceAvailability: AppleIntelligenceModelAvailability {
@@ -122,14 +121,13 @@ struct ModelSettingsView: View {
 
     @ViewBuilder
     private var importStatusLine: some View {
-        switch modelSetup.importState {
-        case .idle:
-            EmptyView()
-        case .preparing(let filename):
+        if let filename = modelSetup.importingFilename {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text("Preparing \(filename)…").font(.footnote).foregroundStyle(.secondary)
             }
+        } else {
+            EmptyView()
         }
     }
 

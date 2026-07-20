@@ -552,7 +552,7 @@ private struct AppleIntelligenceModelCard: View {
                     Image(systemName: "apple.intelligence")
                         .foregroundStyle(isSelected ? Color.accentColor : .secondary)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Siri AI (Apple Intelligence)").font(.headline)
+                        Text("Apple Intelligence").font(.headline)
                         Text("Apple's built-in on-device Foundation Model. No model download or API key required by KeyType.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)

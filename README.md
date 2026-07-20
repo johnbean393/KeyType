@@ -28,10 +28,9 @@ using an **on-device model**, and offers it as ghost text that you accept with *
 ## Model options
 
 - **Local GGUF models** — KeyType's original llama.cpp path, available on macOS 14 and later.
-- **Siri AI (Apple Intelligence)** — uses Apple's on-device Foundation Model through the public
-  Foundation Models framework on eligible Macs running macOS 26 or later. It needs Apple
-  Intelligence enabled and ready, but no API key. Apple does not expose Siri's assistant or its
-  personal context directly to third-party apps.
+- **Apple Intelligence** — uses Apple's on-device Foundation Model through the public Foundation
+  Models framework on eligible Macs running macOS 26 or later. It needs Apple Intelligence enabled
+  and ready, but no API key.
 
 It is a MIT-licensed alternative to the closed-source app *Cotypist*.
 

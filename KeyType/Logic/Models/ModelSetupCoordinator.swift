@@ -21,44 +21,28 @@ import os
 final class ModelSetupCoordinator {
 
     /// Combined download + profile-generation state for one model.
-    enum SetupState: Equatable {
+    enum SetupState {
         case idle
         case downloading(progress: Double?)
         case paused(progress: Double?)
         case preparingProfile
         case ready
         case failed(String)
-
-        var isBusy: Bool {
-            switch self {
-            case .downloading, .preparingProfile: return true
-            case .idle, .paused, .ready, .failed: return false
-            }
-        }
     }
 
     let downloads: ModelDownloadManager
 
-    /// Progress of an in-flight import of a user-supplied GGUF from outside the curated catalog.
-    /// Failures are not part of this state — they are surfaced via `onImportFailure` so the app can
-    /// present a modal alert the user must dismiss (see ADR-036), rather than an inline status line.
-    enum ImportState: Equatable {
-        case idle
-        case preparing(filename: String)
-    }
-
     /// Profile-generation phase per filename. Absent means no profile work is in flight.
-    private enum ProfilePhase: Equatable {
+    private enum ProfilePhase {
         case preparing
-        case ready
         case failed(String)
     }
     private var profilePhases: [String: ProfilePhase] = [:]
     private var profileTasks: [String: Task<Void, Never>] = [:]
 
-    /// Live state of a user-initiated "Import a GGUF…" action. Observable, so Settings can show
-    /// progress and surface failures. Returns to `.idle` once the import is fully prepared.
-    private(set) var importState: ImportState = .idle
+    /// Filename of the user-supplied GGUF currently being prepared, if any. Failures are surfaced
+    /// via `onImportFailure` so the app can present a modal alert the user must dismiss (see ADR-036).
+    private(set) var importingFilename: String?
     private var importTask: Task<Void, Never>?
 
     /// Called on the main actor when a model becomes fully usable (GGUF + ACPF present).
@@ -90,7 +74,6 @@ final class ModelSetupCoordinator {
         if let phase = profilePhases[model.filename] {
             switch phase {
             case .preparing: return .preparingProfile
-            case .ready: return .ready
             case .failed(let message): return .failed(message)
             }
         }
@@ -125,7 +108,7 @@ final class ModelSetupCoordinator {
     /// explicit consent for any multi-gigabyte download.
     func beginSetup(for model: DownloadableRuntimeModel) {
         if isFullyInstalled(model) {
-            profilePhases[model.filename] = .ready
+            profilePhases[model.filename] = nil
             onModelReady?(model.filename)
             return
         }
@@ -168,7 +151,7 @@ final class ModelSetupCoordinator {
             return
         }
         importTask?.cancel()
-        importState = .preparing(filename: filename)
+        importingFilename = filename
         importTask = Task { [weak self] in
             do {
                 // Compatibility gate first, straight from the chosen file: if this build of
@@ -179,7 +162,7 @@ final class ModelSetupCoordinator {
                 try Self.copyIntoModelsDirectory(from: sourceURL, to: destination)
                 try await ProfileGenerator.generateProfileIfNeeded(forModelFilename: filename)
                 guard let self, !Task.isCancelled else { return }
-                self.importState = .idle
+                self.importingFilename = nil
                 self.importTask = nil
                 self.downloads.refreshStates()
                 self.log.info("Imported GGUF \(filename, privacy: .public) ready (GGUF + ACPF present)")
@@ -195,7 +178,7 @@ final class ModelSetupCoordinator {
     /// Clear any in-flight state, log, and hand the user-facing message to `onImportFailure` (which
     /// the app shows as a modal alert). `detail` is logged for diagnostics; `message` is shown.
     private func reportImportFailure(_ message: String, filename: String, detail: String?) {
-        importState = .idle
+        importingFilename = nil
         log.error("Import failed for \(filename, privacy: .public): \(detail ?? message, privacy: .public)")
         onImportFailure?(message)
     }
@@ -211,7 +194,7 @@ final class ModelSetupCoordinator {
             let probe = try LlamaModelRuntime(modelURL: url, contextLength: 256, reuseThreshold: 0)
             await probe.shutdown()
         } catch let error as LlamaRuntimeError where Self.indicatesIncompatibility(error) {
-            throw IncompatibleModelError(filename: filename, underlying: error)
+            throw IncompatibleModelError(filename: filename)
         }
     }
 
@@ -240,7 +223,6 @@ final class ModelSetupCoordinator {
     /// Raised when a user-imported GGUF can't be loaded by the current llama.cpp build.
     struct IncompatibleModelError: Error, CustomStringConvertible {
         let filename: String
-        let underlying: LlamaRuntimeError
         var description: String {
             "“\(filename)” isn’t compatible with this version of KeyType’s model runtime (llama.cpp) "
             + "and can’t be used. It may use an unsupported architecture or a newer GGUF format than "
@@ -262,10 +244,6 @@ final class ModelSetupCoordinator {
 
     func refresh() {
         downloads.refreshStates()
-        // Drop stale "ready" phases for files that were deleted out from under us.
-        for model in catalog where profilePhases[model.filename] == .ready && !isFullyInstalled(model) {
-            profilePhases[model.filename] = nil
-        }
     }
 
     private func startProfileGeneration(forFilename filename: String) {
@@ -275,7 +253,7 @@ final class ModelSetupCoordinator {
             do {
                 try await ProfileGenerator.generateProfileIfNeeded(forModelFilename: filename)
                 guard let self else { return }
-                self.profilePhases[filename] = .ready
+                self.profilePhases[filename] = nil
                 self.profileTasks[filename] = nil
                 self.log.info("Model \(filename, privacy: .public) ready (GGUF + ACPF present)")
                 self.onModelReady?(filename)

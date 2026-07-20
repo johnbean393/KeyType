@@ -93,7 +93,7 @@ enum AppleIntelligenceModelAvailability: Equatable, LocalizedError, Sendable {
     }
 
     nonisolated var errorDescription: String? {
-        "Siri AI (Apple Intelligence) is unavailable. \(message)"
+        "Apple Intelligence is unavailable. \(message)"
     }
 }
 
@@ -155,29 +155,22 @@ final class AppleIntelligenceCompletionEngine: CompletionEngine, @unchecked Send
 
 #if canImport(FoundationModels)
         if #available(macOS 26.0, *) {
-            return makeAvailableEngine()
+            let model = SystemLanguageModel.default
+            return AppleIntelligenceCompletionEngine { prompt, instructions, maximumResponseTokens in
+                // Sessions retain a transcript and reject overlapping calls. A fresh one-shot session
+                // prevents cross-keystroke context leakage and lets rapid replacement tasks run safely.
+                let session = LanguageModelSession(model: model, instructions: instructions)
+                let options = GenerationOptions(
+                    sampling: .greedy,
+                    maximumResponseTokens: maximumResponseTokens
+                )
+                let response = try await session.respond(to: prompt, options: options)
+                return response.content
+            }
         }
 #endif
         throw AppleIntelligenceModelAvailability.frameworkUnavailable
     }
-
-#if canImport(FoundationModels)
-    @available(macOS 26.0, *)
-    nonisolated private static func makeAvailableEngine() -> AppleIntelligenceCompletionEngine {
-        let model = SystemLanguageModel.default
-        return AppleIntelligenceCompletionEngine { prompt, instructions, maximumResponseTokens in
-            // Sessions retain a transcript and reject overlapping calls. A fresh one-shot session
-            // prevents cross-keystroke context leakage and lets rapid replacement tasks run safely.
-            let session = LanguageModelSession(model: model, instructions: instructions)
-            let options = GenerationOptions(
-                sampling: .greedy,
-                maximumResponseTokens: maximumResponseTokens
-            )
-            let response = try await session.respond(to: prompt, options: options)
-            return response.content
-        }
-    }
-#endif
 
     nonisolated func completions(for request: CompletionRequest) async throws -> [CompletionCandidate] {
         guard request.maxCompletionTokens > 0, request.maxDisplayWidth > 0 else { return [] }
