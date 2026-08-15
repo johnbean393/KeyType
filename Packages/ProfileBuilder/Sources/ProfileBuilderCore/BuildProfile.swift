@@ -1,6 +1,6 @@
 import AutocompleteCore
 import Foundation
-import LlamaModelRuntime
+import ModelRuntime
 import TokenProfiles
 
 /// Summary metrics emitted at the end of a build. Surfaced both on the CLI report and as
@@ -26,7 +26,7 @@ public struct BuildSummary: Codable, Equatable {
 
 /// Pipeline orchestrator. Pure-ish — takes a `VocabIntrospecting`, a destination URL, and
 /// a reporter; produces a `BuildSummary`. Unit tests can drive it with a synthetic
-/// introspector if needed; the real CLI passes a `LlamaVocabIntrospector`.
+/// introspector if needed; the GGUF and MLX CLIs provide backend-specific implementations.
 public enum BuildProfile {
 
     /// Build a profile and optionally write it to disk. Returns the summary, including

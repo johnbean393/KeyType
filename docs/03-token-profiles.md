@@ -93,10 +93,11 @@ struct TokenProfileRecord {     // one per token id
 ## Build pipeline (offline CLI — slow is fine; runtime must be fast)
 
 Implement as a SwiftPM **executable** target (or a sub-tool) that runs once per
-tokenizer/model-family:
+tokenizer/model-family. `acpf-build` handles GGUF; `acpf-build-mlx` in the opt-in
+`MLXProfileBuilder` package handles local MLX safetensor directories:
 
 ```
-Load GGUF tokenizer → extract token bytes → classify (flags) → measure display width →
+Load GGUF or MLX tokenizer → extract token bytes → classify (flags) → measure display width →
 assign static bias → build trie + buckets → serialize sections → validate
 ```
 
@@ -157,7 +158,7 @@ text-field state and UI policy (`AutocompleteCore.SuppressionReason`).
 ## Validation tests (write these before using a profile in the sampler)
 - Header rejects wrong magic / version / vocab size / tokenizer hash.
 - Every token id has exactly one record with a valid bytes range.
-- Round-trip: `bytes(id)` matches `tokenizer.token_to_bytes(id)` for sampled ids.
+- Round-trip: `bytes(id)` matches the backend tokenizer's raw token bytes for sampled ids.
 - Every non-excluded token appears in the prefix trie.
 - Known special tokens are excluded or stop-only.
 - Known word-start / whitespace / newline / emoji / punctuation tokens get expected flags.

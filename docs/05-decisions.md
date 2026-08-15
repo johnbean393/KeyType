@@ -467,8 +467,8 @@ instant, and must not burn battery while no one is typing.
     `TokenProfiles` depends only on `AutocompleteCore` — every validation test runs
     against a synthetic vocab without llama. The offline CLI lives in
     `Packages/ProfileBuilder` and depends on `TokenProfiles` + `LlamaModelRuntime`; the
-    seam is `VocabIntrospecting` (declared in `LlamaModelRuntime`) so the protocol
-    itself never escapes the llama-aware module boundary.
+    seam is `VocabIntrospecting` (declared in the backend-neutral `ModelRuntime` product), so
+    GGUF and MLX builders share the profile pipeline without making the protocol llama-aware.
   - **Validation surface.** `ProfileSelfCheck` is the single source of truth shared
     between unit tests and the CLI's post-write check. Header / section bounds /
     alignment / digest match are tested as distinct `ACPFOpenError` cases so failures
@@ -3589,3 +3589,21 @@ text. Both are now closed:
   detector and correction validation thresholds.
 - Consequences: Correction behavior is simpler to reason about and the Settings UI has one fewer
   safety-related toggle. Previously stored user defaults for the removed key are ignored.
+
+## ADR-116 — Add an opt-in native MLX runtime without changing the shipped backend
+
+- Date: 2026-08-15
+- Status: accepted
+- Context: Issue #6 reports that normal typing is still too slow on the existing local runtime. The
+  repository already isolates inference behind `LocalModelRuntime`, but its implementation is
+  llama.cpp/GGUF-specific. Native MLX safetensor loading can be evaluated on Apple silicon without
+  changing constrained generation or making an unmeasured default switch.
+- Decision: Add `MLXModelRuntime` as an optional SwiftPM product pinned to released
+  `mlx-swift-lm` 3.31.4. Keep the actor-owned runtime and tokenizer adapter behind the existing
+  protocol, expose exact ACPF tokenizer-byte digesting, add a GGUF/MLX profile-builder source
+  switch, and provide a separate ranked-logits seam for later device-side optimization. Keep the
+  app's current GGUF selection and default runtime unchanged. Do not add MTP in this change.
+- Consequences: MLX weights remain local and are never committed, the backend can be tested and
+  benchmarked independently, and the existing constrained-generation contract stays stable. A
+  future default switch still requires randomized same-device comparison, quality and cancellation
+  evidence, memory/energy measurements, and the latency gates from the native MLX plan.

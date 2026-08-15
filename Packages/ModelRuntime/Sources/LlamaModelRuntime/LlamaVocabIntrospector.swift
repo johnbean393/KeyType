@@ -2,47 +2,8 @@ import AutocompleteCore
 import CryptoKit
 import Foundation
 import TokenProfiles
+import ModelRuntime
 import llama
-
-/// Vocab introspection seam used by the offline `acpf-build` CLI to map a llama.cpp
-/// `llama_vocab *` into the pure-Swift `TokenizerProbe` values that drive
-/// `TokenClassifier`. Keeping the protocol on this side of the package graph means
-/// `TokenProfiles` stays llama-free; the CLI binds the two through this seam.
-public protocol VocabIntrospecting {
-    var vocabSize: Int { get }
-    /// Raw token bytes (same as `ModelTokenizing.rawBytes(for:)`).
-    func bytes(for id: TokenID) throws -> [UInt8]
-    /// Tokenizer-declared text (may include byte-BPE markers like `Ġ`).
-    func text(for id: TokenID) -> String?
-    /// llama.cpp token attributes flattened into a `TokenAttr` set.
-    func attr(for id: TokenID) -> TokenAttr
-    func isControl(_ id: TokenID) -> Bool
-    func isEOG(_ id: TokenID) -> Bool
-    /// Named role (`bos`, `eos`, `eot`, `sep`, `nl`, `pad`, `unk`) when `id` matches
-    /// one of the tokenizer's declared specials.
-    func role(of id: TokenID) -> TokenRole?
-    /// SHA-256 of the concatenation of `tokenizer.ggml.*` GGUF metadata keys and
-    /// their values, in stable order. Stamped into the validation section so the
-    /// profile can be cross-referenced against the source GGUF.
-    func ggufMetadataDigest() -> String
-
-    /// Build a `TokenizerProbe` for `id` by combining the methods above. Default
-    /// implementation; conformers usually don't override this.
-    func probe(for id: TokenID) throws -> TokenizerProbe
-}
-
-public extension VocabIntrospecting {
-    func probe(for id: TokenID) throws -> TokenizerProbe {
-        TokenizerProbe(
-            tokenID: id,
-            bytes: try bytes(for: id),
-            attr: attr(for: id),
-            role: role(of: id),
-            isControl: isControl(id),
-            isEOG: isEOG(id)
-        )
-    }
-}
 
 /// Concrete `VocabIntrospecting` implementation backed by `llama_vocab *`. The
 /// llama.h tokenization APIs are documented as thread-safe (see the "Tokenization"

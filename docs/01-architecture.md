@@ -87,6 +87,13 @@ it is not used; see ADR-018). `StubModelRuntime` + `UTF8FallbackTokenizer` are r
 keep the `LocalModelRuntime` protocol stable (the `anchoredLogits` default extension keeps stubs
 unchanged).
 
+`MLXModelRuntime` is an opt-in native MLX backend. It loads local MLX safetensor directories through
+the released `mlx-swift-lm` loader, adapts the Hugging Face tokenizer, owns MLX cache snapshots in
+an actor, and implements the same prepare/decode/anchored/batched contract. Its first version is
+deliberately sequential and correctness-first; `RankedLocalModelRuntime` is an optional seam for
+later device-side masking and top-k. It is not wired as the shipped default, and MTP is intentionally
+out of scope until the ordinary path has independent quality and latency evidence.
+
 ### `ConstrainedGeneration` — the decoding loop ✅(multi-branch)
 `ConstrainedGenerationEngine: CompletionGenerating` performs real constrained decoding (M5,
 ADR-010): a deterministic best-first **multi-branch** search honouring `branchWidth`,
@@ -115,7 +122,8 @@ keystrokes), cutting the medium-append case from ~1140 decoded tokens / ~246 ms 
 ### `TokenProfiles` — vocabulary intelligence ✅
 `AutocompleteProfile` protocol + `InMemoryAutocompleteProfile` (tests) + `TokenProfileFlags` +
 `TokenStopBehavior`, plus the on-disk **ACPF** format: a memory-mapped `MmapAutocompleteProfile`
-reader and an offline builder, with profiles generated in-app per model family (ADR-009/034). See
+reader and an offline builder, with profiles generated per model family (ADR-009/034). The builder
+accepts both GGUF and local MLX tokenizer sources and stamps the exact vocabulary-byte digest. See
 `03-token-profiles.md`.
 
 ### `CompletionUI` — overlays ✅

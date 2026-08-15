@@ -12,8 +12,12 @@ public final class ConsoleReporter {
     }
 
     public func start(gguf: URL, output: URL, family: String, dryRun: Bool) {
+        start(source: gguf, sourceLabel: "gguf", output: output, family: family, dryRun: dryRun)
+    }
+
+    public func start(source: URL, sourceLabel: String, output: URL, family: String, dryRun: Bool) {
         log("acpf-build: family=\(family)")
-        log("  gguf:   \(gguf.path)")
+        log("  \(sourceLabel):   \(source.path)")
         log("  output: \(dryRun ? "[dry-run]" : output.path)")
     }
 
@@ -70,7 +74,11 @@ public final class ConsoleReporter {
         log("  trie edges:      \(summary.trieEdgeCount)")
         log("  file size:       \(summary.fileSize)")
         log("  tokenizer hash:  \(summary.tokenizerDigestHexPrefix)")
-        log("  gguf meta hash:  \(summary.ggufMetadataDigest.prefix(16))")
+        if summary.ggufMetadataDigest.isEmpty {
+            log("  source meta hash: unavailable for this backend")
+        } else {
+            log("  gguf meta hash:  \(summary.ggufMetadataDigest.prefix(16))")
+        }
         log("  flag histogram:")
         for (name, count) in summary.flagHistogram.sorted(by: { $0.key < $1.key }) {
             log("    \(name): \(count)")

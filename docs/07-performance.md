@@ -18,6 +18,21 @@ swift test -c release --package-path Packages/ModelRuntime
 The GGUF-backed timing tests `XCTSkipUnless` a real model is present in the app-support container
 (ADR-007), so they only run on a machine that has downloaded a model.
 
+The MLX runtime has a gated 200-request warm benchmark. It requires a local model and prints cold
+load plus warm p50/p90/p95 values without making timing assertions:
+
+```sh
+KEYTYPE_MLX_MODEL_DIR="…/Qwen3.5-0.8B-MLX-4bit" \\
+KEYTYPE_MLX_RUN_BENCHMARK=1 \\
+swift test -c release --package-path Packages/MLXModelRuntime \\
+  --filter MLXModelRuntimeTests/testWarmAnchoredLatencyBenchmark
+```
+
+Compare backends on the same machine, model family, prompt set, and completion settings. Randomize
+backend order and collect memory, energy, quality, and end-to-end overlay measurements before
+considering a default switch. The MLX runtime's current benchmark is a baseline, not an acceptance
+claim.
+
 ## Where the time goes
 
 The per-keystroke cost is dominated by model decode, not Swift glue. Capture is cheap
