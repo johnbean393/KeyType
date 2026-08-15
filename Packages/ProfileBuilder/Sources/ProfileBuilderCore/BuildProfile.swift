@@ -1,6 +1,5 @@
 import AutocompleteCore
 import Foundation
-import ModelRuntime
 import TokenProfiles
 
 /// Summary metrics emitted at the end of a build. Surfaced both on the CLI report and as

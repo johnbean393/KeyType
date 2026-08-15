@@ -20,7 +20,6 @@ let package = Package(
             name: "ProfileBuilderCore",
             dependencies: [
                 .product(name: "AutocompleteCore", package: "AutocompleteCore"),
-                .product(name: "ModelRuntime", package: "ModelRuntime"),
                 .product(name: "TokenProfiles", package: "TokenProfiles")
             ]
         ),

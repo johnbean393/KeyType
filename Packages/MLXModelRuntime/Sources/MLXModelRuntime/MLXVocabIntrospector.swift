@@ -1,6 +1,5 @@
 import AutocompleteCore
 import ModelRuntime
-import TokenProfiles
 
 /// ACPF vocabulary view for an MLX tokenizer.
 ///

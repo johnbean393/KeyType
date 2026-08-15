@@ -1,12 +1,4 @@
-import AutocompleteCore
-import Foundation
-import TokenProfiles
-
 /// Backend-neutral vocabulary seam used by the ACPF builder.
-///
-/// Each model backend supplies the tokenizer facts that the profile classifier needs. Keeping the
-/// seam here avoids making a non-llama backend depend on `LlamaModelRuntime` merely to generate or
-/// validate an exact tokenizer profile.
 public protocol VocabIntrospecting {
     var vocabSize: Int { get }
     func bytes(for id: TokenID) throws -> [UInt8]

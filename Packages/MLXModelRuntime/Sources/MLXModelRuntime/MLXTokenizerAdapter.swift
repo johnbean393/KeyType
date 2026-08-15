@@ -6,9 +6,10 @@ import TokenProfiles
 
 /// Adapts the tokenizer supplied by `mlx-swift-lm` to KeyType's tokenizer contract.
 ///
-/// `mlx-swift-lm` intentionally exposes token strings rather than a llama-style
-/// `token_to_piece` byte API. Decoding one token with special-token handling disabled
-/// gives us the bytes that KeyType needs for its incremental UTF-8 and ACPF checks.
+/// `mlx-swift-lm` exposes token strings rather than a llama-style `token_to_piece` byte API.
+/// Ordinary token strings are decoded for their UTF-8 bytes. Byte-fallback tokens are represented
+/// as `<0xHH>` strings; those must be parsed directly because singleton Unicode decoding replaces
+/// incomplete UTF-8 bytes with U+FFFD.
 public struct MLXTokenizerAdapter: ModelTokenizing, @unchecked Sendable {
     private let tokenizer: any MLXLMCommon.Tokenizer
     private let specialTokenIDs: Set<TokenID>
@@ -76,6 +77,10 @@ public struct MLXTokenizerAdapter: ModelTokenizing, @unchecked Sendable {
         }
         guard !specialTokenIDs.contains(tokenID) else { return [] }
 
+        if let byte = Self.byteFallbackValue(from: tokenizer.convertIdToToken(id)) {
+            return [byte]
+        }
+
         let piece = tokenizer.decode(tokenIds: [id], skipSpecialTokens: false)
         return Array(piece.utf8)
     }
@@ -101,6 +106,23 @@ public struct MLXTokenizerAdapter: ModelTokenizing, @unchecked Sendable {
         (token.hasPrefix("<|") && token.hasSuffix("|>"))
             || ["<s>", "</s>", "<unk>", "<pad>", "<mask>", "[CLS]", "[SEP]", "[MASK]"]
                 .contains(token)
+    }
+
+    static func byteFallbackValue(from token: String?) -> UInt8? {
+        guard let token,
+              token.count == 6,
+              token.first == "<",
+              token.last == ">",
+              token.dropFirst().dropLast().prefix(2).lowercased() == "0x"
+        else {
+            return nil
+        }
+
+        let hex = token.dropFirst(3).dropLast()
+        guard hex.count == 2, let value = UInt8(hex, radix: 16) else {
+            return nil
+        }
+        return value
     }
 }
 
