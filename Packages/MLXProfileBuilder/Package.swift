@@ -23,6 +23,10 @@ let package = Package(
                 .product(name: "ProfileBuilderCore", package: "ProfileBuilder"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ]
+        ),
+        .testTarget(
+            name: "MLXProfileBuilderTests",
+            dependencies: ["acpf-build-mlx"]
         )
     ]
 )

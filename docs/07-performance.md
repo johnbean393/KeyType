@@ -22,11 +22,49 @@ The MLX runtime has a gated 200-request warm benchmark. It requires a local mode
 load plus warm p50/p90/p95 values without making timing assertions:
 
 ```sh
-KEYTYPE_MLX_MODEL_DIR="…/Qwen3.5-0.8B-MLX-4bit" \\
+KEYTYPE_MLX_MODEL_DIR="…/Qwen3.5-2B-4bit" \\
 KEYTYPE_MLX_RUN_BENCHMARK=1 \\
 swift test -c release --package-path Packages/MLXModelRuntime \\
   --filter MLXModelRuntimeTests/testWarmAnchoredLatencyBenchmark
 ```
+
+The matching GGUF reference uses the same prompt, suffix, request count, and percentile method:
+
+```sh
+KEYTYPE_LLAMA_RUN_BENCHMARK=1 \\
+swift test -c release --package-path Packages/ModelRuntime \\
+  --filter PrefillLatencyBenchmarkTests/testWarmAnchoredLatencyBenchmark
+```
+
+Run the all-bundle release gate with the three local bundle directories:
+
+```sh
+KEYTYPE_MLX_08B_MODEL_DIR="…/Qwen3.5-0.8B-6bit" \\
+KEYTYPE_MLX_2B_MODEL_DIR="…/Qwen3.5-2B-4bit" \\
+KEYTYPE_MLX_4B_MODEL_DIR="…/Qwen3.5-4B-MLX-4bit" \\
+swift test --package-path Packages/ModelManagement \\
+  --filter MLXModelPreflightTests/testAllPinnedBundlesPassLivePreflight
+```
+
+### 2026-08-15 M5 Pro release baseline
+
+Measured on a 24 GB Apple M5 Pro using 200 warm anchored requests for
+`"The quick brown fox" + " jumps"`. Both are Qwen 3.5 2B Base, but the existing GGUF reference
+is Q4_K_M (1.18 GiB) while the pinned MLX conversion is 4-bit (1.72 GB); this is runtime evidence,
+not a quality or energy comparison.
+
+| Metric | GGUF / llama.cpp | MLX | Change (MLX vs GGUF) |
+| --- | ---: | ---: | ---: |
+| Cold load | 478.34 ms | 1220.23 ms | 155.1% slower |
+| Warm p50 | 7.86 ms | 6.99 ms | 11.1% faster |
+| Warm p90 | 8.40 ms | 7.61 ms | 9.4% faster |
+| Warm p95 | 8.75 ms | 8.32 ms | 4.9% faster |
+
+Live preflight was run for each of the three pinned launch bundles: it checks hashes, tokenizer
+identity, FIM markers, ACPF profile, and a small inference request. The timing table is an
+anchored-logit microbenchmark, not end-to-end typing-to-overlay evidence. It does not certify
+completion quality, acceptance rate, peak memory, or energy. Do not treat the faster warm path as a
+reason to enable MTP, change the existing GGUF default, or make a blanket quality claim.
 
 Compare backends on the same machine, model family, prompt set, and completion settings. Randomize
 backend order and collect memory, energy, quality, and end-to-end overlay measurements before

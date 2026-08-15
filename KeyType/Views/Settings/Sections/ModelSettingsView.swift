@@ -28,6 +28,9 @@ struct ModelSettingsView: View {
             Section("Model") {
                 Picker("Completion model", selection: $settings.selectedModelFilename) {
                     Text("Default (\(ModelContainer.defaultModelFilename))").tag(String?.none)
+                    ForEach(modelSetup.mlxCatalog.filter(modelSetup.isFullyInstalled), id: \.id) { model in
+                        Text("\(model.onboardingLabel): \(model.displayName)").tag(String?.some(model.id))
+                    }
                     ForEach(availableModels, id: \.self) { name in
                         Text(name).tag(String?.some(name))
                     }
@@ -38,6 +41,16 @@ struct ModelSettingsView: View {
             }
 
             Section("Available models") {
+                ForEach(modelSetup.mlxCatalog) { model in
+                    MLXSettingsModelRow(
+                        model: model,
+                        state: modelSetup.state(for: model),
+                        isInstalled: modelSetup.mlxDownloads.isInstalled(model),
+                        onSetup: { modelSetup.beginSetup(for: model) },
+                        onCancel: { modelSetup.cancel(model) },
+                        onDelete: { deleteMLXModel(model) }
+                    )
+                }
                 ForEach(modelSetup.catalog) { model in
                     SettingsModelRow(
                         model: model,
@@ -83,8 +96,9 @@ struct ModelSettingsView: View {
 
     /// Changes whenever any catalog model's combined setup state changes, so the picker stays in sync.
     private var modelSetupSignature: String {
-        modelSetup.catalog
+        (modelSetup.catalog
             .map { "\($0.filename):\(String(describing: modelSetup.state(for: $0)))" }
+            + modelSetup.mlxCatalog.map { "\($0.id):\(String(describing: modelSetup.state(for: $0)))" })
             .joined(separator: "|")
     }
 
@@ -112,6 +126,64 @@ struct ModelSettingsView: View {
             return []
         }
         return names.filter { $0.lowercased().hasSuffix(".gguf") }.sorted()
+    }
+
+    private func deleteMLXModel(_ model: SupportedMLXModel) {
+        if settings.selectedModelFilename == model.id {
+            settings.selectedModelFilename = nil
+            reloadModel()
+        }
+        modelSetup.mlxDownloads.delete(model)
+        modelSetup.refresh()
+    }
+}
+
+private struct MLXSettingsModelRow: View {
+    let model: SupportedMLXModel
+    let state: ModelSetupCoordinator.SetupState
+    let isInstalled: Bool
+    let onSetup: () -> Void
+    let onCancel: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(model.onboardingLabel) — \(model.displayName)")
+                    Text("\(model.approximateDownloadSizeLabel) download · \(model.minimumMemoryLabel) memory · Apple-silicon MLX")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                }
+                Spacer()
+                action
+            }
+            statusLine
+        }
+    }
+
+    @ViewBuilder private var action: some View {
+        switch state {
+        case .ready: Button("Delete", role: .destructive, action: onDelete).font(.callout)
+        case .downloading, .preparingProfile: Button("Cancel", action: onCancel).font(.callout)
+        case .paused: EmptyView()
+        case .idle, .failed:
+            if isInstalled {
+                HStack(spacing: 8) { Button("Validate", action: onSetup); Button("Delete", role: .destructive, action: onDelete) }.font(.callout)
+            } else { Button("Set up", action: onSetup).font(.callout) }
+        }
+    }
+
+    @ViewBuilder private var statusLine: some View {
+        switch state {
+        case .idle: Text(model.detail).font(.footnote).foregroundStyle(.secondary)
+        case let .downloading(progress):
+            if let progress { ProgressView(value: progress); Text("Downloading \(Int((progress * 100).rounded()))%").font(.footnote).foregroundStyle(.secondary) }
+            else { ProgressView().controlSize(.small) }
+        case .paused: EmptyView()
+        case .preparingProfile: HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Validating model…").font(.footnote).foregroundStyle(.secondary) }
+        case .ready: Label("Ready", systemImage: "checkmark.circle.fill").font(.footnote.weight(.medium)).foregroundStyle(.green)
+        case let .failed(message): Label(message, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

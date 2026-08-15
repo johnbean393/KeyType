@@ -49,6 +49,28 @@ public enum ModelContainer {
         try modelsDirectoryURL().appendingPathComponent(filename, isDirectory: false)
     }
 
+    /// Directory containing verified MLX model bundles. Each catalog entry owns one
+    /// subdirectory; incomplete staging directories are never considered installed.
+    public static func mlxModelsDirectoryURL(create: Bool = false) throws -> URL {
+        let dir = try modelsDirectoryURL(create: create)
+            .appendingPathComponent("MLX", isDirectory: true)
+        if create {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+
+    public static func mlxModelDirectoryURL(identifier: String, createParent: Bool = false) throws -> URL {
+        try mlxModelsDirectoryURL(create: createParent)
+            .appendingPathComponent(identifier, isDirectory: true)
+    }
+
+    public static func modelBundleExists(at url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            && isDirectory.boolValue
+    }
+
     /// Filename of a profile for a given tokenizer family — e.g.
     /// `"qwen3-v151936"` → `"qwen3-v151936.acpf.bin"`.
     public static func profileFilename(family: String) -> String {

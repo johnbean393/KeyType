@@ -16,6 +16,7 @@ import CompletionUI
 import ConstrainedGeneration
 import Foundation
 import LlamaModelRuntime
+import MLXModelProfileGeneration
 import MacContextCapture
 import ModelManagement
 import ModelRuntime
@@ -1946,6 +1947,28 @@ final class CompletionController {
         modelFilename: String,
         adjustments: ThresholdAdjustments
     ) async throws -> ConstrainedGenerationEngine {
+        if let model = MLXModelCatalog.model(id: modelFilename) {
+            let prepared = try await MLXModelPreflight.prepare(model)
+            let preset = model.tuningPreset
+            let configuration = DecodingConfiguration(
+                topK: preset.topK,
+                topP: preset.topP,
+                temperature: preset.temperature,
+                branchWidth: preset.branchWidth,
+                relativeCutoff: preset.relativeCutoff + adjustments.relativeCutoffDelta,
+                minBranchProbability: preset.minimumBranchProbability * adjustments.minBranchProbabilityScale,
+                enableFillInMiddle: preset.enableFillInMiddle,
+                fimMaxPrefixTokens: preset.fimMaxPrefixTokens,
+                fimMaxSuffixTokens: preset.fimMaxSuffixTokens
+            )
+            return ConstrainedGenerationEngine(
+                runtime: prepared.runtime,
+                profile: prepared.profile,
+                compatibilityStore: compatibilityStore,
+                configuration: configuration,
+                wordRecognizer: SystemWordRecognizer()
+            )
+        }
         let modelURL = try ModelContainer.modelURL(filename: modelFilename)
         guard ModelContainer.modelExists(at: modelURL) else {
             throw CompletionLoadError.modelMissing(modelFilename)

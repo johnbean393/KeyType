@@ -68,7 +68,7 @@ struct MLXProfileBuildCommand: AsyncParsableCommand {
         }
     }
 
-    private func resolveOutputURL() throws -> URL {
+    func resolveOutputURL() throws -> URL {
         if let output { return URL(fileURLWithPath: output) }
         return try ModelContainer.profileURL(family: family, create: true)
     }

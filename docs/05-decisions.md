@@ -135,6 +135,8 @@ row here.**
 | 113 | Route prefix-only spellcheck replacements to completion | correction/completion |
 | 114 | Lower spellcheck correction model margin | correction/model-runtime |
 | 115 | Remove aggressive correction mode | correction/settings |
+| 116 | Add an opt-in native MLX runtime without changing the shipped backend | model-runtime |
+| 117 | Ship only pinned, validated MLX Base bundles | model-runtime/model-management |
 
 ---
 
@@ -3607,3 +3609,24 @@ text. Both are now closed:
   benchmarked independently, and the existing constrained-generation contract stays stable. A
   future default switch still requires randomized same-device comparison, quality and cancellation
   evidence, memory/energy measurements, and the latency gates from the native MLX plan.
+
+## ADR-117 — Ship only pinned, validated MLX Base bundles
+
+- Date: 2026-08-15
+- Status: accepted
+- Context: MLX models are directories, not one GGUF file, and display names alone do not prove that
+  a tokenizer, quantization, or conversion is the tested artifact. The 0.8B, 2B, and 4B Qwen 3.5
+  conversions are curated MLX Community artifacts, not Qwen-published MLX weights. Their cards name
+  Qwen 3.5 source models; the Hub model tree records the corresponding Qwen Base ancestors. A
+  changed conversion must never silently reuse an ACPF profile or become selectable.
+- Decision: Add three first-class MLX catalog entries: 0.8B 6-bit (Fastest), 2B 4-bit
+  (Recommended on a 24 GB M5 Pro), and 4B 4-bit (Higher capacity). Pin each conversion revision,
+  every loader-required file's size and SHA-256, Base checkpoint provenance, and the live MLX
+  tokenizer digest. Stage and verify a bundle before promotion; require live digest, FIM-marker,
+  ACPF, and small-inference preflight before marking it ready. Store the existing decoder baseline
+  as an explicit launch baseline; it is not a per-model optimization claim. MTP is intentionally
+  not part of this decision.
+- Consequences: MLX cards are ordinary onboarding and Settings choices, while arbitrary imported
+  GGUFs retain generic ACPF generation but do not receive the curated support label or preset.
+  A failed download, modified bundle, or tokenizer drift cannot be selected. Sharing one profile
+  family remains conditional on the exact live digest check, rather than a Qwen family name.

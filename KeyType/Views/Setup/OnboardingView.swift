@@ -53,6 +53,9 @@ struct OnboardingView: View {
         .task {
             permissions.refresh()
             modelSetup.refresh()
+            if settings.selectedModelFilename == nil, let recommendedModelID = modelSetup.recommendedModelID {
+                selectedModelFilename = recommendedModelID
+            }
         }
         // The guided overlay is a floating panel tied to the permissions step. Tear it down when the
         // user navigates away or closes onboarding so it can't linger over System Settings.
@@ -149,9 +152,10 @@ struct OnboardingView: View {
     }
 
     private var selectedModelIsReady: Bool {
-        guard let model = modelSetup.catalog.first(where: { $0.filename == selectedModelFilename }) else {
-            return false
+        if let model = modelSetup.mlxCatalog.first(where: { $0.id == selectedModelFilename }) {
+            return modelSetup.isFullyInstalled(model)
         }
+        guard let model = modelSetup.catalog.first(where: { $0.filename == selectedModelFilename }) else { return false }
         return modelSetup.isFullyInstalled(model)
     }
 
@@ -213,6 +217,27 @@ struct OnboardingView: View {
             subtitle: "Everything runs locally on your Mac. Pick one to download, or use one you've already added."
         )
         VStack(spacing: 10) {
+            Text("MLX models are optimized for Apple silicon. The recommended option is preselected when your Mac supports it.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            ForEach(modelSetup.mlxCatalog) { model in
+                MLXModelCard(
+                    model: model,
+                    state: modelSetup.state(for: model),
+                    isSelected: selectedModelFilename == model.id,
+                    onSelect: {
+                        selectedModelFilename = model.id
+                        modelSetup.beginSetup(for: model)
+                    },
+                    onCancel: { modelSetup.cancel(model) }
+                )
+            }
+            Divider().padding(.vertical, 4)
+            Text("Other compatible models")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(modelSetup.catalog) { model in
                 ModelCard(
                     model: model,
@@ -520,6 +545,56 @@ private struct PermissionCard: View {
                     .background(ScreenFrameReader(frameInScreen: $allowButtonFrame))
                 }
             }
+        }
+    }
+}
+
+private struct MLXModelCard: View {
+    let model: SupportedMLXModel
+    let state: ModelSetupCoordinator.SetupState
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onSelect) {
+                HStack(spacing: 10) {
+                    Image(systemName: "cpu.fill")
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.onboardingLabel).font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                        Text(model.displayName).font(.headline)
+                        Text(model.detail).font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Text("\(model.approximateDownloadSizeLabel) · \(model.minimumMemoryLabel) memory")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                    if isSelected, case .ready = state {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            status
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(isSelected ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.15), lineWidth: isSelected ? 1.5 : 1))
+    }
+
+    @ViewBuilder private var status: some View {
+        switch state {
+        case .idle: EmptyView()
+        case let .downloading(progress):
+            if let progress { ProgressView(value: progress) } else { ProgressView() }
+            HStack { Text(progress.map { "Downloading \(Int(($0 * 100).rounded()))%" } ?? "Downloading…").font(.footnote).foregroundStyle(.secondary); Spacer(); Button("Cancel", action: onCancel).font(.footnote) }
+        case .paused: EmptyView()
+        case .preparingProfile: HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Validating model…").font(.footnote).foregroundStyle(.secondary) }
+        case .ready: Label("Ready", systemImage: "checkmark.circle.fill").font(.footnote.weight(.medium)).foregroundStyle(.green)
+        case let .failed(message): Label(message, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
         }
     }
 }

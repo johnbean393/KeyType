@@ -117,6 +117,45 @@ final class PrefillLatencyBenchmarkTests: XCTestCase {
         )
     }
 
+    /// Like-for-like reference for the MLX runtime benchmark: same Qwen 3.5 2B Base prompt,
+    /// suffix, request count, and percentile convention. It is opt-in because performance data is
+    /// meaningful only in a release build on the machine being reported.
+    func testWarmAnchoredLatencyBenchmark() async throws {
+        guard ProcessInfo.processInfo.environment["KEYTYPE_LLAMA_RUN_BENCHMARK"] == "1" else {
+            throw XCTSkip("set KEYTYPE_LLAMA_RUN_BENCHMARK=1 to run the 200-request benchmark")
+        }
+        try XCTSkipUnless(ModelContainer.defaultModelExists(), "default Qwen 2B GGUF is not installed")
+
+        let loadStart = DispatchTime.now().uptimeNanoseconds
+        let runtime = try LlamaModelRuntime(modelURL: try ModelContainer.modelURL())
+        let coldLoadMillis = elapsedMillis(since: loadStart)
+        var samples: [Double] = []
+        samples.reserveCapacity(200)
+        do {
+            let anchor = try runtime.tokenizer.tokenize("The quick brown fox")
+            let suffix = try runtime.tokenizer.tokenize(" jumps")
+            _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffix)
+
+            for _ in 0..<200 {
+                let start = DispatchTime.now().uptimeNanoseconds
+                _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffix)
+                samples.append(elapsedMillis(since: start))
+            }
+        } catch {
+            await runtime.shutdown()
+            throw error
+        }
+        let sorted = samples.sorted()
+        await runtime.shutdown()
+        print(
+            "[llama-benchmark] requests=200 cold_load_ms=\(format(coldLoadMillis)) "
+                + "warm_p50_ms=\(format(percentile(sorted, 0.50))) "
+                + "warm_p90_ms=\(format(percentile(sorted, 0.90))) "
+                + "warm_p95_ms=\(format(percentile(sorted, 0.95)))"
+        )
+        XCTAssertEqual(samples.count, 200)
+    }
+
     // MARK: - Helpers
 
     /// Builds a tokenized ASCII source long enough to slice off `n` tokens. ASCII pangrams
@@ -144,5 +183,13 @@ final class PrefillLatencyBenchmarkTests: XCTestCase {
         let rank = Int((Double(sortedSamples.count) * p).rounded(.up)) - 1
         let idx = min(max(rank, 0), sortedSamples.count - 1)
         return sortedSamples[idx]
+    }
+
+    private func elapsedMillis(since start: UInt64) -> Double {
+        Double(DispatchTime.now().uptimeNanoseconds &- start) / 1_000_000.0
+    }
+
+    private func format(_ value: Double) -> String {
+        String(format: "%.2f", value)
     }
 }

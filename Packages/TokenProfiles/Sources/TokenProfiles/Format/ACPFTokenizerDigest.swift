@@ -34,6 +34,20 @@ public struct ACPFTokenizerDigestValue: Equatable, Hashable, CustomStringConvert
         return s
     }
 
+    /// All 16 stored digest bytes, in canonical SHA-256 byte order. Use this for manifest
+    /// pinning; `hexPrefix` is deliberately only suitable for human-facing diagnostics.
+    public var hex: String {
+        var s = ""
+        s.reserveCapacity(32)
+        for value in [lo, hi] {
+            for i in 0..<8 {
+                let b = UInt8((value >> (UInt64(i) * 8)) & 0xff)
+                s += String(format: "%02x", b)
+            }
+        }
+        return s
+    }
+
     public var description: String { hexPrefix }
 }
 

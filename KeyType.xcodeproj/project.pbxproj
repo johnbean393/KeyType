@@ -41,6 +41,7 @@
 		4B5450012FC9600000000068 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000067 /* SettingsView.swift */; };
 		4B5450012FC9600000000073 /* ModelManagement in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000071 /* ModelManagement */; };
 		4B5450012FC9600000000074 /* ModelProfileGeneration in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000072 /* ModelProfileGeneration */; };
+		4B5450012FC9600000000902 /* MLXModelProfileGeneration in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5450012FC9600000000901 /* MLXModelProfileGeneration */; };
 		4B5450012FC9600000000081 /* AcceptanceShortcut.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000080 /* AcceptanceShortcut.swift */; };
 		4B5450012FC9600000000083 /* ModelSetupCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000082 /* ModelSetupCoordinator.swift */; };
 		4B5450012FC9600000000085 /* KeyRecorderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B5450012FC9600000000084 /* KeyRecorderView.swift */; };
@@ -171,6 +172,7 @@
 				4B5450012FC9600000000002 /* MacContextCapture in Frameworks */,
 				4B5450012FC9600000000073 /* ModelManagement in Frameworks */,
 				4B5450012FC9600000000074 /* ModelProfileGeneration in Frameworks */,
+				4B5450012FC9600000000902 /* MLXModelProfileGeneration in Frameworks */,
 				4B5450012FC9600000000004 /* ModelRuntime in Frameworks */,
 				4B5450012FC9600000000062 /* Personalization in Frameworks */,
 				4B5450012FC9600000000003 /* Prompting in Frameworks */,
@@ -500,6 +502,7 @@
 				4B5450012FC9600000000012 /* MacContextCapture */,
 				4B5450012FC9600000000071 /* ModelManagement */,
 				4B5450012FC9600000000072 /* ModelProfileGeneration */,
+				4B5450012FC9600000000901 /* MLXModelProfileGeneration */,
 				4B5450012FC9600000000014 /* ModelRuntime */,
 				4B5450012FC9600000000061 /* Personalization */,
 				4B5450012FC9600000000013 /* Prompting */,
@@ -1165,6 +1168,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4B5450012FC9600000000070 /* XCLocalSwiftPackageReference "Packages/ModelManagement" */;
 			productName = ModelProfileGeneration;
+		};
+		4B5450012FC9600000000901 /* MLXModelProfileGeneration */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5450012FC9600000000070 /* XCLocalSwiftPackageReference "Packages/ModelManagement" */;
+			productName = MLXModelProfileGeneration;
 		};
 		4B5450012FC96000000000F1 /* LaunchAtLogin */ = {
 			isa = XCSwiftPackageProductDependency;

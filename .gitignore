@@ -38,6 +38,8 @@ Packages/ModelRuntime/Vendor/
 # Model weights (stay in ~/Library/Application Support/KeyType/Models, never in the repo)
 *.gguf
 Models/
+!KeyType/Logic/Models/
+!KeyType/Logic/Models/ModelSetupCoordinator.swift
 
 # Completion benchmark local/private data and generated reports
 KeyTypeBench-20260603/Private/
