@@ -32,13 +32,20 @@ final class ModelSetupCoordinator {
     let downloads = ModelDownloadManager()
     let mlxDownloads = MLXBundleDownloadManager()
     let catalog = RuntimeModelCatalog.models
-    let mlxCatalog = MLXModelCatalog.models()
+    let mlxCatalog = MLXModelCatalog.models(forPhysicalMemoryBytes: ProcessInfo.processInfo.physicalMemory)
 
     var onModelReady: ((String) -> Void)?
     var onImportFailure: ((String) -> Void)?
     private(set) var importState: ImportState = .idle
     private var profileStates: [String: SetupState] = [:]
     private var mlxPreparationStates: [String: SetupState] = [:]
+    private struct MLXPreparationRequest {
+        let model: SupportedMLXModel
+        let selectWhenReady: Bool
+    }
+
+    private var mlxPreparationQueue: [MLXPreparationRequest] = []
+    private var mlxPreparationQueueTask: Task<Void, Never>?
     private var mlxPreparationTasks: [String: Task<Void, Never>] = [:]
 
     init() {
@@ -46,7 +53,7 @@ final class ModelSetupCoordinator {
             self?.prepareGGUF(model)
         }
         mlxDownloads.onBundleInstalled = { [weak self] model in
-            self?.prepareMLX(model)
+            self?.enqueueMLXPreparation(model)
         }
     }
 
@@ -58,7 +65,7 @@ final class ModelSetupCoordinator {
         downloads.refreshStates()
         mlxDownloads.refreshStates(catalog: mlxCatalog)
         for model in mlxCatalog where mlxDownloads.isInstalled(model) {
-            prepareMLX(model, selectWhenReady: false)
+            enqueueMLXPreparation(model, selectWhenReady: false)
         }
     }
 
@@ -92,8 +99,9 @@ final class ModelSetupCoordinator {
 
     func beginSetup(for model: SupportedMLXModel) {
         if mlxDownloads.isInstalled(model) {
-            prepareMLX(model)
+            enqueueMLXPreparation(model)
         } else {
+            clearFailedPreparationState(for: model)
             mlxDownloads.download(model)
         }
     }
@@ -106,7 +114,18 @@ final class ModelSetupCoordinator {
     func cancel(_ model: SupportedMLXModel) {
         mlxDownloads.cancel(model)
         mlxPreparationTasks[model.id]?.cancel()
+        mlxPreparationQueue.removeAll { $0.model.id == model.id }
         mlxPreparationStates[model.id] = nil
+        stopPreparationQueueIfIdle()
+    }
+
+    func delete(_ model: SupportedMLXModel) {
+        mlxDownloads.cancel(model)
+        mlxPreparationTasks[model.id]?.cancel()
+        mlxPreparationQueue.removeAll { $0.model.id == model.id }
+        mlxPreparationStates[model.id] = nil
+        mlxDownloads.delete(model)
+        stopPreparationQueueIfIdle()
     }
 
     func pause(_ model: DownloadableRuntimeModel) {
@@ -161,25 +180,79 @@ final class ModelSetupCoordinator {
         }
     }
 
-    private func prepareMLX(_ model: SupportedMLXModel, selectWhenReady: Bool = true) {
-        guard !isPreparing(mlxPreparationStates[model.id]) else { return }
+    private func enqueueMLXPreparation(_ model: SupportedMLXModel, selectWhenReady: Bool = true) {
+        guard mlxPreparationTasks[model.id] == nil,
+              !mlxPreparationQueue.contains(where: { $0.model.id == model.id }) else { return }
         mlxPreparationStates[model.id] = .preparingProfile
-        mlxPreparationTasks[model.id] = Task { [weak self] in
+        mlxPreparationQueue.append(.init(model: model, selectWhenReady: selectWhenReady))
+        startPreparationQueueIfNeeded()
+    }
+
+    private func startPreparationQueueIfNeeded() {
+        guard mlxPreparationQueueTask == nil else { return }
+        mlxPreparationQueueTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.mlxPreparationTasks[model.id] = nil }
-            do {
-                let prepared = try await MLXModelPreflight.prepare(model)
-                await MLXModelPreflight.shutdown(prepared)
-                try Task.checkCancellation()
-                mlxPreparationStates[model.id] = .ready
-                if selectWhenReady { onModelReady?(model.id) }
-            } catch is CancellationError {
+            while !Task.isCancelled {
+                guard let request = self.nextPreparationRequest() else { break }
+                let task = Task { [weak self] in
+                    await self?.prepareMLX(request)
+                }
+                self.mlxPreparationTasks[request.model.id] = task
+                await task.value
+                self.mlxPreparationTasks[request.model.id] = nil
+            }
+            self.mlxPreparationQueueTask = nil
+        }
+    }
+
+    private func nextPreparationRequest() -> MLXPreparationRequest? {
+        guard !mlxPreparationQueue.isEmpty else { return nil }
+        return mlxPreparationQueue.removeFirst()
+    }
+
+    private func prepareMLX(_ request: MLXPreparationRequest) async {
+        let model = request.model
+        do {
+            let prepared = try await MLXModelPreflight.prepare(model)
+            await MLXModelPreflight.shutdown(prepared)
+            try Task.checkCancellation()
+            guard mlxPreparationStates[model.id] != nil else { return }
+            mlxPreparationStates[model.id] = .ready
+            if request.selectWhenReady { onModelReady?(model.id) }
+        } catch is CancellationError {
+            if mlxPreparationStates[model.id] != nil {
                 mlxPreparationStates[model.id] = .idle
-            } catch {
-                mlxDownloads.discardBundle(model)
+            }
+        } catch {
+            if Task.isCancelled {
+                if mlxPreparationStates[model.id] != nil {
+                    mlxPreparationStates[model.id] = .idle
+                }
+            } else {
+                if shouldDiscardBundle(after: error) {
+                    mlxDownloads.discardBundle(model)
+                }
                 mlxPreparationStates[model.id] = .failed(error.localizedDescription)
             }
         }
+    }
+
+    private func clearFailedPreparationState(for model: SupportedMLXModel) {
+        if case .failed = mlxPreparationStates[model.id] {
+            mlxPreparationStates[model.id] = nil
+        }
+    }
+
+    private func stopPreparationQueueIfIdle() {
+        guard mlxPreparationQueue.isEmpty, mlxPreparationTasks.isEmpty else { return }
+        mlxPreparationQueueTask?.cancel()
+        mlxPreparationQueueTask = nil
+    }
+
+    private func shouldDiscardBundle(after error: Error) -> Bool {
+        error is ModelBundleValidator.ValidationError
+            || error is ModelFileValidator.ValidationError
+            || error is MLXModelPreflight.PreflightError
     }
 
     private func setupState(_ state: ModelDownloadState) -> SetupState {

@@ -5,9 +5,9 @@ import ModelManagement
 
 final class MLXModelPreflightTests: XCTestCase {
     private static let allBundleEnvironment: [(String, String)] = [
-        ("KEYTYPE_MLX_08B_MODEL_DIR", "Qwen3.5-0.8B-Base-MLX-6bit"),
-        ("KEYTYPE_MLX_2B_MODEL_DIR", "Qwen3.5-2B-Base-MLX-4bit"),
-        ("KEYTYPE_MLX_4B_MODEL_DIR", "Qwen3.5-4B-Base-MLX-4bit"),
+        ("KEYTYPE_MLX_08B_MODEL_DIR", "Qwen3.5-0.8B-MLX-6bit"),
+        ("KEYTYPE_MLX_2B_MODEL_DIR", "Qwen3.5-2B-MLX-4bit"),
+        ("KEYTYPE_MLX_4B_MODEL_DIR", "Qwen3.5-4B-MLX-4bit"),
     ]
 
     func testPinnedBundlePassesLivePreflight() async throws {
