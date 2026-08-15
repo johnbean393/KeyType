@@ -9,6 +9,7 @@ import AutocompleteCore
 import AppKit
 import CompletionUI
 import MacContextCapture
+import Prompting
 import Testing
 @testable import KeyType
 
@@ -59,6 +60,16 @@ struct KeyTypeTests {
 
     @Test func adaptiveDebounceStartsAtModerateDelayBeforeTelemetry() {
         #expect(CompletionController.adaptiveDebounceNanoseconds(lastGenerationLatencyMs: nil) == 25_000_000)
+    }
+
+    @Test func promptLimitUsesMLXPresetAndKeepsGGUFDefault() {
+        #expect(
+            CompletionController.promptLimit(forModelFilename: "Qwen3.5-2B-Base-MLX-4bit") == 2_048
+        )
+        #expect(
+            CompletionController.promptLimit(forModelFilename: ModelContainer.defaultModelFilename)
+                == PromptBuilder.defaultMaxPromptTokens
+        )
     }
 
     @Test @MainActor func correctionSuffixWindowIgnoresLeadingPunctuation() {

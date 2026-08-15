@@ -240,6 +240,10 @@ final class CompletionController {
     private let log = Logger(subsystem: "com.pattonium.KeyType", category: "completion")
 
     private var engine: ConstrainedGenerationEngine?
+    /// Prompt budgeting follows the loaded runtime's tokenizer and model preset. Keeping the
+    /// builder alongside the engine ensures normal completions and startup warm-up use identical
+    /// truncation rules.
+    private var promptBuilder = KeyTypeModuleGraph.makePromptBuilder()
     private var generationTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Error>?
     private var warmupTask: Task<Void, Never>?
@@ -397,14 +401,15 @@ final class CompletionController {
         activeModelFilename = modelFilename
         Task {
             do {
-                let engine = try await Self.buildEngine(
+                let loaded = try await Self.buildEngine(
                     compatibilityStore: compatibilityStore,
                     modelFilename: modelFilename,
                     adjustments: adjustments
                 )
-                self.engine = engine
+                self.engine = loaded.engine
+                self.promptBuilder = loaded.promptBuilder
                 self.loadState = .ready
-                self.startStartupWarmup(engine: engine)
+                self.startStartupWarmup(engine: loaded.engine)
                 self.log.info("Completion engine ready")
             } catch {
                 self.loadState = .unavailable("\(error)")
@@ -602,7 +607,7 @@ final class CompletionController {
         // optional side sections are frozen briefly so unrelated history/clipboard/OCR updates do
         // not rewrite the prompt prefix and destroy KV append reuse mid-burst.
         let (sideContext, sideContextReused) = promptSideContext(for: promptContext)
-        let promptResult = KeyTypeModuleGraph.makePromptBuilder().buildPrompt(
+        let promptResult = promptBuilder.buildPrompt(
             context: promptContext,
             customInstructions: settings.promptCustomInstructions(appInstructions: policy.customInstructions),
             previousUserInputs: sideContext.previousUserInputs,
@@ -1101,7 +1106,7 @@ final class CompletionController {
             target: AppTarget(bundleIdentifier: "com.pattonium.KeyType", appName: "KeyType"),
             detectedLanguage: "en"
         )
-        let prompt = KeyTypeModuleGraph.makePromptBuilder().buildPrompt(context: context).prompt
+        let prompt = promptBuilder.buildPrompt(context: context).prompt
         let request = CompletionRequest(
             context: context,
             prompt: prompt,
@@ -1938,6 +1943,19 @@ final class CompletionController {
 
     // MARK: - Engine construction
 
+    private struct LoadedEngine {
+        let engine: ConstrainedGenerationEngine
+        let promptBuilder: PromptBuilder
+    }
+
+    /// MLX models carry a prompt budget tuned with their decoder preset. Imported and bundled
+    /// GGUF models keep the historical 4096-token budget. The limit is deliberately resolved by
+    /// filename here so the engine loader and the testable policy share one source of truth.
+    nonisolated static func promptLimit(forModelFilename modelFilename: String) -> Int {
+        MLXModelCatalog.model(id: modelFilename)?.tuningPreset.maxPromptTokens
+            ?? PromptBuilder.defaultMaxPromptTokens
+    }
+
     /// Builds the runtime + profile + engine. Marked `nonisolated` so the heavy ~0.3 s model load
     /// runs off the main actor (the call site `await`s it from a `Task`) rather than hitching the
     /// UI. Inlined here — rather than via `KeyTypeModuleGraph`, whose helpers are main-actor
@@ -1946,7 +1964,7 @@ final class CompletionController {
         compatibilityStore: AppCompatibilityStore,
         modelFilename: String,
         adjustments: ThresholdAdjustments
-    ) async throws -> ConstrainedGenerationEngine {
+    ) async throws -> LoadedEngine {
         if let model = MLXModelCatalog.model(id: modelFilename) {
             let prepared = try await MLXModelPreflight.prepare(model)
             let preset = model.tuningPreset
@@ -1961,13 +1979,18 @@ final class CompletionController {
                 fimMaxPrefixTokens: preset.fimMaxPrefixTokens,
                 fimMaxSuffixTokens: preset.fimMaxSuffixTokens
             )
-            return ConstrainedGenerationEngine(
+            let engine = ConstrainedGenerationEngine(
                 runtime: prepared.runtime,
                 profile: prepared.profile,
                 compatibilityStore: compatibilityStore,
                 configuration: configuration,
                 wordRecognizer: SystemWordRecognizer()
             )
+            let promptBuilder = KeyTypeModuleGraph.makePromptBuilder(
+                tokenizer: prepared.runtime.tokenizer,
+                maxPromptTokens: Self.promptLimit(forModelFilename: modelFilename)
+            )
+            return LoadedEngine(engine: engine, promptBuilder: promptBuilder)
         }
         let modelURL = try ModelContainer.modelURL(filename: modelFilename)
         guard ModelContainer.modelExists(at: modelURL) else {
@@ -2007,13 +2030,15 @@ final class CompletionController {
             // their window sizes / rerank depth+weight. See ADR-057.
             enableFillInMiddle: true
         )
-        return ConstrainedGenerationEngine(
+        let engine = ConstrainedGenerationEngine(
             runtime: runtime,
             profile: profile,
             compatibilityStore: compatibilityStore,
             configuration: configuration,
             wordRecognizer: SystemWordRecognizer()
         )
+        let promptBuilder = KeyTypeModuleGraph.makePromptBuilder(tokenizer: runtime.tokenizer)
+        return LoadedEngine(engine: engine, promptBuilder: promptBuilder)
     }
 
     enum CompletionLoadError: Error, CustomStringConvertible {
