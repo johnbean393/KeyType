@@ -17,6 +17,7 @@ import ConstrainedGeneration
 import Foundation
 import LlamaModelRuntime
 import MLXModelProfileGeneration
+import MLXModelRuntime
 import MacContextCapture
 import ModelManagement
 import ModelRuntime

@@ -117,42 +117,59 @@ final class PrefillLatencyBenchmarkTests: XCTestCase {
         )
     }
 
-    /// Like-for-like reference for the MLX runtime benchmark: same Qwen 3.5 2B Base prompt,
-    /// suffix, request count, and percentile convention. It is opt-in because performance data is
-    /// meaningful only in a release build on the machine being reported.
+    /// Like-for-like reference for the MLX runtime benchmark: same prompt, suffix set, request
+    /// count, and percentile convention. Set `KEYTYPE_LLAMA_MODEL_PATH` to compare another local
+    /// GGUF catalog variant. It is opt-in because performance data is meaningful only in a
+    /// release build on the machine being reported.
     func testWarmAnchoredLatencyBenchmark() async throws {
         guard ProcessInfo.processInfo.environment["KEYTYPE_LLAMA_RUN_BENCHMARK"] == "1" else {
             throw XCTSkip("set KEYTYPE_LLAMA_RUN_BENCHMARK=1 to run the 200-request benchmark")
         }
-        try XCTSkipUnless(ModelContainer.defaultModelExists(), "default Qwen 2B GGUF is not installed")
+        let modelURL: URL
+        if let modelPath = ProcessInfo.processInfo.environment["KEYTYPE_LLAMA_MODEL_PATH"], !modelPath.isEmpty {
+            modelURL = URL(fileURLWithPath: modelPath)
+            try XCTSkipUnless(ModelContainer.modelExists(at: modelURL), "requested GGUF is not installed")
+        } else {
+            try XCTSkipUnless(ModelContainer.defaultModelExists(), "default Qwen 2B GGUF is not installed")
+            modelURL = try ModelContainer.modelURL()
+        }
 
         let loadStart = DispatchTime.now().uptimeNanoseconds
-        let runtime = try LlamaModelRuntime(modelURL: try ModelContainer.modelURL())
+        let runtime = try LlamaModelRuntime(modelURL: modelURL)
         let coldLoadMillis = elapsedMillis(since: loadStart)
         var samples: [Double] = []
         samples.reserveCapacity(200)
         do {
             let anchor = try runtime.tokenizer.tokenize("The quick brown fox")
-            let suffix = try runtime.tokenizer.tokenize(" jumps")
-            _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffix)
+            let suffixes = try [" jumps", " runs", " walks", " moves", " waits", " speaks", " writes", " works"]
+                .map { try runtime.tokenizer.tokenize($0) }
+            let firstVisibleStart = DispatchTime.now().uptimeNanoseconds
+            _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffixes[0])
+            let firstVisibleMillis = elapsedMillis(since: firstVisibleStart)
+            var rng = DeterministicBenchmarkRNG(seed: 0x4D4C585F323030)
 
             for _ in 0..<200 {
+                let suffix = suffixes[rng.nextIndex(upperBound: suffixes.count)]
                 let start = DispatchTime.now().uptimeNanoseconds
                 _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffix)
                 samples.append(elapsedMillis(since: start))
             }
+            let sorted = samples.sorted()
+            let meanPromptTokens = Double(suffixes.map { anchor.count + $0.count }.reduce(0, +)) / Double(suffixes.count)
+            print(
+                "[llama-benchmark] requests=200 cold_load_ms=\(format(coldLoadMillis)) "
+                    + "first_visible_ms=\(format(firstVisibleMillis)) "
+                    + "warm_p50_ms=\(format(percentile(sorted, 0.50))) "
+                    + "warm_p90_ms=\(format(percentile(sorted, 0.90))) "
+                    + "warm_p95_ms=\(format(percentile(sorted, 0.95))) "
+                    + "mean_prompt_tokens=\(format(meanPromptTokens)) forward_passes=200"
+            )
         } catch {
             await runtime.shutdown()
             throw error
         }
         let sorted = samples.sorted()
         await runtime.shutdown()
-        print(
-            "[llama-benchmark] requests=200 cold_load_ms=\(format(coldLoadMillis)) "
-                + "warm_p50_ms=\(format(percentile(sorted, 0.50))) "
-                + "warm_p90_ms=\(format(percentile(sorted, 0.90))) "
-                + "warm_p95_ms=\(format(percentile(sorted, 0.95)))"
-        )
         XCTAssertEqual(samples.count, 200)
     }
 
@@ -191,5 +208,18 @@ final class PrefillLatencyBenchmarkTests: XCTestCase {
 
     private func format(_ value: Double) -> String {
         String(format: "%.2f", value)
+    }
+
+    private struct DeterministicBenchmarkRNG {
+        private var state: UInt64
+
+        init(seed: UInt64) {
+            state = seed
+        }
+
+        mutating func nextIndex(upperBound: Int) -> Int {
+            state = state &* 6_364_136_223_846_793_005 &+ 1
+            return Int(state % UInt64(upperBound))
+        }
     }
 }

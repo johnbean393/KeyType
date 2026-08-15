@@ -195,7 +195,8 @@ final class ModelSetupCoordinator {
             while !Task.isCancelled {
                 guard let request = self.nextPreparationRequest() else { break }
                 let task = Task { [weak self] in
-                    await self?.prepareMLX(request)
+                    guard let self else { return }
+                    await self.prepareMLX(request)
                 }
                 self.mlxPreparationTasks[request.model.id] = task
                 await task.value

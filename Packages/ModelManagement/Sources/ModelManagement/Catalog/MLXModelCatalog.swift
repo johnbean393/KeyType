@@ -57,7 +57,7 @@ public enum MLXModelCatalog {
             id: "Qwen3.5-4B-MLX-4bit",
             displayName: "Qwen 3.5 4B — MLX 4-bit",
             label: "Higher capacity",
-            detail: "Larger bundle; responsiveness is not yet compared.",
+            detail: "Larger bundle; measured against the matching GGUF variant.",
             size: "3.1 GB",
             memory: 18 * gibibyte,
             repository: "mlx-community/Qwen3.5-4B-MLX-4bit",

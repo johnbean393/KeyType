@@ -146,23 +146,31 @@ final class MLXModelRuntimeTests: XCTestCase {
         addTeardownBlock { await runtime.shutdown() }
 
         let anchor = try runtime.tokenizer.tokenize("The quick brown fox")
-        let suffix = try runtime.tokenizer.tokenize(" jumps")
-        _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffix)
+        let suffixes = try [" jumps", " runs", " walks", " moves", " waits", " speaks", " writes", " works"]
+            .map { try runtime.tokenizer.tokenize($0) }
+        let firstVisibleStart = DispatchTime.now().uptimeNanoseconds
+        _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffixes[0])
+        let firstVisibleMillis = elapsedMillis(since: firstVisibleStart)
 
         var samples: [Double] = []
         samples.reserveCapacity(200)
+        var rng = DeterministicBenchmarkRNG(seed: 0x4D4C585F323030)
         for _ in 0..<200 {
+            let suffix = suffixes[rng.nextIndex(upperBound: suffixes.count)]
             let start = DispatchTime.now().uptimeNanoseconds
             _ = try await runtime.anchoredLogits(anchor: anchor, suffix: suffix)
             samples.append(elapsedMillis(since: start))
         }
 
         let sorted = samples.sorted()
+        let meanPromptTokens = Double(suffixes.map { anchor.count + $0.count }.reduce(0, +)) / Double(suffixes.count)
         print(
             "[mlx-benchmark] requests=200 cold_load_ms=\(format(coldLoadMillis)) "
+                + "first_visible_ms=\(format(firstVisibleMillis)) "
                 + "warm_p50_ms=\(format(percentile(sorted, 0.50))) "
                 + "warm_p90_ms=\(format(percentile(sorted, 0.90))) "
-                + "warm_p95_ms=\(format(percentile(sorted, 0.95)))"
+                + "warm_p95_ms=\(format(percentile(sorted, 0.95))) "
+                + "mean_prompt_tokens=\(format(meanPromptTokens)) forward_passes=200"
         )
         XCTAssertEqual(samples.count, 200)
     }
@@ -212,5 +220,18 @@ final class MLXModelRuntimeTests: XCTestCase {
             }
             .prefix(count)
             .map(\.tokenID)
+    }
+
+    private struct DeterministicBenchmarkRNG {
+        private var state: UInt64
+
+        init(seed: UInt64) {
+            state = seed
+        }
+
+        mutating func nextIndex(upperBound: Int) -> Int {
+            state = state &* 6_364_136_223_846_793_005 &+ 1
+            return Int(state % UInt64(upperBound))
+        }
     }
 }

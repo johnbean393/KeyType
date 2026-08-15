@@ -9,6 +9,7 @@ import AutocompleteCore
 import AppKit
 import CompletionUI
 import MacContextCapture
+import ModelRuntime
 import Prompting
 import Testing
 @testable import KeyType
