@@ -65,9 +65,6 @@ public struct SupportedMLXModel: Identifiable, Equatable, Sendable {
     public let immutableRevision: String
     /// The Qwen model card named by the MLX conversion's own model card.
     public let sourceModelRepository: String
-    /// The Qwen Base ancestor recorded in the Hub model tree for provenance.
-    public let baseModelRepository: String
-    public let baseModelRevision: String
     public let requiredFiles: [VerifiedModelBundleFile]
     public let expectedTokenizerDigest: String
     public let tokenizerFamily: String
@@ -85,8 +82,6 @@ public struct SupportedMLXModel: Identifiable, Equatable, Sendable {
         sourceRepository: String,
         immutableRevision: String,
         sourceModelRepository: String,
-        baseModelRepository: String,
-        baseModelRevision: String,
         requiredFiles: [VerifiedModelBundleFile],
         expectedTokenizerDigest: String,
         tokenizerFamily: String,
@@ -103,8 +98,6 @@ public struct SupportedMLXModel: Identifiable, Equatable, Sendable {
         self.sourceRepository = sourceRepository
         self.immutableRevision = immutableRevision
         self.sourceModelRepository = sourceModelRepository
-        self.baseModelRepository = baseModelRepository
-        self.baseModelRevision = baseModelRevision
         self.requiredFiles = requiredFiles
         self.expectedTokenizerDigest = expectedTokenizerDigest.lowercased()
         self.tokenizerFamily = tokenizerFamily

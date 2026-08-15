@@ -32,7 +32,8 @@ let package = Package(
             name: "MLXModelRuntimeTests",
             dependencies: [
                 "MLXModelRuntime",
-                .product(name: "ModelRuntime", package: "ModelRuntime")
+                .product(name: "ModelRuntime", package: "ModelRuntime"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm")
             ]
         )
     ]

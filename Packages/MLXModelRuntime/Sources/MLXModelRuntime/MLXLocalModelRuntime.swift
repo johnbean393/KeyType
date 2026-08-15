@@ -132,6 +132,20 @@ public actor MLXLocalModelRuntime: RankedLocalModelRuntime {
     public func anchoredLogits(anchor: [TokenID], suffix: [TokenID]) async throws -> [TokenLogit] {
         try ensureActive()
         try Task.checkCancellation()
+
+        if anchor.isEmpty {
+            guard !suffix.isEmpty else { return [] }
+            guard suffix.count <= contextLength else {
+                throw MLXRuntimeError.promptTooLong(
+                    promptTokens: suffix.count,
+                    contextLength: contextLength
+                )
+            }
+            var branch = makeEmptyBranch()
+            try evaluate(suffix, in: &branch)
+            return branch.logits
+        }
+
         try await prepare(promptTokens: anchor)
         guard let anchorCache = prepared else { return [] }
         guard anchor.count + suffix.count <= contextLength else {
@@ -156,6 +170,29 @@ public actor MLXLocalModelRuntime: RankedLocalModelRuntime {
     ) async throws -> [[TokenLogit]] {
         try ensureActive()
         try Task.checkCancellation()
+
+        if anchor.isEmpty {
+            var results: [[TokenLogit]] = []
+            results.reserveCapacity(suffixes.count)
+            for suffix in suffixes {
+                try Task.checkCancellation()
+                guard suffix.count <= contextLength else {
+                    throw MLXRuntimeError.promptTooLong(
+                        promptTokens: suffix.count,
+                        contextLength: contextLength
+                    )
+                }
+                guard !suffix.isEmpty else {
+                    results.append([])
+                    continue
+                }
+                var branch = makeEmptyBranch()
+                try evaluate(suffix, in: &branch)
+                results.append(branch.logits)
+            }
+            return results
+        }
+
         try await prepare(promptTokens: anchor)
         guard let anchorCache = prepared else {
             return suffixes.map { _ in [] }
@@ -201,6 +238,15 @@ public actor MLXLocalModelRuntime: RankedLocalModelRuntime {
     }
 
     // MARK: MLX evaluation
+
+    private func makeEmptyBranch() -> MLXBranchCache {
+        MLXBranchCache(
+            tokens: [],
+            cache: model.newCache(parameters: nil),
+            state: nil,
+            logits: []
+        )
+    }
 
     private func evaluate(_ tokens: [TokenID], in branch: inout MLXBranchCache) throws {
         guard !tokens.isEmpty else { return }

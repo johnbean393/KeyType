@@ -40,7 +40,6 @@ final class ModelBundleValidatorTests: XCTestCase {
             approximateDownloadSizeLabel: "0 GB", minimumPhysicalMemoryBytes: 0,
             sourceRepository: "example/fixture", immutableRevision: String(repeating: "a", count: 40),
             sourceModelRepository: "example/source",
-            baseModelRepository: "example/base", baseModelRevision: String(repeating: "b", count: 40),
             requiredFiles: [file], expectedTokenizerDigest: String(repeating: "0", count: 32),
             tokenizerFamily: "fixture", quantization: "fixture",
             tuningPreset: .init(maxPromptTokens: 1, topK: 1, topP: 1, temperature: 1, branchWidth: 1, relativeCutoff: 1, minimumBranchProbability: 1, enableFillInMiddle: false, fimMaxPrefixTokens: 0, fimMaxSuffixTokens: 0),

@@ -64,7 +64,7 @@ struct KeyTypeTests {
 
     @Test func promptLimitUsesMLXPresetAndKeepsGGUFDefault() {
         #expect(
-            CompletionController.promptLimit(forModelFilename: "Qwen3.5-2B-Base-MLX-4bit") == 2_048
+            CompletionController.promptLimit(forModelFilename: "Qwen3.5-2B-MLX-4bit") == 2_048
         )
         #expect(
             CompletionController.promptLimit(forModelFilename: ModelContainer.defaultModelFilename)

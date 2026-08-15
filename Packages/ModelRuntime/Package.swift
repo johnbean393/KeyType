@@ -10,15 +10,13 @@ let package = Package(
         .library(name: "LlamaModelRuntime", targets: ["LlamaModelRuntime"])
     ],
     dependencies: [
-        .package(path: "../AutocompleteCore"),
-        .package(path: "../TokenProfiles")
+        .package(path: "../AutocompleteCore")
     ],
     targets: [
         .target(
             name: "ModelRuntime",
             dependencies: [
-                .product(name: "AutocompleteCore", package: "AutocompleteCore"),
-                .product(name: "TokenProfiles", package: "TokenProfiles")
+                .product(name: "AutocompleteCore", package: "AutocompleteCore")
             ]
         ),
         // llama.cpp xcframework (see ADR-007). The framework is gitignored under Vendor/
@@ -31,7 +29,6 @@ let package = Package(
             name: "LlamaModelRuntime",
             dependencies: [
                 .product(name: "AutocompleteCore", package: "AutocompleteCore"),
-                .product(name: "TokenProfiles", package: "TokenProfiles"),
                 "ModelRuntime",
                 "llama"
             ]

@@ -103,7 +103,7 @@ public final class MLXBundleDownloadManager {
 
             let destination = try ModelContainer.mlxModelDirectoryURL(identifier: model.id, createParent: true)
             let backup = destination.deletingLastPathComponent()
-                .appendingPathComponent(".(model.id).replacing-(UUID().uuidString)", isDirectory: true)
+                .appendingPathComponent(".\(model.id).replacing-\(UUID().uuidString)", isDirectory: true)
             var movedExistingBundle = false
             if fileManager.fileExists(atPath: destination.path) {
                 try fileManager.moveItem(at: destination, to: backup)

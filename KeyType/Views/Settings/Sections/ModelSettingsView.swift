@@ -133,8 +133,7 @@ struct ModelSettingsView: View {
             settings.selectedModelFilename = nil
             reloadModel()
         }
-        modelSetup.mlxDownloads.delete(model)
-        modelSetup.refresh()
+        modelSetup.delete(model)
     }
 }
 

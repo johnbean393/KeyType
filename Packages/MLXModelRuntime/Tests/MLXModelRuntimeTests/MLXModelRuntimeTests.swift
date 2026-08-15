@@ -97,6 +97,28 @@ final class MLXModelRuntimeTests: XCTestCase {
         )
     }
 
+    func testEmptyAnchorScoresSingleAndBatchSuffixes() async throws {
+        let runtime = try await loadLocalRuntime()
+        addTeardownBlock { await runtime.shutdown() }
+
+        let staleAnchor = try runtime.tokenizer.tokenize("stale prompt")
+        let suffix = try runtime.tokenizer.tokenize("fresh suffix")
+        try await runtime.prepare(promptTokens: staleAnchor)
+
+        let single = try await runtime.anchoredLogits(anchor: [], suffix: suffix)
+        let batch = try await runtime.anchoredLogitsBatch(anchor: [], suffixes: [[], suffix])
+
+        let fresh = try await loadLocalRuntime()
+        addTeardownBlock { await fresh.shutdown() }
+        try await fresh.prepare(promptTokens: suffix)
+        let expected = try await fresh.logitsForNextToken()
+
+        XCTAssertEqual(batch.count, 2)
+        XCTAssertTrue(batch[0].isEmpty)
+        XCTAssertEqual(topTokenIDs(single), topTokenIDs(expected))
+        XCTAssertEqual(topTokenIDs(batch[1]), topTokenIDs(expected))
+    }
+
     func testShutdownMakesRuntimeInert() async throws {
         let runtime = try await loadLocalRuntime()
         await runtime.shutdown()
@@ -180,5 +202,15 @@ final class MLXModelRuntimeTests: XCTestCase {
 
     private func format(_ value: Double) -> String {
         String(format: "%.2f", value)
+    }
+
+    private func topTokenIDs(_ logits: [TokenLogit], count: Int = 5) -> [TokenID] {
+        logits
+            .sorted {
+                if $0.logit == $1.logit { return $0.tokenID < $1.tokenID }
+                return $0.logit > $1.logit
+            }
+            .prefix(count)
+            .map(\.tokenID)
     }
 }
