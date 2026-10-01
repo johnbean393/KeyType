@@ -58,7 +58,7 @@ public final class CorrectionValidationScorer {
             return [candidate]
         }
 
-        let prefixTokens = try runtime.tokenizer.tokenize(prefixBeforeWord)
+        let prefixTokens = try runtime.tokenizer.tokenizePrompt(prefixBeforeWord)
         let original = candidates.first?.original ?? ""
         let replacementTokens = try ([original] + candidates.map(\.replacement)).map {
             try runtime.tokenizer.tokenize($0)

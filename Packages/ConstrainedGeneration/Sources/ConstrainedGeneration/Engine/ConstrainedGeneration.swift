@@ -262,7 +262,7 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         }
         // A short tail of the prompt so sentence-boundary disambiguation can see context that
         // precedes the generated text (e.g. an abbreviation the prompt ends on).
-        return (try runtime.tokenizer.tokenize(request.prompt), String(request.prompt.suffix(32)))
+        return (try runtime.tokenizer.tokenizePrompt(request.prompt), String(request.prompt.suffix(32)))
     }
 
     /// Assembles `<|fim_prefix|>{prefix}<|fim_suffix|>{suffix}<|fim_middle|>` from the raw context
@@ -288,7 +288,7 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         // nearest the caret). A context already under the cap is fed verbatim. See ADR-057.
         let prefix = Self.keepingLast(configuration.fimMaxPrefixTokens, of: try tokenizer.tokenize(prefixText))
         let suffix = Self.keepingFirst(configuration.fimMaxSuffixTokens, of: try tokenizer.tokenize(request.context.afterCursor))
-        return (pre + prefix + suf + suffix + mid, String(prefixText.suffix(32)))
+        return (tokenizer.promptPrefixTokens + pre + prefix + suf + suffix + mid, String(prefixText.suffix(32)))
     }
 
     /// Keep at most the last `limit` tokens (the tail nearest the caret); `limit <= 0` keeps all.
@@ -497,7 +497,7 @@ public final class ConstrainedGenerationEngine: CompletionGenerating {
         joinAnchors.reserveCapacity(branches.count)
         for (index, branch) in branches.enumerated() {
             try Task.checkCancellation()
-            guard let tokens = try? runtime.tokenizer.tokenize(trimmedPrefix + branch.text),
+            guard let tokens = try? runtime.tokenizer.tokenizePrompt(trimmedPrefix + branch.text),
                   !tokens.isEmpty
             else { continue }
             joinAnchors.append((branchIndex: index, tokens: tokens))

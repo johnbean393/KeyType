@@ -66,6 +66,12 @@ the filter is deliberately the last, documented line of defense.
 
 ## 4. Make the smallest correct change
 
+For model-family-specific bad text, check input token boundaries before retuning decoding. Gemma 4
+requires an initial BOS (token 2); Qwen3.5 does not. Complete inputs use `tokenizePrompt`, while
+fragments use `tokenize`. The policy comes from llama.cpp's effective vocabulary, which can override
+the raw GGUF metadata. BOS being excluded from generated candidates does not mean it should be
+omitted from the input. See ADR-134.
+
 - Change behavior **behind the existing protocols** (`CompletionGenerating`, `CandidateFiltering`,
   `AppCompatibility` overrides). Don't widen public APIs to patch one app — add a `TargetOverride`
   (`08-app-compatibility.md`).

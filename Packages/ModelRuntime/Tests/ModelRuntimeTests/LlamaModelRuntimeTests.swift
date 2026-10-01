@@ -8,6 +8,27 @@ import XCTest
 /// They `XCTSkipUnless(modelExists)` so the package's test suite stays green on machines
 /// that haven't dropped a model into the container yet.
 final class LlamaModelRuntimeTests: XCTestCase {
+    /// Explicit model paths let this regression run against either local app's model storage.
+    func testRequiredPromptPrefixFromGemmaVocabulary() async throws {
+        guard let path = ProcessInfo.processInfo.environment["KEYTYPE_TEST_GEMMA_MODEL"] else {
+            throw XCTSkip("Set KEYTYPE_TEST_GEMMA_MODEL to a Gemma 4 GGUF to check its required BOS")
+        }
+        let runtime = try LlamaModelRuntime(modelURL: URL(fileURLWithPath: path), contextLength: 512)
+        do {
+            let tokenizer = runtime.tokenizer
+            XCTAssertEqual(tokenizer.promptPrefixTokens, [2])
+            let text = "hello <bos> world"
+            let fragments = try tokenizer.tokenize(text)
+            XCTAssertFalse(fragments.contains(2), "User-written marker text must stay literal")
+            XCTAssertEqual(try tokenizer.tokenizePrompt(text), [2] + fragments)
+            XCTAssertEqual(try tokenizer.tokenizePrompt(""), [2])
+            await runtime.shutdown()
+        } catch {
+            await runtime.shutdown()
+            throw error
+        }
+    }
+
     private func makeRuntime(contextLength: Int = 1024, reuseThreshold: Int = 4) throws -> LlamaModelRuntime {
         try XCTSkipUnless(
             ModelContainer.defaultModelExists(),

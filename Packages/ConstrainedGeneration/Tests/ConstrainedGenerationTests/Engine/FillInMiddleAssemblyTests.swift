@@ -12,6 +12,7 @@ import XCTest
 /// Tokenizer that encodes the three FIM markers as single dedicated ids and everything else as its
 /// UTF-8 bytes (so token order is trivially checkable).
 private struct FIMStubTokenizer: ModelTokenizing {
+    var promptPrefixTokens: [TokenID] = []
     static let pre: TokenID = 9001
     static let suf: TokenID = 9002
     static let mid: TokenID = 9003
@@ -110,6 +111,23 @@ final class FillInMiddleAssemblyTests: XCTestCase {
             tokens,
             [FIMStubTokenizer.pre, 97, 98, FIMStubTokenizer.suf, 99, 100, FIMStubTokenizer.mid]
         )
+    }
+
+    func testModelBOSPrecedesBasePromptExactlyOnce() async throws {
+        let tokens = try await prepared(
+            tokenizer: FIMStubTokenizer(promptPrefixTokens: [8000]),
+            beforeCursor: "ab", afterCursor: "", prompt: "literal <bos>", enableFIM: false
+        )
+        XCTAssertEqual(tokens, [8000] + Array("literal <bos>".utf8).map { TokenID($0) })
+    }
+
+    func testModelBOSPrecedesFIMWithoutEnteringWindowedFragments() async throws {
+        let tokens = try await prepared(
+            tokenizer: FIMStubTokenizer(promptPrefixTokens: [8000]),
+            beforeCursor: "abcdef", afterCursor: "xyz", enableFIM: true,
+            fimMaxPrefixTokens: 2, fimMaxSuffixTokens: 2
+        )
+        XCTAssertEqual(tokens, [8000, 9001, 101, 102, 9002, 120, 121, 9003])
     }
 
     func testFallsBackToBasePromptWhenDisabled() async throws {

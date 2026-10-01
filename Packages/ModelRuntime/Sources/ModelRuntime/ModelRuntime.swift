@@ -37,6 +37,9 @@ public struct TokenLogit: Equatable {
 }
 
 public protocol ModelTokenizing {
+    /// Model-required tokens at the start of a complete causal input (for example Gemma's BOS).
+    /// Fragment tokenization must remain prefix-free for suffix scoring and token-budget slicing.
+    var promptPrefixTokens: [TokenID] { get }
     func tokenize(_ text: String) throws -> [TokenID]
     func detokenize(_ tokenIDs: [TokenID]) throws -> String
     func rawBytes(for tokenID: TokenID) throws -> [UInt8]
@@ -48,6 +51,14 @@ public protocol ModelTokenizing {
 }
 
 public extension ModelTokenizing {
+    var promptPrefixTokens: [TokenID] { [] }
+
+    /// Adds the model's input prefix once, without parsing control-token spellings in user text
+    /// or appending EOS, which would terminate the continuation we are asking the model to make.
+    func tokenizePrompt(_ text: String) throws -> [TokenID] {
+        promptPrefixTokens + (try tokenize(text))
+    }
+
     func tokenizeAllowingSpecial(_ text: String) throws -> [TokenID] {
         try tokenize(text)
     }
