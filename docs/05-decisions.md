@@ -144,6 +144,7 @@ row here.**
 | 122 | Refine bare detected-language tags with the user's regional variant | generation/correction |
 | 123 | Gate KeyType by the selected macOS input method | settings/app |
 | 133 | Run Vision OCR off-main behind a fail-open single-flight gate | context-capture/ui |
+| 134 | Honor model-required BOS at complete input boundaries | model-runtime/quality |
 
 ---
 
@@ -3939,3 +3940,27 @@ text. Both are now closed:
   it cannot block the main actor or accumulate periodic capture work. Screen context and visual
   calibration fail open while ordinary completion, settings, and quit handling remain responsive.
   The two OCR features intentionally trade occasional suppression for process-wide liveness.
+
+## ADR-134: Honor model-required BOS at complete input boundaries
+
+- Date: 2026-09-30
+- Status: accepted
+- Context: Gemma 4 E4B produced repetition and poor continuations while Qwen3.5 2B worked better.
+  `LlamaTokenizer` uses `add_special: false`, which is correct for fragments but omitted Gemma's
+  required BOS from complete inputs. The tested Gemma GGUF declares `add_bos_token: false`, but
+  llama.cpp overrides that to true for Gemma4 (see ggml-org/llama.cpp#21500). Qwen's effective
+  add-BOS policy is false.
+- Decision: Expose `ModelTokenizing.promptPrefixTokens` with an empty default, and provide
+  `tokenizePrompt` for complete causal inputs. Resolve the prefix from llama.cpp's effective
+  `llama_vocab_get_add_bos` and `llama_vocab_bos`, not a filename heuristic or the raw GGUF flag.
+  Add it once for base/FIM generation, suffix-rerank anchors, and correction-validation anchors.
+  Keep ordinary tokenization prefix-free for fragments, windows, replacement tokens, and suffixes;
+  do not parse user-written control markers or automatically append EOS.
+- Evidence: A release-build comparison on the 36-case smoke suite left all Qwen3.5 2B displayed
+  outputs unchanged. With BOS, Gemma E4B's `bring the lyrics to` continued with `life.` instead of
+  `a song.`, and `an outstanding plotline,` continued with `well-developed characters` instead of
+  repeating `an outstanding plotline`. These are qualitative checks, not a model-quality ranking.
+- Consequences: This is a tokenizer-boundary contract, not Gemma-specific prompting or a switch
+  to chat generation. Tests cover literal user markers, default no-BOS behavior, Gemma's effective
+  vocabulary policy, FIM windows, and correction replacement/suffix boundaries. The real-Gemma
+  regression is opt-in through `KEYTYPE_TEST_GEMMA_MODEL`.

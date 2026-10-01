@@ -15,10 +15,13 @@ public struct LlamaTokenizer: ModelTokenizing, @unchecked Sendable {
     /// `const llama_vocab *` — opaque pointer owned by the parent `LlamaModelRuntime`.
     private let vocab: OpaquePointer
     public let vocabSize: Int
+    public let promptPrefixTokens: [TokenID]
 
     init(vocab: OpaquePointer, vocabSize: Int) {
         self.vocab = vocab
         self.vocabSize = vocabSize
+        let bos = llama_vocab_bos(vocab)
+        self.promptPrefixTokens = llama_vocab_get_add_bos(vocab) && bos >= 0 ? [TokenID(bos)] : []
     }
 
     public func tokenize(_ text: String) throws -> [TokenID] {

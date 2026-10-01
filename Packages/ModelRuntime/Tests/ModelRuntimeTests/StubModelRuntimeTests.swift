@@ -6,6 +6,13 @@ import XCTest
 /// the canary for the `LocalModelRuntime` protocol shape — if these break, every dependent
 /// (`ConstrainedGeneration`, `Prompting`) is also affected.
 final class StubModelRuntimeTests: XCTestCase {
+    func testDefaultPromptTokenizationDoesNotInventSpecialTokens() throws {
+        let tokenizer: ModelTokenizing = UTF8FallbackTokenizer()
+        XCTAssertEqual(tokenizer.promptPrefixTokens, [])
+        XCTAssertEqual(try tokenizer.tokenizePrompt("hello <bos>"), try tokenizer.tokenize("hello <bos>"))
+        XCTAssertEqual(try tokenizer.tokenizePrompt(""), [])
+    }
+
     func testUTF8FallbackTokenizerRoundTripsASCII() throws {
         let tokenizer = UTF8FallbackTokenizer()
         for sample in ["", "a", "hello world", "Tab autocomplete? Yes!"] {

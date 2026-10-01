@@ -110,6 +110,18 @@ final class CorrectionValidationScorerTests: XCTestCase {
         XCTAssertGreaterThan(result.first?.validation.suffixJoinScore ?? -.infinity, -1)
     }
 
+    func testBOSIsAddedOnlyToCorrectionAnchorNotReplacementOrSuffix() async throws {
+        let runtime = Runtime(logitsByPath: [
+            [63, 1]: [makeLogit(10, 5), makeLogit(12, 0)],
+            [63, 1, 10]: [makeLogit(20, 5), makeLogit(30, 0)]
+        ], tokenizer: Tokenizer(promptPrefixTokens: [63]))
+        let result = try await CorrectionValidationScorer(runtime: runtime).validate(
+            candidates: [makeCandidate("middle")], prefixBeforeWord: "in the ", suffixWindow: " of"
+        )
+        XCTAssertEqual(result.first?.replacement, "middle")
+        XCTAssertGreaterThan(result.first?.validation.suffixJoinScore ?? -.infinity, -1)
+    }
+
     func testGrammarSourcesSurviveModelValidation() async throws {
         let scorer = CorrectionValidationScorer(runtime: Runtime(logitsByPath: [
             [3]: [makeLogit(40, 5), makeLogit(41, 0)]
@@ -211,6 +223,7 @@ private func makeLogit(_ id: TokenID, _ value: Float) -> TokenLogit {
 }
 
 private struct Tokenizer: ModelTokenizing {
+    var promptPrefixTokens: [TokenID] = []
     private let ids: [String: TokenID] = [
         "in the ": 1,
         "Open the ": 2,
@@ -243,14 +256,15 @@ private struct Tokenizer: ModelTokenizing {
 
 private final class Runtime: LocalModelRuntime {
     let metadata = ModelMetadata(identifier: "correction-test", family: "test", vocabularySize: 64, contextLength: 128)
-    let tokenizer: ModelTokenizing = Tokenizer()
+    let tokenizer: ModelTokenizing
     private let logitsByPath: [[TokenID]: [TokenLogit]]
     private(set) var anchoredLogitsCallCount = 0
     private(set) var anchoredLogitsBatchCallCount = 0
     private(set) var batchSuffixCounts: [Int] = []
 
-    init(logitsByPath: [[TokenID]: [TokenLogit]]) {
+    init(logitsByPath: [[TokenID]: [TokenLogit]], tokenizer: ModelTokenizing = Tokenizer()) {
         self.logitsByPath = logitsByPath
+        self.tokenizer = tokenizer
     }
 
     func prepare(promptTokens: [TokenID]) async throws {}
