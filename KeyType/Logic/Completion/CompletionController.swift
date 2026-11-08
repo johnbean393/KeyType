@@ -357,6 +357,9 @@ final class CompletionController {
     /// completion. Cleared once the suggestion is exhausted, the user diverges, or the overlay is torn
     /// down — at which point normal per-keystroke generation resumes.
     private var holdAnchor = false
+    /// In-memory post-acceptance reversion observer (issue #52). Holds accepted text only briefly;
+    /// only aggregate outcomes reach `telemetry`.
+    private var acceptedInsertionTracker = AcceptedInsertionTracker()
     /// Set after a macOS screenshot/screen-recording shortcut. While active, the already-visible
     /// overlay is preserved through transient capture focus changes, but acceptance is disabled until
     /// a real non-Screenshot focused-field snapshot revalidates the text/caret context.
@@ -573,6 +576,7 @@ final class CompletionController {
     }
 
     func stop() {
+        acceptedInsertionTracker.cancel()
         guard isRunning else { return }
         isRunning = false
         if let listenerToken {
@@ -626,6 +630,8 @@ final class CompletionController {
     // MARK: - Pipeline
 
     private func handle(_ snapshot: FocusedFieldSnapshot?) {
+        observeAcceptedInsertion(context: snapshot?.context)
+
         // Conditions under which there can be no suggestion: tear everything down and reset.
         guard completionsEnabled, loadState == .ready, let engine else { reset(); return }
         guard let snapshot else {
@@ -2104,6 +2110,7 @@ final class CompletionController {
         let (head, rest) = NextWordSplitter.split(text)
         guard !head.isEmpty else { return }
         telemetry.recordAccepted()
+        beginAcceptedInsertionTracking(acceptedText: head, context: context)
         predictionLog.append(
             "ACCEPT(word) \"\(PredictionLog.escape(head))\" of \"\(PredictionLog.escape(text))\""
         )
@@ -2133,8 +2140,37 @@ final class CompletionController {
     func acceptFullCompletion() {
         guard canAcceptCompletion, let (text, context) = insertionText() else { return }
         telemetry.recordAccepted()
+        beginAcceptedInsertionTracking(acceptedText: text, context: context)
         predictionLog.append("ACCEPT(full) \"\(PredictionLog.escape(text))\"")
         insert(text: text, context: context)
+    }
+
+    private func beginAcceptedInsertionTracking(acceptedText: String, context: TextFieldContext) {
+        // Never observe secure/password fields — close any pending observation and skip tracking.
+        if AcceptedInsertionTracker.isUnsafeToObserve(context) {
+            observeAcceptedInsertion(context: context)
+            acceptedInsertionTracker.cancel()
+            return
+        }
+        let spec = AcceptedInsertionSpec(
+            kind: .completion,
+            acceptedText: acceptedText,
+            prefixBeforeAccepted: context.beforeCursor,
+            expectedBeforeCursor: AcceptedInsertionTracker.expectedBeforeCursor(
+                accepting: acceptedText,
+                in: context
+            ),
+            bundleIdentifier: context.target.bundleIdentifier
+        )
+        if let prior = acceptedInsertionTracker.begin(spec) {
+            telemetry.recordAcceptedInsertionOutcome(kind: prior.kind, outcome: prior.outcome)
+        }
+    }
+
+    private func observeAcceptedInsertion(context: TextFieldContext?) {
+        if let resolution = acceptedInsertionTracker.observe(context: context) {
+            telemetry.recordAcceptedInsertionOutcome(kind: resolution.kind, outcome: resolution.outcome)
+        }
     }
 
     /// The text to insert and the context to insert it into, derived from the anchored suggestion

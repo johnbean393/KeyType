@@ -49,6 +49,16 @@ struct StatisticsSettingsView: View {
                     detail: "\(snapshot.suppressedCount) of \(snapshot.generatedCount) generated",
                     value: { percent($0.suppressionRate) }
                 )
+                statRow(
+                    "Completion reversion",
+                    detail: reversionDetail(snapshot.completionAcceptanceOutcomes),
+                    value: { percent($0.completionAcceptanceOutcomes.reversionRate) }
+                )
+                statRow(
+                    "Correction reversion",
+                    detail: reversionDetail(snapshot.correctionAcceptanceOutcomes),
+                    value: { percent($0.correctionAcceptanceOutcomes.reversionRate) }
+                )
             }
 
             Section("End-to-end latency") {
@@ -320,6 +330,15 @@ struct StatisticsSettingsView: View {
 
     private func percent(_ value: Double) -> String {
         String(format: "%.0f%%", value * 100)
+    }
+
+    private func reversionDetail(_ counters: AcceptedInsertionOutcomeCounters) -> String {
+        let reverted = counters.partiallyRemovedCount + counters.fullyRevertedCount + counters.replacedCount
+        let kept = counters.retainedCount
+        if counters.resolvedCount == 0 {
+            return "No post-accept observations yet"
+        }
+        return "\(reverted) reverted/replaced · \(kept) retained · \(counters.unobservableCount + counters.expiredCount) unknown"
     }
 
     private func ms(_ value: Double) -> String {
