@@ -144,6 +144,7 @@ row here.**
 | 122 | Refine bare detected-language tags with the user's regional variant | generation/correction |
 | 123 | Gate KeyType by the selected macOS input method | settings/app |
 | 133 | Run Vision OCR off-main behind a fail-open single-flight gate | context-capture/ui |
+| 134 | Measure post-acceptance reversions with local aggregate telemetry | personalization/telemetry |
 
 ---
 
@@ -3939,3 +3940,24 @@ text. Both are now closed:
   it cannot block the main actor or accumulate periodic capture work. Screen context and visual
   calibration fail open while ordinary completion, settings, and quit handling remain responsive.
   The two OCR features intentionally trade occasional suppression for process-wide liveness.
+
+## ADR-134 — Measure post-acceptance reversions with local aggregate telemetry
+
+- Date: 2026-11-08
+- Status: accepted
+- Context: Acceptance counts alone are an incomplete quality signal — users often Tab-accept a
+  suggestion and immediately delete or overwrite it. Future autocorrect tuning especially needs to
+  know whether an accepted fix stuck. Issue #52 asks for privacy-preserving, local-only measurement
+  of that post-acceptance fate without persisting text or keystrokes.
+- Decision: Add a pure `AcceptedInsertionTracker` state machine in `AutocompleteCore` that keeps one
+  accepted insertion's expected `beforeCursor` span in memory for a short window, classifies the next
+  focused-field updates as retained / partially removed / fully reverted / replaced / expired /
+  unobservable, and discards the text afterward. `CompletionTelemetryStore` persists only aggregate
+  outcome counters (separately for completion and correction). `CompletionController` and
+  `CorrectionController` begin tracking on accept and feed AX snapshots into the tracker. Secure /
+  password / password-manager fields, app changes, and missing focus resolve as unobservable; a
+  short post-settle grace absorbs KeyType's own paste and backspace-after-paste workarounds. The
+  Statistics pane surfaces aggregate reversion rates only.
+- Consequences: Local stats gain a reversion signal without expanding the privacy surface of
+  telemetry.json. AX lag or failed insertions show up as unobservable/expired rather than false
+  reversions. Word-by-word Tab supersession counts the prior word as retained when it had settled.

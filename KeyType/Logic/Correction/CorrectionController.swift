@@ -30,6 +30,8 @@ final class CorrectionController {
     private(set) var visibleCorrection: CorrectionCandidate?
     private var visibleContext: TextFieldContext?
     private var visibleWordRect: CGRect?
+    /// In-memory post-acceptance reversion observer (issue #52). Aggregate outcomes only.
+    private var acceptedInsertionTracker = AcceptedInsertionTracker()
 
     var validateWithModel: (([CorrectionCandidate], CorrectionTarget, TextFieldContext) async throws -> [CorrectionCandidate])?
     var onWillShowCorrection: ((TextFieldContext) -> Void)?
@@ -75,6 +77,7 @@ final class CorrectionController {
         listenerToken = nil
         detectionTask?.cancel()
         detectionTask = nil
+        acceptedInsertionTracker.cancel()
         clear()
     }
 
@@ -109,6 +112,7 @@ final class CorrectionController {
         }
 
         telemetry.recordCorrectionAccepted()
+        beginAcceptedInsertionTracking(correction: correction, context: context)
         predictionLog.append(
             "CORRECT_ACCEPT \"\(PredictionLog.escape(correction.original))\" -> \"\(PredictionLog.escape(correction.replacement))\""
         )
@@ -140,6 +144,7 @@ final class CorrectionController {
 
     private func handle(_ snapshot: FocusedFieldSnapshot?) {
         guard !isShuttingDown else { return }
+        observeAcceptedInsertion(context: snapshot?.context)
         guard let snapshot else {
             clear()
             return
@@ -291,6 +296,36 @@ final class CorrectionController {
         visibleCorrection = nil
         visibleContext = nil
         visibleWordRect = nil
+    }
+
+    private func beginAcceptedInsertionTracking(correction: CorrectionCandidate, context: TextFieldContext) {
+        if AcceptedInsertionTracker.isUnsafeToObserve(context) {
+            observeAcceptedInsertion(context: context)
+            acceptedInsertionTracker.cancel()
+            return
+        }
+        guard let prefix = AcceptedInsertionTracker.prefixBeforeAccepted(for: correction, in: context),
+              let expected = AcceptedInsertionTracker.expectedBeforeCursor(accepting: correction, in: context) else {
+            // After-cursor / unobservable ranges: count as unobservable rather than guessing.
+            telemetry.recordAcceptedInsertionOutcome(kind: .correction, outcome: .unobservable)
+            return
+        }
+        let spec = AcceptedInsertionSpec(
+            kind: .correction,
+            acceptedText: correction.replacement,
+            prefixBeforeAccepted: prefix,
+            expectedBeforeCursor: expected,
+            bundleIdentifier: context.target.bundleIdentifier
+        )
+        if let prior = acceptedInsertionTracker.begin(spec) {
+            telemetry.recordAcceptedInsertionOutcome(kind: prior.kind, outcome: prior.outcome)
+        }
+    }
+
+    private func observeAcceptedInsertion(context: TextFieldContext?) {
+        if let resolution = acceptedInsertionTracker.observe(context: context) {
+            telemetry.recordAcceptedInsertionOutcome(kind: resolution.kind, outcome: resolution.outcome)
+        }
     }
 
     private static func contextKey(for context: TextFieldContext) -> String {

@@ -1,3 +1,4 @@
+import AutocompleteCore
 import Prompting
 import XCTest
 @testable import Personalization
@@ -212,6 +213,30 @@ final class PersonalizationTests: XCTestCase {
         XCTAssertEqual(s.acceptedCount, 0)
         XCTAssertEqual(s.endToEnd.sampleCount, 0)
         XCTAssertTrue(s.endToEnd.totalSamples.isEmpty)
+    }
+
+    func testTelemetryRecordsAcceptedInsertionOutcomesWithoutText() {
+        let telemetry = CompletionTelemetryStore(url: nil)
+        telemetry.recordAcceptedInsertionOutcome(kind: .completion, outcome: .retained)
+        telemetry.recordAcceptedInsertionOutcome(kind: .completion, outcome: .fullyReverted)
+        telemetry.recordAcceptedInsertionOutcome(kind: .completion, outcome: .replaced)
+        telemetry.recordAcceptedInsertionOutcome(kind: .correction, outcome: .partiallyRemoved)
+        telemetry.recordAcceptedInsertionOutcome(kind: .correction, outcome: .unobservable)
+
+        let s = telemetry.snapshot()
+        XCTAssertEqual(s.completionAcceptanceOutcomes.retainedCount, 1)
+        XCTAssertEqual(s.completionAcceptanceOutcomes.fullyRevertedCount, 1)
+        XCTAssertEqual(s.completionAcceptanceOutcomes.replacedCount, 1)
+        XCTAssertEqual(s.completionAcceptanceOutcomes.reversionRate, 2.0 / 3.0, accuracy: 0.0001)
+        XCTAssertEqual(s.correctionAcceptanceOutcomes.partiallyRemovedCount, 1)
+        XCTAssertEqual(s.correctionAcceptanceOutcomes.unobservableCount, 1)
+        // Reversion rate ignores unobservable.
+        XCTAssertEqual(s.correctionAcceptanceOutcomes.reversionRate, 1.0, accuracy: 0.0001)
+        // Sanity: the persisted/exported snapshot is counters-only (no accepted text fields).
+        let encoded = try! JSONEncoder().encode(s)
+        let json = String(decoding: encoded, as: UTF8.self)
+        XCTAssertFalse(json.contains("acceptedText"))
+        XCTAssertFalse(json.contains("beforeCursor"))
     }
 
     func testTelemetryPersistsAcrossInstances() throws {

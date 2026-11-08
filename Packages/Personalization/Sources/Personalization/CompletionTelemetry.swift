@@ -1,8 +1,59 @@
+import AutocompleteCore
 import Foundation
 
 /// Why a generated completion was not shown. Mirrors the controller's suppression taxonomy as a
 /// stable string so telemetry stays decoupled from `AutocompleteCore.SuppressionReason`.
 public typealias TelemetrySuppressionReason = String
+
+/// Aggregate counters for privacy-preserving post-acceptance reversion tracking (issue #52).
+/// Only outcomes are persisted — never accepted text, field contents, or keystrokes.
+public struct AcceptedInsertionOutcomeCounters: Codable, Equatable, Sendable {
+    public var retainedCount: Int
+    public var partiallyRemovedCount: Int
+    public var fullyRevertedCount: Int
+    public var replacedCount: Int
+    public var expiredCount: Int
+    public var unobservableCount: Int
+
+    public init(
+        retainedCount: Int = 0,
+        partiallyRemovedCount: Int = 0,
+        fullyRevertedCount: Int = 0,
+        replacedCount: Int = 0,
+        expiredCount: Int = 0,
+        unobservableCount: Int = 0
+    ) {
+        self.retainedCount = retainedCount
+        self.partiallyRemovedCount = partiallyRemovedCount
+        self.fullyRevertedCount = fullyRevertedCount
+        self.replacedCount = replacedCount
+        self.expiredCount = expiredCount
+        self.unobservableCount = unobservableCount
+    }
+
+    public var resolvedCount: Int {
+        retainedCount + partiallyRemovedCount + fullyRevertedCount + replacedCount + expiredCount + unobservableCount
+    }
+
+    /// Outcomes that indicate the user undid or overwrote the acceptance, excluding unobservable /
+    /// expired windows. Denominator is retained + reverted/replaced only.
+    public var reversionRate: Double {
+        let decisive = retainedCount + partiallyRemovedCount + fullyRevertedCount + replacedCount
+        guard decisive > 0 else { return 0 }
+        return Double(partiallyRemovedCount + fullyRevertedCount + replacedCount) / Double(decisive)
+    }
+
+    mutating func record(_ outcome: AcceptedInsertionOutcome) {
+        switch outcome {
+        case .retained: retainedCount += 1
+        case .partiallyRemoved: partiallyRemovedCount += 1
+        case .fullyReverted: fullyRevertedCount += 1
+        case .replaced: replacedCount += 1
+        case .expired: expiredCount += 1
+        case .unobservable: unobservableCount += 1
+        }
+    }
+}
 
 /// One sample of the wall-clock latency the user actually perceives, broken into the main phases:
 /// AX→prompt main-actor work, the intentional debounce/presentation gate, off-main model decode,
@@ -112,6 +163,8 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
     public var correctionSuppressionReasons: [String: Int]
     public var correctionValidationLatencyMillisP50: Double
     public var correctionValidationLatencyMillisP95: Double
+    public var completionAcceptanceOutcomes: AcceptedInsertionOutcomeCounters
+    public var correctionAcceptanceOutcomes: AcceptedInsertionOutcomeCounters
 
     public init(
         generatedCount: Int = 0,
@@ -129,7 +182,9 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
         correctionsReplacementFailureCount: Int = 0,
         correctionSuppressionReasons: [String: Int] = [:],
         correctionValidationLatencyMillisP50: Double = 0,
-        correctionValidationLatencyMillisP95: Double = 0
+        correctionValidationLatencyMillisP95: Double = 0,
+        completionAcceptanceOutcomes: AcceptedInsertionOutcomeCounters = AcceptedInsertionOutcomeCounters(),
+        correctionAcceptanceOutcomes: AcceptedInsertionOutcomeCounters = AcceptedInsertionOutcomeCounters()
     ) {
         self.generatedCount = generatedCount
         self.shownCount = shownCount
@@ -147,6 +202,8 @@ public struct TelemetrySnapshot: Codable, Equatable, Sendable {
         self.correctionSuppressionReasons = correctionSuppressionReasons
         self.correctionValidationLatencyMillisP50 = correctionValidationLatencyMillisP50
         self.correctionValidationLatencyMillisP95 = correctionValidationLatencyMillisP95
+        self.completionAcceptanceOutcomes = completionAcceptanceOutcomes
+        self.correctionAcceptanceOutcomes = correctionAcceptanceOutcomes
     }
 
     /// Accepted / shown. 0 when nothing has been shown yet.
@@ -214,10 +271,12 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
         var correctionsReplacementFailureCount = 0
         var correctionSuppressionReasons: [String: Int] = [:]
         var correctionValidationLatenciesMillis: [Double] = []
+        var completionAcceptanceOutcomes = AcceptedInsertionOutcomeCounters()
+        var correctionAcceptanceOutcomes = AcceptedInsertionOutcomeCounters()
 
         init() {}
 
-        // Tolerate persisted state from older versions that lack `endToEndSamples` — the synthesized
+        // Tolerate persisted state from older versions that lack newer keys — the synthesized
         // `Codable` would otherwise fail to decode and silently zero out *all* telemetry counters on
         // the first launch with this build.
         init(from decoder: Decoder) throws {
@@ -236,6 +295,14 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
             correctionsReplacementFailureCount = try container.decodeIfPresent(Int.self, forKey: .correctionsReplacementFailureCount) ?? 0
             correctionSuppressionReasons = try container.decodeIfPresent([String: Int].self, forKey: .correctionSuppressionReasons) ?? [:]
             correctionValidationLatenciesMillis = try container.decodeIfPresent([Double].self, forKey: .correctionValidationLatenciesMillis) ?? []
+            completionAcceptanceOutcomes = try container.decodeIfPresent(
+                AcceptedInsertionOutcomeCounters.self,
+                forKey: .completionAcceptanceOutcomes
+            ) ?? AcceptedInsertionOutcomeCounters()
+            correctionAcceptanceOutcomes = try container.decodeIfPresent(
+                AcceptedInsertionOutcomeCounters.self,
+                forKey: .correctionAcceptanceOutcomes
+            ) ?? AcceptedInsertionOutcomeCounters()
         }
     }
 
@@ -310,6 +377,18 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
 
     public func recordAccepted() {
         mutate { $0.acceptedCount += 1 }
+    }
+
+    /// Record a post-acceptance observation outcome. Persists aggregate counters only.
+    public func recordAcceptedInsertionOutcome(kind: AcceptedInsertionKind, outcome: AcceptedInsertionOutcome) {
+        mutate { state in
+            switch kind {
+            case .completion:
+                state.completionAcceptanceOutcomes.record(outcome)
+            case .correction:
+                state.correctionAcceptanceOutcomes.record(outcome)
+            }
+        }
     }
 
     public func recordCorrectionDetected() {
@@ -519,7 +598,9 @@ public final class CompletionTelemetryStore: @unchecked Sendable {
             correctionsReplacementFailureCount: state.correctionsReplacementFailureCount,
             correctionSuppressionReasons: state.correctionSuppressionReasons,
             correctionValidationLatencyMillisP50: Self.percentile(correctionLatencies, 0.5),
-            correctionValidationLatencyMillisP95: Self.percentile(correctionLatencies, 0.95)
+            correctionValidationLatencyMillisP95: Self.percentile(correctionLatencies, 0.95),
+            completionAcceptanceOutcomes: state.completionAcceptanceOutcomes,
+            correctionAcceptanceOutcomes: state.correctionAcceptanceOutcomes
         )
     }
 
